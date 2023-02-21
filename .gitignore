@@ -1,0 +1,75 @@
+# Distributed under the MIT License.
+# See LICENSE.txt for details.
+
+# Build directories
+# Ignore build dirs named similarly to the example in the installation notes;
+# in general arbitrary names are possible and cannot all be ignored.
+/build*
+
+# Editor configurations
+.vscode
+compile_commands.json
+.idea
+/.devcontainer
+
+# Spack
+/support/spack/
+.spack-env
+/support/DevEnvironments/spack.lock
+
+# Python environments
+# These are conventional locations where people may install Python packages
+# related to the project. They are mentioned in the Python docs:
+# https://docs.python.org/3/library/venv.html
+/.venv
+/env
+
+# Temporary files
+*~
+*.swp
+\#*\#
+.\#*
+.DS_Store
+.dir-locals.el
+.cquery_cached_index
+.ycm_extra_conf.py
+.clangd
+.cache
+
+# TeX products
+*.aux
+*.log
+*.toc
+*.bbl
+*.bbg
+*.blg
+*.out
+*.bak
+docs/auto
+
+# Python related files
+*.pyc
+.ipynb_checkpoints
+
+# charm++ runtime files
+charmrun.*
+
+# Observer output
+*.xmf
+*.h5
+
+# Ignore deploy SSH keys and other TravisCI related files
+.travis/deploy_key
+coverage.info
+
+# ClangFormat git hook file
+.clang_format_diff.patch
+
+# CTags, ETags and GNU Global Tags files
+GPATH
+GRTAGS
+GTAGS
+TAGS
+tags
+# Keep Tags/ directories on case-insensitive file systems
+!Tags/
