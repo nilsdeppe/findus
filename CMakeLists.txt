@@ -31,4 +31,5 @@ target_link_libraries(
   Main
   PUBLIC
   MPI::MPI_CXX
+  -lhwloc
   )
