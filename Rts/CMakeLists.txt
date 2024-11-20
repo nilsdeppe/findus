@@ -7,6 +7,7 @@ set(LIBRARY ToyRTS)
 add_library(
   ${LIBRARY}
   ActionState.cpp
+  Exception.cpp
 )
 
 target_include_directories(
