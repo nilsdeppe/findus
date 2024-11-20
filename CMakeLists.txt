@@ -10,6 +10,10 @@ set(CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+find_package(MPI REQUIRED COMPONENTS CXX)
+
+add_subdirectory(Rts)
+
 add_executable(
   Main
   Main.cpp
@@ -32,4 +36,5 @@ target_link_libraries(
   PUBLIC
   MPI::MPI_CXX
   -lhwloc
-  )
+  ToyRTS
+)
