@@ -8,6 +8,7 @@ add_library(
   ${LIBRARY}
   ActionState.cpp
   Exception.cpp
+  MpiException.cpp
 )
 
 target_include_directories(
