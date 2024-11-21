@@ -7,6 +7,7 @@ set(LIBRARY ToyRTS)
 add_library(
   ${LIBRARY}
   ActionState.cpp
+  DistributedTaskDriver.cpp
   Exception.cpp
   MpiException.cpp
 )
