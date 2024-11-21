@@ -2,7 +2,8 @@
 // Distributed under the MIT License.
 // See LICENSE.txt for details.
 
-#include <Rts/ActionState.hpp>
+#include "Rts/ActionState.hpp"
+
 #include <ostream>
 #include <stdexcept>
 
