@@ -66,6 +66,21 @@ class DistributedTaskDriver {
                                        message_header.serialized_data);
   }
 
+  /*!
+   * \brief Insert a parallel component into the `DistributedTaskDriver`.
+   *
+   * This handles registration of the distributed objects without any static
+   * variables. This is because we are guaranteed that all distributed objects
+   * are registered on all nodes before any node tries to retrieve one based
+   * on the type-erased identifier (integer). This is different from
+   * actions/member functions of the distributed objects, which can be invoked
+   * in an arbitrary order on different objects and so there is no order
+   * guarantee, making it necessary to use static variable initialization to
+   * guarantee registration before execution.
+   */
+  template <class ParallelComponent, class... Args>
+  void insert_parallel_component(Args&&... args);
+
  private:
   // The DistributedTaskDriver can only be created using the
   // create_distributed_task_driver() function.
@@ -111,6 +126,32 @@ class DistributedTaskDriver {
   // VECTOR<std::pair<MPI_Request, std::unique_ptr<char>>>
   //     in_use_message_buffers_{};
 };
+
+template <class ParallelComponent, class... Args>
+void DistributedTaskDriver::insert_parallel_component(Args&&... args) {
+  static_assert(
+      not rts::is_collection_v<ParallelComponent>,
+      "To insert into a collection use insert_parallel_component_collection");
+  const auto index = rts::detail::distributed_object_index<ParallelComponent>();
+  if (index < distributed_objects_.size()) {
+    throw Exception(
+        "Inserting a parallel component that was already inserted with index " +
+        std::to_string(index) + " and name " + ParallelComponent::name());
+  }
+  distributed_objects_.emplace_back(
+      std::unique_ptr<DistributedObjectBase>{
+          std::make_unique<ParallelComponent>(std::forward<Args>(args)...)},
+      ParallelComponent::name());
+  if (index + 1 != distributed_objects_.size()) {
+    throw Exception("The index " + std::to_string(index) +
+                    " of the parallel component " + ParallelComponent::name() +
+                    " that was computed by the function "
+                    "distributed_object_index does not match the entry of the "
+                    "distributed_objects_ vector " +
+                    std::to_string(distributed_objects_.size() - 1) +
+                    " on MPI rank " + std::to_string(my_node_id_));
+  }
+}
 
 static const std::unique_ptr<DistributedTaskDriver> task_driver = nullptr;
 
