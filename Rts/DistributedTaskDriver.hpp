@@ -90,6 +90,14 @@ class DistributedTaskDriver {
   /// \cond
   friend void create_distributed_task_driver(int* argc, char** argv[]);
 
+  template <class ParallelComponent>
+  friend ParallelComponent* local_parallel_component(
+      DistributedTaskDriver& distributed_task_driver);
+
+  template <class ParallelComponent, class IndexType>
+  friend ParallelComponent* local_parallel_component(
+      DistributedTaskDriver& distributed_task_driver,
+      const IndexType& user_index);
   /// \endcond
 
   static std::string mpi_threading_to_string(const int mpi_threading);
@@ -160,6 +168,53 @@ void DistributedTaskDriver::insert_parallel_component(Args&&... args) {
   }
 }
 
+/// \brief Retrieve a pointer to the local parallel component.
+///
+/// If the pointer is null then the object could not be retrieved. This can
+/// never occur in practice.
+template <class ParallelComponent>
+ParallelComponent* local_parallel_component(
+    DistributedTaskDriver& distributed_task_driver) {
+  static_assert(not rts::is_collection_v<ParallelComponent>);
+  const auto object_index =
+      detail::distributed_object_index<ParallelComponent>();
+  if (object_index >= distributed_task_driver.distributed_objects_.size()) {
+    throw rts::Exception{"Requested distributed object with index " +
+                         std::to_string(object_index) + " and name " +
+                         ParallelComponent::name() + " was never inserted."};
+  }
+  return dynamic_cast<ParallelComponent*>(
+      std::get<0>(distributed_task_driver.distributed_objects_[object_index])
+          .get());
+}
+
+/// \brief Retrieve a pointer to the local parallel component of a specific
+/// member of a collection.
+///
+/// If the pointer is null then the object could not be retrieved because the
+/// requested element is not on this node.
+template <class ParallelComponent, class IndexType>
+ParallelComponent* local_parallel_component(
+    DistributedTaskDriver& distributed_task_driver,
+    const IndexType& user_index) {
+  static_assert(rts::is_collection_v<ParallelComponent>);
+  static_assert(sizeof(IndexType) == sizeof(uint64_t));
+  const auto object_index =
+      detail::distributed_object_index<ParallelComponent>();
+  if (object_index >= distributed_task_driver.distributed_objects_.size()) {
+    throw rts::Exception{"Requested distributed object with index " +
+                         std::to_string(object_index) + " and name " +
+                         ParallelComponent::name() + " was never inserted."};
+  }
+  const uint64_t collection_index = std::hash<IndexType>{}(user_index);
+  auto& object_collection =
+      std::get<1>(distributed_task_driver.distributed_objects_[object_index]);
+  auto& object_it = object_collection.find(collection_index);
+  if (object_it == object_collection.end()) {
+    return nullptr;
+  }
+  return dynamic_cast<ParallelComponent*>(object_it->second.get());
+}
 
 /// \cond
 static const std::unique_ptr<DistributedTaskDriver> task_driver = nullptr;
