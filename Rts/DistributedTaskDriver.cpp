@@ -97,6 +97,8 @@ std::string DistributedTaskDriver::mpi_threading_to_string(
   };
 }
 
+void DistributedTaskDriver::anchor() {}
+
 void create_distributed_task_driver(int* argc, char** argv[]) {
   if (task_driver != nullptr) {
     throw Exception(
