@@ -81,7 +81,8 @@ class DistributedTaskDriver {
   DistributedTaskDriver(int* argc, char** argv[], bool initialize_mpi = true);
 
   /// \cond
-  friend void create_distributed_task_driver(int* argc, char** argv[]);
+  friend DistributedTaskDriver& create_distributed_task_driver(int* argc,
+                                                               char** argv[]);
 
   template <class ParallelComponent>
   friend ParallelComponent* local_parallel_component(
@@ -288,5 +289,5 @@ static const std::unique_ptr<DistributedTaskDriver> task_driver = nullptr;
 
 /// \brief Create the DistributedTaskDriver::the_driver object that can be
 /// used to globally access the task driver.
-void create_distributed_task_driver(int* argc, char** argv[]);
+DistributedTaskDriver& create_distributed_task_driver(int* argc, char** argv[]);
 }  // namespace rts

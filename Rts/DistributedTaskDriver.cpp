@@ -99,7 +99,8 @@ std::string DistributedTaskDriver::mpi_threading_to_string(
 
 void DistributedTaskDriver::anchor() {}
 
-void create_distributed_task_driver(int* argc, char** argv[]) {
+DistributedTaskDriver& create_distributed_task_driver(int* argc,
+                                                      char** argv[]) {
   if (task_driver != nullptr) {
     throw Exception(
         "Already initialized the task driver. You should only initialize the "
@@ -108,6 +109,7 @@ void create_distributed_task_driver(int* argc, char** argv[]) {
   const_cast<std::unique_ptr<DistributedTaskDriver>&>(task_driver) =
       std::unique_ptr<DistributedTaskDriver>(
           new DistributedTaskDriver(argc, argv, true));
+  return *task_driver.get();
 }
 
 namespace detail {
