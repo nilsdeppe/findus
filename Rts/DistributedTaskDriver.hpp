@@ -99,6 +99,26 @@ class DistributedTaskDriver {
   // functions that invoke actions.
   void anchor() {}
 
+  // Compute the threaded action member function pointer location relative to
+  // the anchor() member function pointer. This is then sent to other nodes.
+  template <class Action, class ParallelComponent, class... Args, size_t... Is>
+  detail::MemberFunctionPtr threaded_action_relative_ptr(
+      std::index_sequence<Is...> /*meta*/) {
+    return {detail::to_member_function_ptr(
+                &DistributedTaskDriver::template threaded_action_impl<
+                    Action, ParallelComponent, Args..., Is...>) -
+            detail::to_member_function_ptr(&DistributedTaskDriver::anchor)};
+  }
+
+  // Compute the threaded action member function pointer absolute address from
+  // the address relative to the anchor() function.
+  auto threaded_action_absolute_ptr(
+      const detail::MemberFunctionPtr& theaded_action_rel_ptr) {
+    return detail::from_member_function_ptr<void, DistributedTaskDriver,
+                                            Message_t&>(
+        {theaded_action_rel_ptr +
+         detail::to_member_function_ptr(&DistributedTaskDriver::anchor)});
+  }
 
   /// invoke_impl is invoked _by_ the thread pool on the task driver to
   /// initiate the action on the distributed action.
