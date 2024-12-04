@@ -114,10 +114,24 @@ class DistributedTaskDriver {
    * number in the map is not guaranteed to be safe.
    */
   struct DistributedOjectClassHolder {
-    std::variant<
-        std::unique_ptr<DistributedObjectBase>,
-        std::unordered_map<uint64_t, std::unique_ptr<DistributedObjectBase>>>
-        objects;
+    struct CollectionHolder {
+      int node_id = -1;
+      std::unique_ptr<DistributedObjectBase> object = nullptr;
+    };
+
+    DistributedOjectClassHolder(
+        std::unique_ptr<DistributedObjectBase> in_object, std::string in_name)
+        : objects(std::move(in_object)), name(std::move(in_name)) {}
+
+    DistributedOjectClassHolder(
+        std::unordered_map<uint64_t, CollectionHolder> in_objects,
+        std::string in_name)
+        : objects(std::move(in_objects)), name(std::move(in_name)) {}
+
+    using variant_t =
+        std::variant<std::unique_ptr<DistributedObjectBase>,
+                     std::unordered_map<uint64_t, CollectionHolder>>;
+    variant_t objects;
     std::string name;
   };
 
@@ -188,7 +202,7 @@ void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
     dynamic_cast<ParallelComponent&>(
         *std::get<1>(
              distributed_objects_[header->distributed_object_index].objects)
-             .at(header->collection_index))
+             .at(header->collection_index).object)
         .template threaded_action<Action>(*this,
                                           std::move(std::get<Is>(args))...);
   } else {
