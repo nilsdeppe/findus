@@ -18,24 +18,15 @@
 #include "Rts/ThreadPool.hpp"
 
 namespace rts {
-template <typename ParallelComponent>
-static uint32_t class_index_counter = 0;
+namespace detail {
+extern uint32_t distributed_object_index_counter;
 
 template <typename ParallelComponent>
-uint32_t class_index() {
-  static uint32_t index = (++class_index_counter<ParallelComponent>);
+uint32_t distributed_object_index() {
+  static uint32_t index = (distributed_object_index_counter++);
   return index;
 }
-
-template <typename ParallelComponent, typename Action, typename... Args>
-static uint32_t function_index_counter = 0;
-
-template <typename ParallelComponent, typename Action, typename... Args>
-uint32_t function_index() {
-  static uint32_t index =
-      (++(function_index_counter<ParallelComponent, Action, Args...>));
-  return index;
-}
+}  // namespace detail
 
 class DistributedTaskDriver {
  public:
