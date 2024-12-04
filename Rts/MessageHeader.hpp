@@ -6,6 +6,8 @@
 
 #include <cstdint>
 
+#include "Rts/Detail/MemberFunctionPtr.hpp"
+
 namespace rts {
 /*!
  * \brief The header of every message sent between nodes. This is used to
@@ -13,9 +15,11 @@ namespace rts {
  *
  * TODO: explain more?
  */
-struct alignas(32) MessageHeader {
-  std::uint32_t class_index = 0;
-  std::uint32_t function_index = 0;
-  std::uint32_t array_index_buffer[6] = {0, 0, 0, 0, 0, 0};
+struct alignas(64) MessageHeader {
+  detail::MemberFunctionPtr member_function_ptr = {};
+  std::uint64_t collection_index = 0;
+  std::uint64_t number_of_bytes_in_message = 0;
+  std::uint32_t distributed_object_index = 0;
+  char* serialized_data = nullptr;
 };
 }  // namespace rts
