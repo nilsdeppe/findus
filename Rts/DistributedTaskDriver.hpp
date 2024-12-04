@@ -13,6 +13,8 @@
 #include <vector>
 
 #include "Rts/DistributedObjectBase.hpp"
+#include "Rts/Exception.hpp"
+#include "Rts/IsCollection.hpp"
 #include "Rts/MessageHeader.hpp"
 #include "Rts/MpiException.hpp"
 #include "Rts/ThreadPool.hpp"
@@ -97,6 +99,12 @@ class DistributedTaskDriver {
   // functions that invoke actions.
   void anchor();
 
+
+  /// invoke_impl is invoked _by_ the thread pool on the task driver to
+  /// initiate the action on the distributed action.
+  template <class Action, class ParallelComponent, class... Args, size_t... Is>
+  void threaded_action_impl(Message_t& message);
+
   /*!
    * \brief The type used to store each distributed object or collection.
    *
@@ -156,6 +164,39 @@ void DistributedTaskDriver::insert_parallel_component(Args&&... args) {
                     "distributed_objects_ vector " +
                     std::to_string(distributed_objects_.size() - 1) +
                     " on MPI rank " + std::to_string(my_node_id_));
+  }
+}
+
+template <class Action, class ParallelComponent, class... Args, size_t... Is>
+void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
+  static_assert(sizeof...(Args) == sizeof...(Is));
+  MessageHeader* header =
+      reinterpret_cast<MessageHeader*>(message.message.get());
+  if (header->distributed_object_index >= distributed_objects_.size()) {
+    throw rts::Exception{"Requested distributed object with index " +
+                         std::to_string(header->distributed_object_index) +
+                         " but only have " +
+                         std::to_string(distributed_objects_.size())};
+  }
+
+  std::tuple<Args...> args{};
+  (void)std::initializer_list<char>{[&args, &message]() {
+    auto& t = std::get<Is>(args);
+    // TODO: deserialize
+  }()...};
+  if constexpr (rts::is_collection_v<ParallelComponent>) {
+    dynamic_cast<ParallelComponent&>(
+        *std::get<1>(
+             distributed_objects_[header->distributed_object_index].objects)
+             .at(header->collection_index))
+        .template threaded_action<Action>(*this,
+                                          std::move(std::get<Is>(args))...);
+  } else {
+    dynamic_cast<ParallelComponent&>(
+        *std::get<0>(
+            distributed_objects_[header->distributed_object_index].objects))
+        .template threaded_action<Action>(*this,
+                                          std::move(std::get<Is>(args))...);
   }
 }
 
