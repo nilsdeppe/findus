@@ -109,4 +109,8 @@ void create_distributed_task_driver(int* argc, char** argv[]) {
       std::unique_ptr<DistributedTaskDriver>(
           new DistributedTaskDriver(argc, argv, true));
 }
+
+namespace detail {
+uint32_t distributed_object_index_counter = 0;
+}  // namespace detail
 }  // namespace rts
