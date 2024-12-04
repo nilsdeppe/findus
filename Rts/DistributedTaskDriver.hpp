@@ -93,6 +93,10 @@ class DistributedTaskDriver {
 
   static std::string mpi_threading_to_string(const int mpi_threading);
 
+  // The anchor function is used to compute relative pointers to member
+  // functions that invoke actions.
+  void anchor() {}
+
   /*!
    * \brief The type used to store each distributed object or collection.
    *
