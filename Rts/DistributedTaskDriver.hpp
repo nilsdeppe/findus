@@ -87,9 +87,10 @@ class DistributedTaskDriver {
   // create_distributed_task_driver() function.
   DistributedTaskDriver(int* argc, char** argv[], bool initialize_mpi = true);
 
-  /// \brief Create the DistributedTaskDriver::the_driver object that can be
-  /// used to globally access the task driver.
+  /// \cond
   friend void create_distributed_task_driver(int* argc, char** argv[]);
+
+  /// \endcond
 
   static std::string mpi_threading_to_string(const int mpi_threading);
 
@@ -159,9 +160,12 @@ void DistributedTaskDriver::insert_parallel_component(Args&&... args) {
   }
 }
 
-static const std::unique_ptr<DistributedTaskDriver> task_driver = nullptr;
 
 /// \cond
-void create_distributed_task_driver(int* argc, char** argv[]);
+static const std::unique_ptr<DistributedTaskDriver> task_driver = nullptr;
 /// \endcond
+
+/// \brief Create the DistributedTaskDriver::the_driver object that can be
+/// used to globally access the task driver.
+void create_distributed_task_driver(int* argc, char** argv[]);
 }  // namespace rts
