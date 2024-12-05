@@ -33,7 +33,18 @@ uint32_t distributed_object_index() {
 
 class DistributedTaskDriver {
  public:
-  using ThreadPool_t = rts::ThreadPool<MessageHeader, int>;
+  struct Message_t {
+    std::unique_ptr<char[]> message{nullptr};
+
+    static bool execute(rts::ThreadPool<Message, int>& pool, uint32_t thread_id,
+                        Message& message,
+                        DistributedTaskDriver* distributed_task_driver) {
+      throw Exception("Not yet implemented...");
+      // TODO: Invoke message on the task driver.
+      return true;
+    }
+  };
+  using ThreadPool_t = rts::ThreadPool<Message_t, DistributedTaskDriver*>;
 
   // We can only have one DistributedTaskDriver per execution, so intentionally
   // disable semantics.
