@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <mpi.h>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <variant>
@@ -74,6 +75,21 @@ class DistributedTaskDriver {
    */
   template <class ParallelComponent, class... Args>
   void insert_parallel_component(Args&&... args);
+
+  /*!
+   * \brief Insert an element of a parallel component collection into the
+   * `DistributedTaskDriver`.
+   *
+   * This must be called for all elements in the collection on all nodes
+   * because the `DistributedTaskDriver` keeps track of where different
+   * elements are to make communication easier for users.
+   *
+   * See `insert_parallel_component()` for details about registration.
+   */
+  template <class ParallelComponent, class IndexType, class... Args>
+  void insert_parallel_component_collection(const IndexType& user_index,
+                                            const int node_to_insert_on,
+                                            Args&&... args);
 
  private:
   // The DistributedTaskDriver can only be created using the
@@ -199,6 +215,62 @@ void DistributedTaskDriver::insert_parallel_component(Args&&... args) {
                     "distributed_objects_ vector " +
                     std::to_string(distributed_objects_.size() - 1) +
                     " on MPI rank " + std::to_string(my_node_id_));
+  }
+}
+
+template <class ParallelComponent, class IndexType, class... Args>
+void DistributedTaskDriver::insert_parallel_component_collection(
+    const IndexType& user_index, const int node_to_insert_on, Args&&... args) {
+  static_assert(
+      rts::is_collection_v<ParallelComponent>,
+      "To insert into a collection use insert_parallel_component_collection");
+  const auto index = rts::detail::distributed_object_index<ParallelComponent>();
+  using Map =
+      std::variant_alternative_t<1, DistributedOjectClassHolder::variant_t>;
+  if (index == distributed_objects_.size()) {
+    distributed_objects_.emplace_back(
+        Map{},
+        ParallelComponent::name());
+  }
+  if (index + 1 != distributed_objects_.size()) {
+    throw Exception("The index " + std::to_string(index) +
+                    " of the parallel component " + ParallelComponent::name() +
+                    " that was computed by the function "
+                    "distributed_object_index does not match the entry of the "
+                    "distributed_objects_ vector " +
+                    std::to_string(distributed_objects_.size() - 1) +
+                    " on MPI rank " + std::to_string(my_node_id_));
+  }
+  Map& collection = std::get<1>(distributed_objects_[index].objects);
+  const auto collection_index = std::hash<IndexType>{}(user_index);
+  if (collection.find(collection_index) != collection.end()) {
+    std::stringstream ss;
+    ss << user_index;
+    const std::string index_name = ss.str();
+    throw Exception("Inserting an already existing collection index " +
+                    index_name + " into the collection " +
+                    ParallelComponent::name());
+  }
+
+  if (node_to_insert_on == my_node_id_) {
+    collection.emplace(std::pair{
+        collection_index,
+        DistributedOjectClassHolder::CollectionHolder{
+            node_to_insert_on, std::unique_ptr<DistributedObjectBase>{
+                                   std::make_unique<ParallelComponent>(
+                                       std::forward<Args>(args)...)}}});
+  } else if (node_to_insert_on >= number_of_nodes_) {
+    throw Exception("Cannot insert collection " + ParallelComponent::name() +
+                    " into node " + std::to_string(node_to_insert_on) +
+                    " because we only have " +
+                    std::to_string(number_of_nodes_) + " nodes.\n");
+  } else {
+    // Insert for tracking which node this collection element is on.
+    collection.emplace(
+        std::pair{collection_index,
+                  DistributedOjectClassHolder::CollectionHolder{
+                      node_to_insert_on,
+                      std::unique_ptr<DistributedObjectBase>{nullptr}}});
   }
 }
 
