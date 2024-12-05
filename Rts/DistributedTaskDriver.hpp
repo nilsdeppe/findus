@@ -9,6 +9,7 @@
 #include <mpi.h>
 #include <string>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 #include "Rts/DistributedObjectBase.hpp"
@@ -92,19 +93,20 @@ class DistributedTaskDriver {
 
   static std::string mpi_threading_to_string(const int mpi_threading);
 
+  /*!
+   * \brief The type used to store each distributed object or collection.
+   *
+   * We use a `std::variant` of `std::unique_ptr` so that it is clear if we
+   * should be indexing into a collection or not. Essentially, this is used to
+   * maximize the chance of catching subtle errors since indexing a magic
+   * number in the map is not guaranteed to be safe.
+   */
   struct DistributedOjectClassHolder {
-    std::unordered_map<uint32_t, std::unique_ptr<DistributedObjectBase>>
+    std::variant<
+        std::unique_ptr<DistributedObjectBase>,
+        std::unordered_map<uint64_t, std::unique_ptr<DistributedObjectBase>>>
         objects;
     std::string name;
-
-    DistributedObjectBase& operator[](const uint32_t index) {
-      // TODO: try-catch blocks
-      return *(objects.at(index));
-    }
-    const DistributedObjectBase& operator[](const uint32_t index) const {
-      // TODO: try-catch blocks
-      return *(objects.at(index));
-    }
   };
 
   MPI_Comm rts_comm_{};
