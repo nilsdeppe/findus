@@ -172,7 +172,8 @@ inline void ThreadPool<MessageType, ProcessLocalDataType>::thread_loop(
                                process_local_data_for_execution_)) {
         miss_count = 0;
       } else {
-        task_queue_.try_enqueue(producer_tokens_[thread_id], message);
+        task_queue_.try_enqueue(producer_tokens_[thread_id],
+                                std::move(message));
         ++miss_count;
       }
 
