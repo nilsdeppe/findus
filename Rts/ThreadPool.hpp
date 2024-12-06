@@ -48,6 +48,12 @@ class ThreadPool {
   /// The `thread_id` is the ID of the _current_ thread.
   void add_task(uint32_t thread_id, MessageType message);
 
+  /// \brief The task `message` is added to the queue without knowing what
+  /// thread it came from.
+  ///
+  /// This can be slightly slower than if you know the inserting thread.
+  void add_task(MessageType message);
+
   /// \brief Launch all the threads and pin them to a core..
   void launch_threads();
 
@@ -205,6 +211,14 @@ inline void ThreadPool<MessageType, ProcessLocalDataType>::add_task(
     const uint32_t thread_id, MessageType message) {
   if (not task_queue_.enqueue(producer_tokens_[thread_id],
                               std::move(message))) {
+    throw std::runtime_error("Failed to enqueue a message onto the thread");
+  }
+}
+
+template <class MessageType, class ProcessLocalDataType>
+inline void ThreadPool<MessageType, ProcessLocalDataType>::add_task(
+    MessageType message) {
+  if (not task_queue_.enqueue(std::move(message))) {
     throw std::runtime_error("Failed to enqueue a message onto the thread");
   }
 }
