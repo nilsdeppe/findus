@@ -102,6 +102,22 @@ class DistributedTaskDriver {
                                             const int node_to_insert_on,
                                             Args&&... args);
 
+  /// \brief Returns the number of nodes/MPI ranks being used.
+  int number_of_nodes() const { return number_of_nodes_; }
+
+  /// \brief The ID of the current node that this is invoked on.
+  int current_node_id() const { return my_node_id_; }
+
+  /// \brief The total number of threads being used, including the driver
+  /// thread.
+  int total_number_of_threads() const { return number_of_threads_; }
+
+  /// \brief The MPI major version being used.
+  int mpi_version() const { return mpi_version_; }
+
+  /// \brief The MPI minor/subversion being used.
+  int mpi_subversion() const { return mpi_subversion_; }
+
  private:
   // The DistributedTaskDriver can only be created using the
   // create_distributed_task_driver() function.
