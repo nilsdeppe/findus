@@ -5,8 +5,12 @@
 #include "Rts/DistributedTaskDriver.hpp"
 
 #include <memory>
+#include <mpi.h>
+#include <string>
 
 #include "Rts/Exception.hpp"
+#include "Rts/MessageTags.hpp"
+#include "Rts/MpiException.hpp"
 
 namespace rts {
 DistributedTaskDriver::DistributedTaskDriver(int* argc, char** argv[],
@@ -97,7 +101,88 @@ std::string DistributedTaskDriver::mpi_threading_to_string(
   };
 }
 
-void create_distributed_task_driver(int* argc, char** argv[]) {
+void DistributedTaskDriver::attach_debugger() {
+  const char* env_enable_parallel_debug =
+      // NOLINTNEXTLINE(concurrency-mt-unsafe)
+      std::getenv("RTS_ATTACH_DEBUGGER");
+  if (env_enable_parallel_debug != nullptr) {
+    // NOLINTNEXTLINE(modernize-avoid-c-arrays)
+    char hostname[2048];
+    gethostname(static_cast<char*>(hostname), sizeof(hostname));
+
+    const std::string output_info =
+        std::string{"   pid:"} + std::to_string(getpid()) +
+        std::string{":host:"} + std::string{static_cast<char*>(hostname)} +
+        ":rank:" + std::to_string(current_node_id()) + "\n";
+    // We send the output to rank 0 to print so that all the prints are done
+    // in order without garbling output. Additionally, we serialize in rank
+    // order.
+    if (current_node_id() == 0) {
+      std::cout
+          << "Enabling attaching to a debugger. Below are the PIDs and\n"
+             "host names for the different MPI ranks. On each host, you\n"
+             "must attach GDB to the PID using 'gdb --pid=PID'. You must\n"
+             "then interrupt and navigate up to this stack, at which\n"
+             "point you can run 'set var i = 1' in GDB followed by\n"
+             "'continue' continue the processes.\n";
+      std::cout << output_info << std::flush;
+      for (int node_id = 1; node_id < number_of_nodes(); ++node_id) {
+        MPI_Status status{};
+        if (const auto mpi_result =
+                MPI_Probe(node_id, message_tags::debugger_attach_message,
+                          rts_comm_, &status);
+            mpi_result != MPI_SUCCESS) {
+          throw MpiException{
+              "Could not call MPI_Probe in attach_debugger() for rank " +
+              std::to_string(node_id)};
+        }
+        int count = 0;
+        if (const auto mpi_result = MPI_Get_count(&status, MPI_CHAR, &count);
+            mpi_result != MPI_SUCCESS) {
+          throw MpiException{
+              "Could not get count in attach_debugger() for rank " +
+              std::to_string(node_id)};
+        }
+        if (count < 0) {
+          throw Exception{
+              "Received a negative size for the number of characters in the "
+              "debugger attachment string: " +
+              std::to_string(count)};
+        }
+        // Create string with an extra space of 4 for any termination
+        // characters and overrun.
+        std::string output(static_cast<size_t>(count + 4), '\0');
+        if (const auto mpi_result = MPI_Recv(
+                output.data(), count, MPI_CHAR, node_id,
+                message_tags::debugger_attach_message, rts_comm_, MPI_STATUS_IGNORE);
+            mpi_result != MPI_SUCCESS) {
+          throw MpiException{
+              "Could not receive data in attach_debugger() for rank " +
+              std::to_string(node_id)};
+        }
+        std::cout << output << std::flush;
+      }
+    } else {
+      if (const auto mpi_result =
+              MPI_Send(output_info.data(), output_info.length(), MPI_CHAR, 0,
+                       message_tags::debugger_attach_message, rts_comm_);
+          mpi_result != MPI_SUCCESS) {
+        throw MpiException(
+            "Could not send message for attaching to debugger from rank " +
+            std::to_string(current_node_id()));
+      }
+    }
+    // NOLINTNEXTLINE(misc-const-correctness)
+    volatile int i = 10;
+    while (i == 10) {
+      using namespace std::chrono_literals;
+      std::this_thread::sleep_for(std::chrono::seconds{i});
+    }
+  }
+}
+
+DistributedTaskDriver& create_distributed_task_driver(int* argc,
+                                                      char** argv[]) {
   if (task_driver != nullptr) {
     throw Exception(
         "Already initialized the task driver. You should only initialize the "

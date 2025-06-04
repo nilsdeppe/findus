@@ -118,6 +118,28 @@ class DistributedTaskDriver {
   /// \brief The MPI minor/subversion being used.
   int mpi_subversion() const { return mpi_subversion_; }
 
+  /*!
+   * \brief Provide an infinite loop to attach a debugger during startup. Useful
+   * for debugging MPI runs.
+   *
+   * Each MPI rank prints out name `rts_pid_#_host_NAME` to the working
+   * directory. This allows you to attach GDB to the running process using
+   * `gdb --pid=PID`, once for each MPI rank. You must then halt the program
+   * using `C-c` and then call `set var i = 7` inside GDB. Once you've done this
+   * on each MPI rank, you can have each MPI rank `continue`.
+   *
+   * To add support for attaching to a debugger in an executable, you must add
+   * `driver.attach_debugger()` to the start of the executable after you call
+   * `rts::create_distributed_task_driver()`. Then, when you launch the
+   * executable launch it as
+   * ```shell
+   * RTS_ATTACH_DEBUGGER=1 mpirun -np N ...
+   * ```
+   * The environment variable `RTS_ATTACH_DEBUGGER` being set tells the code to
+   * allow attaching from a debugger.
+   */
+  void attach_debugger();
+
  private:
   // The DistributedTaskDriver can only be created using the
   // create_distributed_task_driver() function.
