@@ -4,19 +4,32 @@
 
 #pragma once
 
+#include <iosfwd>
+
 namespace rts {
 /// \brief The MPI tags for different types of messages sent across the system.
 ///
-/// The numbers are chosen somewhat arbitrarily but to avoid 0 to reduce
-/// collision with other libraries.
-namespace message_tags {
-/// \brief The tag for a regular message between different distributed objects.
-constexpr int regular = 1024;
-/// \brief The tag for a message used to send the debugger PID info at startup.
-constexpr int debugger_attach = 1025;
-/// \brief The tag for a quiescence detection message.
-constexpr int quiescence = 1026;
-/// \brief The tag for logging and printing messages.
-constexpr int logging = 1027;
-}  // namespace message_tags
+/// The default offset is `1024`, chosen somewhat arbitrarily but to avoid 0
+/// to reduce collision with other libraries. This can be overridden by the
+/// macro `RTS_MESSAGE_OFFSET`.
+enum message_tags : int {
+  /// \brief The tag for a regular message between different distributed
+  /// objects.
+  regular =
+#if defined(RTS_MESSAGE_OFFSET)
+      RTS_MESSAGE_OFFSET
+#else
+      1024
+#endif
+  ,
+  /// \brief The tag for a message used to send the debugger PID info at
+  /// startup.
+  debugger_attach,
+  /// \brief The tag for a quiescence detection message.
+  quiescence,
+  /// \brief The tag for logging and printing messages.
+  logging
+};
+
+std::ostream& operator<<(std::ostream& os, message_tags tag);
 }  // namespace rts

@@ -9,6 +9,7 @@ add_library(
   ActionState.cpp
   DistributedTaskDriver.cpp
   Exception.cpp
+  MessageTags.cpp
   MpiException.cpp
 )
 
