@@ -72,6 +72,11 @@ class DistributedTaskDriver {
                                        message_header.serialized_data);
   }
 
+  /// \brief Wait for the all MPI ranks in the RTS communicator
+  ///
+  /// Should be used after
+  void insert_barrier() const;
+
   /*!
    * \brief Insert a parallel component into the `DistributedTaskDriver`.
    *
