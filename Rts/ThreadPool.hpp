@@ -58,6 +58,17 @@ class ThreadPool {
   /// This can be slightly slower than if you know the inserting thread.
   void add_task(MessageType message);
 
+  /*!
+   * \brief Adds multiple tasks.
+   *
+   * `number_of_messages` is the number of `messages` there are.
+   *
+   * `MessageIt` must be an (legacy) input iterator. I.e. is has
+   * `operator++()`, `operator++(int)` and `operator*()` defined.
+   */
+  template <class MessageIt>
+  void add_tasks(MessageIt messages, const size_t number_of_messages);
+
   /// \brief Launch all the threads and pin them to a core..
   void launch_threads(std::optional<uint32_t> thread_to_print_from);
 
@@ -285,6 +296,18 @@ inline void ThreadPool<MessageType, ProcessLocalDataType>::add_task(
     MessageType message) {
   local_qd_.increment_sent();
   if (not task_queue_.enqueue(std::move(message))) {
+    throw std::runtime_error("Failed to enqueue a message onto the thread");
+  }
+}
+
+template <class MessageType, class ProcessLocalDataType>
+template <class MessageIt>
+inline void ThreadPool<MessageType, ProcessLocalDataType>::add_tasks(
+    MessageIt messages, const size_t number_of_messages) {
+  for (size_t i = 0; i < number_of_messages; ++i) {
+    local_qd_.increment_sent();
+  }
+  if (not task_queue_.enqueue_bulk(std::move(messages), number_of_messages)) {
     throw std::runtime_error("Failed to enqueue a message onto the thread");
   }
 }
