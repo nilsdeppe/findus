@@ -128,9 +128,8 @@ void DistributedTaskDriver::attach_debugger() {
       std::cout << output_info << std::flush;
       for (int node_id = 1; node_id < number_of_nodes(); ++node_id) {
         MPI_Status status{};
-        if (const auto mpi_result =
-                MPI_Probe(node_id, message_tags::debugger_attach_message,
-                          rts_comm_, &status);
+        if (const auto mpi_result = MPI_Probe(
+                node_id, message_tags::debugger_attach, rts_comm_, &status);
             mpi_result != MPI_SUCCESS) {
           throw MpiException{
               "Could not call MPI_Probe in attach_debugger() for rank " +
@@ -154,7 +153,7 @@ void DistributedTaskDriver::attach_debugger() {
         std::string output(static_cast<size_t>(count + 4), '\0');
         if (const auto mpi_result = MPI_Recv(
                 output.data(), count, MPI_CHAR, node_id,
-                message_tags::debugger_attach_message, rts_comm_, MPI_STATUS_IGNORE);
+                message_tags::debugger_attach, rts_comm_, MPI_STATUS_IGNORE);
             mpi_result != MPI_SUCCESS) {
           throw MpiException{
               "Could not receive data in attach_debugger() for rank " +
@@ -165,7 +164,7 @@ void DistributedTaskDriver::attach_debugger() {
     } else {
       if (const auto mpi_result =
               MPI_Send(output_info.data(), output_info.length(), MPI_CHAR, 0,
-                       message_tags::debugger_attach_message, rts_comm_);
+                       message_tags::debugger_attach, rts_comm_);
           mpi_result != MPI_SUCCESS) {
         throw MpiException(
             "Could not send message for attaching to debugger from rank " +
