@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <mpi.h>
+#include <stdexcept>
 #include <string>
 
 #include "Rts/Exception.hpp"
@@ -180,6 +181,207 @@ void DistributedTaskDriver::attach_debugger() {
       std::this_thread::sleep_for(std::chrono::seconds{i});
     }
   }
+}
+
+void DistributedTaskDriver::initiate_sends(const int max_to_send) {
+  if (max_to_send <= 0) {
+    throw std::runtime_error("max_to_send must be positive but is " +
+                             std::to_string(max_to_send));
+  }
+  std::array<std::tuple<int, Message_t>, 10> bulk_outgoing_messages{};
+  for (int i = 0; i < max_to_send; ++i) {
+    const size_t messages_retrieved = outgoing_messages_.try_dequeue_bulk(
+        bulk_outgoing_messages.data(),
+        std::min(bulk_outgoing_messages.size(),
+                 static_cast<size_t>(max_to_send)));
+    if (messages_retrieved == 0) {
+      break;
+    }
+    for (size_t to_send = 0; to_send < messages_retrieved; ++to_send) {
+      const int dest = std::get<0>(bulk_outgoing_messages[to_send]);
+      outgoing_mpi_messages_.push_back(
+          std::tuple<std::optional<MPI_Request>, Message_t>{
+              MPI_Request{},
+              std::move(std::get<1>(bulk_outgoing_messages[to_send]))});
+      if (not std::get<0>(outgoing_mpi_messages_.back()).has_value()) {
+        throw std::runtime_error(
+            "The outgoing MPI message's MPI_Request is not set but it should "
+            "be. This is an internal error.");
+      }
+      MPI_Request& request = std::get<0>(outgoing_mpi_messages_.back()).value();
+      Message_t& message = std::get<1>(outgoing_mpi_messages_.back());
+      MessageHeader& message_header = *Message_t::get_header(message);
+      const int num_bytes =
+          static_cast<int>(number_of_bytes_in_message(message_header));
+      if (const auto mpi_result =
+              MPI_Isend(message.message.get(), num_bytes, MPI_BYTE, dest,
+                        message_tags::regular, rts_comm_, &request);
+          mpi_result != MPI_SUCCESS) {
+        throw MpiException{"Failed to send regular message from rank " +
+                           std::to_string(current_node_id()) + " to rank " +
+                           std::to_string(dest) + ". MPI returned " +
+                           std::to_string(mpi_result)};
+      }
+    }
+    i += messages_retrieved;
+  }
+}
+
+void DistributedTaskDriver::clean_outgoing_mpi_messages() {
+  auto erase_start = std::remove_if(
+      outgoing_mpi_messages_.begin(), outgoing_mpi_messages_.end(),
+      [](std::tuple<std::optional<MPI_Request>, Message_t>& elem) {
+        int flag{0};
+        if (const auto mpi_result = MPI_Request_get_status(
+                std::get<0>(elem).value(), &flag, MPI_STATUS_IGNORE);
+            mpi_result != MPI_SUCCESS) {
+          throw MpiException{"Failed to get status of a regular message."};
+        }
+        if (static_cast<bool>(flag)) {
+          if (const auto mpi_result =
+                  MPI_Request_free(&std::get<0>(elem).value());
+              mpi_result != MPI_SUCCESS) {
+            throw MpiException{
+                "Failed to call MPI_Request_free on a regular "
+                "message."};
+          }
+          std::get<0>(elem) = std::nullopt;
+          return true;
+        }
+        return false;
+      });
+  outgoing_mpi_messages_.erase(erase_start, outgoing_mpi_messages_.end());
+}
+
+void DistributedTaskDriver::initiate_receives(const int max_to_receive) {
+  if (max_to_receive <= 0) {
+    throw std::runtime_error("max_to_send must be positive but is " +
+                             std::to_string(max_to_receive));
+  }
+  for (int number_of_receives = 0; number_of_receives < max_to_receive;
+       ++number_of_receives) {
+    if (node_id_for_receive_ >= number_of_nodes()) {
+      node_id_for_receive_ = 0;
+    }
+    if (node_id_for_receive_ == current_node_id()) {
+      ++node_id_for_receive_;
+      continue;
+    }
+    int flag{0};
+    MPI_Status status{};
+    if (const auto mpi_result =
+            MPI_Iprobe(node_id_for_receive_, message_tags::regular, rts_comm_,
+                       &flag, &status);
+        mpi_result != MPI_SUCCESS) {
+      throw MpiException{
+          "Failed to call MPI_Iprobe_to check for a regular "
+          "message."};
+    }
+    if (not static_cast<bool>(flag)) {
+      continue;
+    }
+    if (status.MPI_ERROR != MPI_SUCCESS) {
+      throw MpiException{
+          "Failed to receive a regular message because the "
+          "MPI_Status.MPI_ERROR field is not MPI_SUCCESS."};
+    }
+    int message_size = 0;
+    if (const auto mpi_result =
+            MPI_Get_elements(&status, MPI_BYTE, &message_size);
+        mpi_result != MPI_SUCCESS) {
+      throw MpiException{
+          "Failed to retrieve the size of the incoming regular message using "
+          "MPI_Get_elements. Error code: " +
+          std::to_string(mpi_result)};
+    }
+    if (message_size < 0) {
+      throw Exception{"Received a negative message size, " +
+                      std::to_string(message_size)};
+    }
+    incoming_mpi_messages_.emplace_back(
+        MPI_Request{},
+        Message_t{std::unique_ptr<char[]>{
+            new char[static_cast<unsigned long>(message_size)]}});
+    auto& [request, message] = incoming_mpi_messages_.back();
+    MPI_Irecv(message.message.get(), message_size, MPI_BYTE,
+              node_id_for_receive_, message_tags::regular, rts_comm_, &request);
+    ++node_id_for_receive_;
+  }
+}
+
+namespace {
+/*
+ * Iterator that wraps the iterator for
+ * `DistributedTaskDriver::OutgoingMpiMessages_t` in order to enable bulk
+ * enqueue of messages. The queue we are currently using only needs a handful
+ * of operators defined.
+ */
+struct BulkEnqueueIterator {
+  BulkEnqueueIterator(
+      typename DistributedTaskDriver::IncomingMpiMessages_t::iterator it_in)
+      : it(std::move(it_in)) {}
+  BulkEnqueueIterator(const BulkEnqueueIterator&) = default;
+  BulkEnqueueIterator& operator=(const BulkEnqueueIterator&) = default;
+  BulkEnqueueIterator(BulkEnqueueIterator&&) = default;
+  BulkEnqueueIterator& operator=(BulkEnqueueIterator&&) = default;
+  ~BulkEnqueueIterator() = default;
+
+  typename DistributedTaskDriver::Message_t operator*() {
+    if (already_dereferenced) {
+      throw std::runtime_error{
+          "Already dereferenced the iterator and we can only dereference it "
+          "once."};
+    }
+    already_dereferenced = true;
+    return std::move(std::get<1>(*it));
+  }
+
+  BulkEnqueueIterator& operator++() {
+    ++it;
+    return *this;
+  }
+
+  BulkEnqueueIterator operator++(int) {
+    const auto ret = *this;
+    operator++();
+    return ret;
+  }
+
+  bool already_dereferenced{false};
+  typename DistributedTaskDriver::IncomingMpiMessages_t::iterator it;
+};
+}  // namespace
+
+void DistributedTaskDriver::clean_incoming_mpi_messages() {
+  auto received_start = std::remove_if(
+      incoming_mpi_messages_.begin(), incoming_mpi_messages_.end(),
+      [](std::tuple<MPI_Request, Message_t>& elem) {
+        int flag{0};
+        if (const auto mpi_result = MPI_Request_get_status(
+                std::get<0>(elem), &flag, MPI_STATUS_IGNORE);
+            mpi_result != MPI_SUCCESS) {
+          throw MpiException{"Failed to get status of a regular message."};
+        }
+        if (static_cast<bool>(flag)) {
+          return true;
+        }
+        return false;
+      });
+  const auto messages_to_emplace =
+      std::distance(received_start, incoming_mpi_messages_.end());
+  if (messages_to_emplace == 0) {
+    return;
+  } else if (messages_to_emplace < 0) {
+    throw std::runtime_error(
+        "The messages to emplace should be non-negative. This is an internal "
+        "bug.");
+  }
+  for (auto it = received_start; it != incoming_mpi_messages_.end(); ++it) {
+    MPI_Request_free(&std::get<0>(*it));
+  }
+  thread_pool_->add_tasks(BulkEnqueueIterator{received_start},
+                          static_cast<size_t>(messages_to_emplace));
+  incoming_mpi_messages_.erase(received_start, incoming_mpi_messages_.end());
 }
 
 DistributedTaskDriver& create_distributed_task_driver(int* argc,
