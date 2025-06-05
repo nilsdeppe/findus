@@ -45,6 +45,18 @@ class DistributedTaskDriver {
     }
   };
   using ThreadPool_t = rts::ThreadPool<Message_t, DistributedTaskDriver*>;
+  /// \brief The type used for storing the incoming MPI messages while the NIC
+  /// is receiving the data.
+  ///
+  /// Once a receive is complete, the messages need to be moved to the task
+  /// queue.
+  using IncomingMpiMessages_t = std::vector<std::tuple<MPI_Request, Message_t>>;
+  /// \brief The type used for storing the outgoming MPI messages while the NIC
+  /// is sending the data.
+  ///
+  /// Once a send is complete, the messages need to be freed.
+  using OutgoingMpiMessages_t =
+      std::vector<std::tuple<std::optional<MPI_Request>, Message_t>>;
 
   // We can only have one DistributedTaskDriver per execution, so intentionally
   // disable semantics.
@@ -226,6 +238,57 @@ class DistributedTaskDriver {
     std::string name;
   };
 
+  /*!
+   * \brief Initiate several sends to remote distributed objects.
+   *
+   * At most `max_to_send` sends are initiated. These sends are done via a
+   * non-blocking `MPI_Isend`.
+   *
+   * #### Implementation notes
+   *
+   * We dequeue in bulk from the `outgoing_messages_` since it is more
+   * efficient than to do them individually. We do at most 10 at a time up to
+   * `max_to_send`. The resulting `MPI_Request`s for the sends are stored in
+   * the member variable `outgoing_mpi_messages_`, which is periodically
+   * cleaned by the function `clean_outgoing_mpi_messages()`.
+   *
+   * This function is not threadsafe.
+   */
+  void initiate_sends(int max_to_send);
+
+  /*!
+   * \brief Cleans up any completed outgoing MPI messages.
+   *
+   * This function is not threadsafe.
+   */
+  void clean_outgoing_mpi_messages();
+
+  /*!
+   * \brief Initial several receives from remote distributed objects.
+   *
+   * At most `max_to_receive` sends are initiated. These receives are done via
+   * a non-blocking `MPI_Irecv`.
+   *
+   * #### Implementation notes
+   *
+   * We initiate up to `max_to_receive` receives as `MPI_Irecv`. We first
+   * probe for an incoming message from an MPI rank. If there is one then we
+   * allocate sufficient memory and store the message and `MPI_Request` in the
+   * member variable `incoming_mpi_messages_`.
+   *
+   * This function is not threadsafe.
+   */
+  void initiate_receives(int max_to_receive);
+
+  /*!
+   * \brief Checks for incoming MPI messages that have been received.
+   *
+   * The messages are added to the task pool in bulk.
+   *
+   * This function is not threadsafe.
+   */
+  void clean_incoming_mpi_messages();
+
   MPI_Comm rts_comm_{};
   bool initialize_mpi_{false};
   bool mpi_supports_multithreading_{false};
@@ -234,16 +297,14 @@ class DistributedTaskDriver {
   int number_of_threads_{0};
   int mpi_version_{0};
   int mpi_subversion_{0};
+  int node_id_for_receive_{0};
 
   std::unique_ptr<ThreadPool_t> thread_pool_{};
   std::vector<DistributedOjectClassHolder> distributed_objects_;
 
-  // std::vector<std::pair<uint32_t, BLAH>> available_message_buffers_{};
-  // // This is a MPSC use-case. We need one data structure to transfer
-  // ownership
-  // // to the driver, and then can just have a vector that the driver uses.
-  // VECTOR<std::pair<MPI_Request, std::unique_ptr<char>>>
-  //     in_use_message_buffers_{};
+  IncomingMpiMessages_t incoming_mpi_messages_{};
+  OutgoingMpiMessages_t outgoing_mpi_messages_{};
+  moodycamel::ConcurrentQueue<std::tuple<int, Message_t>> outgoing_messages_{};
 };
 
 template <class ParallelComponent, class... Args>
