@@ -11,8 +11,12 @@ namespace rts {
 /// collision with other libraries.
 namespace message_tags {
 /// \brief The tag for a regular message between different distributed objects.
-constexpr int regular_message = 1024;
+constexpr int regular = 1024;
+/// \brief The tag for a message used to send the debugger PID info at startup.
+constexpr int debugger_attach = 1025;
 /// \brief The tag for a quiescence detection message.
-constexpr int quiescence_message = 1025;
+constexpr int quiescence = 1026;
+/// \brief The tag for logging and printing messages.
+constexpr int logging = 1027;
 }  // namespace message_tags
 }  // namespace rts
