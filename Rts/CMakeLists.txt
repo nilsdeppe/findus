@@ -11,6 +11,7 @@ add_library(
   Exception.cpp
   MessageTags.cpp
   MpiException.cpp
+  QuiescenceDetection.cpp
 )
 
 target_include_directories(
