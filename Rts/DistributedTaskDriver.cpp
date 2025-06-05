@@ -101,6 +101,8 @@ std::string DistributedTaskDriver::mpi_threading_to_string(
   };
 }
 
+void DistributedTaskDriver::insert_barrier() const { MPI_Barrier(rts_comm_); }
+
 void DistributedTaskDriver::attach_debugger() {
   const char* env_enable_parallel_debug =
       // NOLINTNEXTLINE(concurrency-mt-unsafe)
