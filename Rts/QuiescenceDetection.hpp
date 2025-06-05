@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <limits>
 #include <new>
 #include <stdexcept>
 #include <string>
@@ -114,51 +115,6 @@ class Local {
   alignas(detail::hardware_destructive_interference_size) std::int64_t
       previous_count{0};
 };
-
-inline bool Local::is_quiescent(const std::int64_t total_number_of_threads) {
-  if (phase == 1) {
-    if (number_of_idle_threads.load(std::memory_order_acquire) !=
-        total_number_of_threads) {
-      return false;
-    }
-    if (const std::int64_t message_count = number_of_messages_sent.load(
-            std::memory_order::memory_order_acquire);
-        // sends == receives
-        message_count == number_of_messages_processed.load(
-                             std::memory_order::memory_order_acquire)) {
-      previous_count = message_count;
-      phase = 2;
-      return false;
-    }
-    // sends != receives
-    return false;
-  } else if (phase == 2) {
-    if (number_of_idle_threads.load(std::memory_order_acquire) !=
-        total_number_of_threads) {
-      phase = 1;
-      return false;
-    }
-
-    if (const std::int64_t message_count = number_of_messages_sent.load(
-            std::memory_order::memory_order_acquire);
-        // sends == receives
-        message_count == number_of_messages_processed.load(
-                             std::memory_order::memory_order_acquire)
-        // AND previous_count == current_count
-        and previous_count == message_count) {
-      return true;
-    }
-    // sends != receives or (previous_count != current_count)
-    //
-    // Our previous hope for quiescence failed, go back to phase 1.
-    phase = 1;
-    return false;
-  }
-  throw std::runtime_error{
-      "The only valid local quiescence detection phases are 1 and 2, but "
-      "have the value " +
-      std::to_string(phase)};
-}
 
 /*!
  * \brief The data needed for global quiescence detection across all MPI
@@ -295,10 +251,25 @@ struct Global {
     }
   };
 
+  Global();
+  Global(const Global&);
+  Global& operator=(const Global&);
+  Global(Global&&);
+  Global& operator=(Global&&);
+  ~Global();
+
+  Global(int my_rank, int total_ranks);
+
   std::uint64_t local_sweep_number{0};
   std::uint64_t last_regular_message_sweep_number{0};
   std::int64_t local_sends{0};
   std::int64_t local_processed{0};
+  // The sentinel value of `-1` denotes "not filled" while the sentinel value
+  // `std::numeric_limits<int>::min()` denotes "not initialized".
+  int self_rank{std::numeric_limits<int>::min()};
+  int parent_rank{std::numeric_limits<int>::min()};
+  int child_left_rank{std::numeric_limits<int>::min()};
+  int child_right_rank{std::numeric_limits<int>::min()};
 };
 }  // namespace qd
 }  // namespace rts
