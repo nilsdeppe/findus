@@ -15,8 +15,12 @@ std::ostream& operator<<(std::ostream& os, const message_tags tag) {
       return os << "regular";
     case message_tags::debugger_attach:
       return os << "debugger_attach";
-    case message_tags::quiescence:
-      return os << "quiescence";
+    case message_tags::quiescence_down:
+      return os << "quiescence_down";
+    case message_tags::quiescence_up:
+      return os << "quiescence_up";
+    case message_tags::quiescence_broadcast:
+      return os << "quiescence_broadcast";
     case message_tags::logging:
       return os << "logging";
     default:
