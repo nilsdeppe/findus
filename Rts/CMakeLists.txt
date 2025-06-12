@@ -8,11 +8,11 @@ add_library(
   ${LIBRARY}
   ActionState.cpp
   DistributedTaskDriver.cpp
-  Exception.cpp
+  Exceptions/Exception.cpp
+  Exceptions/Mpi.cpp
+  Exceptions/Qd.cpp
   MessageTags.cpp
-  MpiException.cpp
   ParentAndChildren.cpp
-  QdException.cpp
   QuiescenceDetection.cpp
 )
 

@@ -2,7 +2,7 @@
 // Distributed under the MIT License.
 // See LICENSE.txt for details.
 
-#include "Rts/Exception.hpp"
+#include "Rts/Exceptions/Exception.hpp"
 
 #include <stdexcept>
 #include <string>

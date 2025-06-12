@@ -14,10 +14,9 @@
 #include <vector>
 
 #include "Rts/DistributedObjectBase.hpp"
-#include "Rts/Exception.hpp"
+#include "Rts/Exceptions/Exception.hpp"
 #include "Rts/IsCollection.hpp"
 #include "Rts/MessageHeader.hpp"
-#include "Rts/MpiException.hpp"
 #include "Rts/ThreadPool.hpp"
 
 namespace rts {

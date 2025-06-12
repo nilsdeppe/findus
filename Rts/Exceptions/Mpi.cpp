@@ -2,7 +2,7 @@
 // Distributed under the MIT License.
 // See LICENSE.txt for details.
 
-#include "Rts/MpiException.hpp"
+#include "Rts/Exceptions/Mpi.hpp"
 
 #include <string>
 

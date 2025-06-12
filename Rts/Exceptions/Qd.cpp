@@ -2,7 +2,7 @@
 // Distributed under the MIT License.
 // See LICENSE.txt for details.
 
-#include "Rts/QdException.hpp"
+#include "Rts/Exceptions/Qd.hpp"
 
 #include <string>
 
