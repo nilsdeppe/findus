@@ -4,6 +4,7 @@
 
 #include "Rts/DistributedTaskDriver.hpp"
 
+#include <algorithm>
 #include <memory>
 #include <mpi.h>
 #include <stdexcept>
@@ -106,6 +107,21 @@ void DistributedTaskDriver::anchor() {}
 
 void DistributedTaskDriver::insert_barrier() const { MPI_Barrier(rts_comm_); }
 
+namespace {
+std::vector<int> split_string_as_ints(const std::string& str,
+                                      const char delimiter) {
+  std::vector<int> result;
+  std::stringstream stream(str);
+  std::string item;
+
+  while (std::getline(stream, item, delimiter)) {
+    result.push_back(std::stoi(item));
+  }
+
+  return result;
+}
+}  // namespace
+
 void DistributedTaskDriver::attach_debugger() {
   const char* env_enable_parallel_debug =
       // NOLINTNEXTLINE(concurrency-mt-unsafe)
@@ -115,10 +131,69 @@ void DistributedTaskDriver::attach_debugger() {
     char hostname[2048];
     gethostname(static_cast<char*>(hostname), sizeof(hostname));
 
+    const std::string debugger_request{env_enable_parallel_debug};
+    for (const char ch : debugger_request) {
+      if (not std::isdigit(ch) and ch != ',' and ch != '-') {
+        throw Exception{
+            "The environment variable RTS_ATTACH_DEBUGGER must contain only "
+            "numbers or ',' but is set to: " +
+            debugger_request};
+      }
+    }
+
+    const std::vector<int> nodes_to_attach_on =
+        split_string_as_ints(debugger_request, ',');
+
+    if (nodes_to_attach_on.empty()) {
+      throw Exception{
+          "Received an empty list of nodes to attach a debugger to. You must "
+          "specify a comma separated list of node IDs to attach on. You can "
+          "specify '-1' to attach on all nodes. RTS_ATTACH_DEBUGGER is " +
+          debugger_request};
+    }
+
+    if (nodes_to_attach_on.size() > 1) {
+      for (const int node_id : nodes_to_attach_on) {
+        if (node_id == -1) {
+          throw Exception{
+              "Cannot request all nodes for debugging (-1) and also specify "
+              "specific nodes. RTS_ATTACH_DEBUGGER is " +
+              debugger_request};
+        } else if (node_id >= number_of_nodes()) {
+          throw Exception{"Cannot request to debug on a node ID (" +
+                          std::to_string(node_id) +
+                          ") greater than the number of "
+                          "nodes (" +
+                          std::to_string(number_of_nodes()) +
+                          ") . RTS_ATTACH_DEBUGGER is " + debugger_request};
+        } else if (node_id < -1) {
+          throw Exception{"Cannot request to debug on a node ID (" +
+                          std::to_string(node_id) +
+                          ") less than -1. RTS_ATTACH_DEBUGGER is " +
+                          debugger_request};
+        }
+      }
+    } else {
+      const int node_id = nodes_to_attach_on[0];
+      if (node_id >= number_of_nodes()) {
+        throw Exception{"Cannot request to debug on a node ID (" +
+                        std::to_string(node_id) +
+                        ") greater than the number of "
+                        "nodes (" +
+                        std::to_string(number_of_nodes()) +
+                        ") . RTS_ATTACH_DEBUGGER is " + debugger_request};
+      } else if (node_id < -1) {
+        throw Exception{
+            "Cannot request to debug on a node ID (" + std::to_string(node_id) +
+            ") less than -1. RTS_ATTACH_DEBUGGER is " + debugger_request};
+      }
+    }
+
     const std::string output_info =
         std::string{"   pid:"} + std::to_string(getpid()) +
-        std::string{":host:"} + std::string{static_cast<char*>(hostname)} +
-        ":rank:" + std::to_string(current_node_id()) + "\n";
+        std::string{" host:"} + std::string{static_cast<char*>(hostname)} +
+        " rank:" + std::to_string(current_node_id()) +
+        " gdb --pid=" + std::to_string(getpid()) + "\n";
     // We send the output to rank 0 to print so that all the prints are done
     // in order without garbling output. Additionally, we serialize in rank
     // order.
@@ -130,8 +205,18 @@ void DistributedTaskDriver::attach_debugger() {
              "then interrupt and navigate up to this stack, at which\n"
              "point you can run 'set var i = 1' in GDB followed by\n"
              "'continue' continue the processes.\n";
-      std::cout << output_info << std::flush;
+      if (nodes_to_attach_on[0] == -1 or
+          std::find(nodes_to_attach_on.begin(), nodes_to_attach_on.end(),
+                    current_node_id()) != nodes_to_attach_on.end()) {
+        std::cout << output_info << std::flush;
+      }
       for (int node_id = 1; node_id < number_of_nodes(); ++node_id) {
+        if (nodes_to_attach_on[0] != -1 and
+            std::find(nodes_to_attach_on.begin(), nodes_to_attach_on.end(),
+                      node_id) == nodes_to_attach_on.end()) {
+          continue;
+        }
+
         MPI_Status status{};
         if (const auto mpi_result = MPI_Probe(
                 node_id, message_tags::debugger_attach, rts_comm_, &status);
@@ -166,7 +251,9 @@ void DistributedTaskDriver::attach_debugger() {
         }
         std::cout << output << std::flush;
       }
-    } else {
+    } else if (nodes_to_attach_on[0] == -1 or
+               std::find(nodes_to_attach_on.begin(), nodes_to_attach_on.end(),
+                         current_node_id()) != nodes_to_attach_on.end()) {
       if (const auto mpi_result =
               MPI_Send(output_info.data(), output_info.length(), MPI_CHAR, 0,
                        message_tags::debugger_attach, rts_comm_);
@@ -176,11 +263,15 @@ void DistributedTaskDriver::attach_debugger() {
             std::to_string(current_node_id()));
       }
     }
-    // NOLINTNEXTLINE(misc-const-correctness)
-    volatile int i = 10;
-    while (i == 10) {
-      using namespace std::chrono_literals;
-      std::this_thread::sleep_for(std::chrono::seconds{i});
+    if (nodes_to_attach_on[0] == -1 or
+        std::find(nodes_to_attach_on.begin(), nodes_to_attach_on.end(),
+                  current_node_id()) != nodes_to_attach_on.end()) {
+      // NOLINTNEXTLINE(misc-const-correctness)
+      volatile int i = 10;
+      while (i == 10) {
+        using namespace std::chrono_literals;
+        std::this_thread::sleep_for(std::chrono::seconds{i});
+      }
     }
   }
 }
