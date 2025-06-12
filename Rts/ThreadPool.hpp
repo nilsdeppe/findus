@@ -87,7 +87,9 @@ class ThreadPool {
   /// You need to call this function at least twice to verify that quiescence
   /// has been reached. This is because it is not possible to determine
   /// quiesecence instantaneously.
-  bool is_quiescent() { return local_qd_.is_quiescent(threads_.size()); }
+  bool is_quiescent() {
+    return local_qd_.is_quiescent(static_cast<std::int64_t>(threads_.size()));
+  }
 
   /// \brief Log to `std::cout`
   void print_to(std::string to_print) {
