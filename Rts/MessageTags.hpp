@@ -25,8 +25,12 @@ enum message_tags : int {
   /// \brief The tag for a message used to send the debugger PID info at
   /// startup.
   debugger_attach,
-  /// \brief The tag for a quiescence detection message.
-  quiescence,
+  /// \brief The tag for a quiescence detection down message.
+  quiescence_down,
+  /// \brief The tag for a quiescence detection up message.
+  quiescence_up,
+  /// \brief The tag for the quiescence detection broadcast for termination.
+  quiescence_broadcast,
   /// \brief The tag for logging and printing messages.
   logging
 };
