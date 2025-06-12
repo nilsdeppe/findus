@@ -7,8 +7,24 @@
 #include <array>
 #include <cstddef>
 #include <hwloc.h>
+#include <new>
 
 namespace rts::hardware_info {
+#ifdef __cpp_lib_hardware_interference_size
+/// \brief Minimum offset between two objects to avoid false sharing.
+///
+/// Set to 64 bytes if `std::hardware_destructive_interference_size` is not
+/// defined. This can be refined for different hardware if necessary.
+static constexpr std::size_t hardware_destructive_interference_size =
+    std::hardware_destructive_interference_size;
+#else
+/// \brief Minimum offset between two objects to avoid false sharing.
+///
+/// Set to 64 bytes if `std::hardware_destructive_interference_size` is not
+/// defined. This can be refined for different hardware if necessary.
+static constexpr std::size_t hardware_destructive_interference_size = 64;
+#endif
+
 /*!
  * \brief Info about the cache.
  */

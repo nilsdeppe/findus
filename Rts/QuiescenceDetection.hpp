@@ -14,15 +14,6 @@
 namespace rts {
 /// Quiescence detection constructs
 namespace qd {
-namespace detail {
-#ifdef __cpp_lib_hardware_interference_size
-static constexpr std::size_t hardware_destructive_interference_size =
-    std::hardware_destructive_interference_size;
-#else
-static constexpr std::size_t hardware_destructive_interference_size = 64;
-#endif
-}  // namespace detail
-
 /*!
  * \brief The data needed for local quiescence detection within an MPI rank.
  *
@@ -103,16 +94,16 @@ class Local {
   std::uint8_t phase{1};
   /// In the SKR algorithm the number_of_idle_threads being equal to the
   /// number of threads means all threads have sent their idle status.
-  alignas(detail::hardware_destructive_interference_size)
+  alignas(hardware_info::hardware_destructive_interference_size)
       std::atomic<std::int64_t> number_of_idle_threads{0};
   /// number_of_messages_sent is N_c in the SKR algorithm.
-  alignas(detail::hardware_destructive_interference_size)
+  alignas(hardware_info::hardware_destructive_interference_size)
       std::atomic<std::int64_t> number_of_messages_sent{0};
   /// number_of_messages_processed is N_p in the SKR algorithm.
-  alignas(detail::hardware_destructive_interference_size)
+  alignas(hardware_info::hardware_destructive_interference_size)
       std::atomic<std::int64_t> number_of_messages_processed{0};
   /// previous_count is N_p in the SKR algorithm.
-  alignas(detail::hardware_destructive_interference_size) std::int64_t
+  alignas(hardware_info::hardware_destructive_interference_size) std::int64_t
       previous_count{0};
 };
 
