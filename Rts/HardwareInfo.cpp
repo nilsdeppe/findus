@@ -4,14 +4,24 @@
 
 #include "HardwareInfo.hpp"
 
+#include <array>
+#include <hwloc.h>
+#include <string>
+
+#include "Rts/Exceptions/Exception.hpp"
+
 namespace rts::hardware_info::detail {
 std::array<CacheInfo, 3> cache_info() {
   hwloc_topology_t topology_;
-  if (hwloc_topology_init(&topology_) < 0) {
-    throw std::runtime_error("error calling hwloc_topology_init");
+  if (const auto hwloc_result = hwloc_topology_init(&topology_);
+      hwloc_result < 0) {
+    throw Exception("Error calling hwloc_topology_init. Received code " +
+                    std::to_string(hwloc_result));
   }
-  if (hwloc_topology_load(topology_) < 0) {
-    throw std::runtime_error("error calling hwloc_topology_load");
+  if (const auto hwloc_result = hwloc_topology_load(topology_);
+      hwloc_result < 0) {
+    throw Exception("Error calling hwloc_topology_load. Received code " +
+                    std::to_string(hwloc_result));
   }
   std::array<CacheInfo, 3> info{};
   for (uint64_t i = 1; i <= 3; ++i) {
@@ -30,7 +40,7 @@ std::array<CacheInfo, 3> cache_info() {
                                       hwloc_obj_type_t::HWLOC_OBJ_L3CACHE, 0);
         break;
       default:
-        throw std::runtime_error("unknown size for cache");
+        throw Exception("Unknown cache level " + std::to_string(i));
     };
     if (hwloc_obj_type_is_cache(cache->type)) {
       info[i - 1] = {i, cache->attr->cache.size, cache->attr->cache.linesize};
@@ -38,4 +48,4 @@ std::array<CacheInfo, 3> cache_info() {
   }
   return info;
 }
-}  // namespace detail
+}  // namespace rts::hardware_info::detail

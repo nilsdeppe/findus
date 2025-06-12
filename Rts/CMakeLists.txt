@@ -11,6 +11,7 @@ add_library(
   Exceptions/Exception.cpp
   Exceptions/Mpi.cpp
   Exceptions/Qd.cpp
+  HardwareInfo.cpp
   MessageTags.cpp
   ParentAndChildren.cpp
   QuiescenceDetection.cpp
