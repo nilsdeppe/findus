@@ -66,13 +66,7 @@ class DistributedTaskDriver {
   DistributedTaskDriver& operator=(DistributedTaskDriver&& other) = delete;
   ~DistributedTaskDriver() = default;
 
-  void send_data(const int target_node,
-                 std::unique_ptr<char[]> message_buffer) {
-    if (target_node == my_node_id_) {
-    } else {
-      // TODO: MPI send
-    }
-  }
+  void send_data(const int target_node, Message_t message);
 
   ActionState invoke_action_on_distributed_object(
       const MessageHeader& message_header, const uint32_t thread_id) {

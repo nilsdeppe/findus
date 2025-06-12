@@ -103,6 +103,16 @@ std::string DistributedTaskDriver::mpi_threading_to_string(
   };
 }
 
+void DistributedTaskDriver::send_data(const int target_node,
+                                      Message_t message) {
+  if (target_node == my_node_id_) {
+    thread_pool_->add_task(std::move(message));
+  } else {
+    outgoing_messages_.enqueue(
+        std::tuple<int, Message_t>{target_node, std::move(message)});
+  }
+}
+
 void DistributedTaskDriver::insert_barrier() const { MPI_Barrier(rts_comm_); }
 
 namespace {
