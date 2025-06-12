@@ -11,6 +11,7 @@ add_library(
   Exception.cpp
   MessageTags.cpp
   MpiException.cpp
+  ParentAndChildren.cpp
   QdException.cpp
   QuiescenceDetection.cpp
 )
