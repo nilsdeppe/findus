@@ -8,7 +8,7 @@
 #include <string>
 
 namespace rts {
-/// Exception indicating a ToyRTS error occurred.
+/// Exception indicating an RTS error occurred.
 class Exception : public std::runtime_error {
  public:
   explicit Exception(const std::string& message);

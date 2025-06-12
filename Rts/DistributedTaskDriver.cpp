@@ -9,9 +9,9 @@
 #include <stdexcept>
 #include <string>
 
-#include "Rts/Exception.hpp"
+#include "Rts/Exceptions/Exception.hpp"
+#include "Rts/Exceptions/Mpi.hpp"
 #include "Rts/MessageTags.hpp"
-#include "Rts/MpiException.hpp"
 
 namespace rts {
 DistributedTaskDriver::DistributedTaskDriver(int* argc, char** argv[],

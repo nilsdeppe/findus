@@ -7,12 +7,12 @@
 #include <stdexcept>
 #include <string>
 
-#include "Rts/Exception.hpp"
+#include "Rts/Exceptions/Exception.hpp"
 
 namespace rts {
-/// Exception indicating an MPI error occurred.
-class MpiException : public Exception {
+/// Exception indicating a quiescence detection error occurred.
+class QdException : public Exception {
  public:
-  explicit MpiException(const std::string& message);
+  explicit QdException(const std::string& message);
 };
 }  // namespace rts
