@@ -112,6 +112,16 @@ class DistributedTaskDriver {
                                             const int node_to_insert_on,
                                             Args&&... args);
 
+  /*!
+   * \brief Launch the threads in the thread pool.
+   *
+   * By default thread `0` will handle all logging. Passing `std::nullopt`
+   * means none of the threads will do logging. Since logging needs to be done
+   * in serial for each output method, having one thread responsible for all
+   * logging is easiest. This could be generalized if necessary.
+   */
+  void launch_threads(const std::optional<uint32_t> thread_for_logging = 0);
+
   /// \brief Returns `true` if the process is locally quiescent.
   ///
   /// Messages from other processes can cause this to no longer be true.
