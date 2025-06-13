@@ -112,6 +112,14 @@ class DistributedTaskDriver {
                                             const int node_to_insert_on,
                                             Args&&... args);
 
+  /// \brief Returns `true` if the process is locally quiescent.
+  ///
+  /// Messages from other processes can cause this to no longer be true.
+  ///
+  /// This function should rarely, if ever, be called explicit. Instead, use
+  /// `run_to_quiescence()`.
+  bool is_locally_quiescent();
+
   /// \brief Forces the threads in the thread pool on this process to stop.
   ///
   /// The threads will stop independent of whether or not there are any messages
