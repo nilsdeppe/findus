@@ -284,6 +284,11 @@ void DistributedTaskDriver::attach_debugger() {
   }
 }
 
+void DistributedTaskDriver::launch_threads(
+    const std::optional<uint32_t> thread_for_logging) {
+  thread_pool_->launch_threads(thread_for_logging);
+}
+
 bool DistributedTaskDriver::is_locally_quiescent() {
   return thread_pool_->is_quiescent();
 }
