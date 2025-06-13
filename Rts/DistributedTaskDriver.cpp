@@ -93,7 +93,7 @@ DistributedTaskDriver::DistributedTaskDriver(int* argc, char** argv[],
   }
 
   thread_pool_ = std::make_unique<ThreadPool_t>(
-      static_cast<uint32_t>(number_of_threads_), 0, 4);
+      static_cast<uint32_t>(number_of_threads_), 1, this);
 }
 
 std::string DistributedTaskDriver::mpi_threading_to_string(
