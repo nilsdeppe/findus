@@ -284,6 +284,8 @@ void DistributedTaskDriver::attach_debugger() {
   }
 }
 
+void DistributedTaskDriver::force_threads_to_stop() { thread_pool_->stop(); }
+
 void DistributedTaskDriver::initiate_sends(const int max_to_send) {
   if (max_to_send <= 0) {
     throw std::runtime_error("max_to_send must be positive but is " +
