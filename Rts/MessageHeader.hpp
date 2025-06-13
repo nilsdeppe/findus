@@ -64,6 +64,8 @@ struct alignas(64) MessageHeader {
   std::uint32_t data_offset = 0;
   std::int32_t source_rank = -1;
   std::int32_t destination_rank = -1;
+  std::uint64_t quiescence_detection_sweep_number =
+      std::numeric_limits<std::uint64_t>::max();
 
   /// \brief The value of `target_collection_index` used when the distributed
   /// object is not a collection.

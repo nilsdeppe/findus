@@ -95,6 +95,10 @@ DistributedTaskDriver::DistributedTaskDriver(int* argc, char** argv[],
   thread_pool_ = std::make_unique<ThreadPool_t>(
       static_cast<uint32_t>(number_of_threads_), 1, this);
 
+  // Set global quiescence detection bookkeeping.
+  global_qd_ = qd::Global{current_node_id(), number_of_nodes(), 10};
+}
+
 DistributedTaskDriver::~DistributedTaskDriver() noexcept {
   if (const auto mpi_result = MPI_Comm_free(&rts_comm_);
       mpi_result != MPI_SUCCESS) {
@@ -359,6 +363,7 @@ void DistributedTaskDriver::initiate_sends(const int max_to_send) {
                            std::to_string(dest) + ". MPI returned " +
                            std::to_string(mpi_result)};
       }
+      global_qd_.increment_sends();
     }
     i += messages_retrieved;
   }
@@ -514,6 +519,10 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
         "bug.");
   }
   for (auto it = received_start; it != incoming_mpi_messages_.end(); ++it) {
+    global_qd_.increment_processed();
+    global_qd_.update_last_regular_message_sweep_number(
+        Message_t::get_header(std::get<1>(*it))
+            ->quiescence_detection_sweep_number);
     MPI_Request_free(&std::get<0>(*it));
   }
   thread_pool_->add_tasks(BulkEnqueueIterator{received_start},
