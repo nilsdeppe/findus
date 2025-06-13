@@ -240,14 +240,16 @@ class DistributedTaskDriver {
    *
    * We use a `std::variant` of `std::unique_ptr` so that it is clear if we
    * should be indexing into a collection or not. Essentially, this is used to
-   * maximize the chance of catching subtle errors since indexing a magic
-   * number in the map is not guaranteed to be safe.
+   * maximize the chance of catching subtle errors since indexing a magic number
+   * in the map is not guaranteed to be safe.
    */
   struct DistributedOjectClassHolder {
     struct CollectionHolder {
       int node_id = -1;
       std::unique_ptr<DistributedObjectBase> object = nullptr;
     };
+
+    using Map_t = std::unordered_map<uint64_t, CollectionHolder>;
 
     DistributedOjectClassHolder(
         std::unique_ptr<DistributedObjectBase> in_object, std::string in_name)
@@ -259,8 +261,7 @@ class DistributedTaskDriver {
         : objects(std::move(in_objects)), name(std::move(in_name)) {}
 
     using variant_t =
-        std::variant<std::unique_ptr<DistributedObjectBase>,
-                     std::unordered_map<uint64_t, CollectionHolder>>;
+        std::variant<std::unique_ptr<DistributedObjectBase>, Map_t>;
     variant_t objects;
     std::string name;
   };
