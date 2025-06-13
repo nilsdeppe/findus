@@ -57,6 +57,10 @@ class DistributedTaskDriver {
                         DistributedTaskDriver* distributed_task_driver) {
       throw Exception("Not yet implemented...");
       // TODO: Invoke message on the task driver.
+    static MessageHeader* get_header(Message_t& message) {
+      return reinterpret_cast<MessageHeader*>(message.message.get());
+    }
+
       return true;
     }
   };
@@ -440,8 +444,7 @@ void DistributedTaskDriver::insert_parallel_component_collection(
 template <class Action, class ParallelComponent, class... Args, size_t... Is>
 template <class Action, class ParallelComponent, class... ArgIndexes>
 void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
-  MessageHeader* header =
-      reinterpret_cast<MessageHeader*>(message.message.get());
+  MessageHeader* header = Message_t::get_header(message);
   if (header->distributed_object_index >= distributed_objects_.size()) {
     throw rts::Exception{"Requested distributed object with index " +
                          std::to_string(header->distributed_object_index) +
