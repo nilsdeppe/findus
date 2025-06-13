@@ -569,6 +569,7 @@ DistributedTaskDriver& create_distributed_task_driver(int* argc,
   const_cast<std::unique_ptr<DistributedTaskDriver>&>(task_driver) =
       std::unique_ptr<DistributedTaskDriver>(
           new DistributedTaskDriver(argc, argv, true));
+  task_driver->attach_debugger();
   return *task_driver.get();
 }
 
