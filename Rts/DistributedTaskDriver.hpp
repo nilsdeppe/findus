@@ -35,6 +35,16 @@ uint32_t distributed_object_index() {
   static uint32_t index = (distributed_object_index_counter++);
   return index;
 }
+
+/*!
+ * \brief Class used to track argument types and their index in the tuple used
+ * to store data.
+ */
+template <class Arg, size_t Index>
+struct ArgIndex {
+  using type = Arg;
+  static constexpr size_t index = Index;
+};
 }  // namespace detail
 
 class DistributedTaskDriver {
@@ -212,20 +222,23 @@ class DistributedTaskDriver {
   template <class Action, class ParallelComponent, class... Args, size_t... Is>
   detail::MemberFunctionPtr threaded_action_relative_ptr(
       std::index_sequence<Is...> /*meta*/) {
-    return {detail::to_member_function_ptr(
+    return {detail::to_member_function_ptr<void, DistributedTaskDriver>(
                 &DistributedTaskDriver::template threaded_action_impl<
-                    Action, ParallelComponent, Args..., Is...>) -
-            detail::to_member_function_ptr(&DistributedTaskDriver::anchor)};
+                    Action, ParallelComponent, detail::ArgIndex<Args, Is>...>) -
+            detail::to_member_function_ptr<void, DistributedTaskDriver>(
+                &DistributedTaskDriver::anchor)};
   }
 
   // Compute the threaded action member function pointer absolute address from
   // the address relative to the anchor() function.
   auto threaded_action_absolute_ptr(
-      const detail::MemberFunctionPtr& theaded_action_rel_ptr) {
+      const detail::MemberFunctionPtr& theaded_action_rel_ptr)
+      -> void (DistributedTaskDriver::*)(Message_t&) {
     return detail::from_member_function_ptr<void, DistributedTaskDriver,
                                             Message_t&>(
         {theaded_action_rel_ptr +
-         detail::to_member_function_ptr(&DistributedTaskDriver::anchor)});
+         detail::to_member_function_ptr<void, DistributedTaskDriver>(
+             &DistributedTaskDriver::anchor)});
   }
 
   /*!
@@ -239,7 +252,7 @@ class DistributedTaskDriver {
 
   /// invoke_impl is invoked _by_ the thread pool on the task driver to
   /// initiate the action on the distributed action.
-  template <class Action, class ParallelComponent, class... Args, size_t... Is>
+  template <class Action, class ParallelComponent, class... ArgIndexes>
   void threaded_action_impl(Message_t& message);
 
   /*!
@@ -425,8 +438,8 @@ void DistributedTaskDriver::insert_parallel_component_collection(
 }
 
 template <class Action, class ParallelComponent, class... Args, size_t... Is>
+template <class Action, class ParallelComponent, class... ArgIndexes>
 void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
-  static_assert(sizeof...(Args) == sizeof...(Is));
   MessageHeader* header =
       reinterpret_cast<MessageHeader*>(message.message.get());
   if (header->distributed_object_index >= distributed_objects_.size()) {
@@ -436,24 +449,35 @@ void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
                          std::to_string(distributed_objects_.size())};
   }
 
-  std::tuple<Args...> args{};
-  (void)std::initializer_list<char>{[&args, &message]() {
-    auto& t = std::get<Is>(args);
-    // TODO: deserialize
-  }()...};
+  using Data_t = std::tuple<typename ArgIndexes::type...>;
+  Data_t args_data{};
+  Data_t* args = nullptr;
+  if (rts::data_was_serialized(*header)) {
+    args = std::addressof(args_data);
+    (void)std::initializer_list<char>{[&args_data, &message]() {
+      (void)message;
+      [[maybe_unused]] auto& t = std::get<ArgIndexes::index>(args_data);
+      // TODO: deserialize
+      throw Exception{"Not implemented"};
+      return '0';
+    }()...};
+  } else {
+    args = data_from_message<Data_t>(*header);
+  }
   if constexpr (rts::is_collection_v<ParallelComponent>) {
     dynamic_cast<ParallelComponent&>(
         *std::get<1>(
              distributed_objects_[header->distributed_object_index].objects)
-             .at(header->collection_index).object)
-        .template threaded_action<Action>(*this,
-                                          std::move(std::get<Is>(args))...);
+             .at(header->target_collection_index)
+             .object)
+        .template threaded_action<Action>(
+            *this, std::move(std::get<ArgIndexes::index>(*args))...);
   } else {
     dynamic_cast<ParallelComponent&>(
         *std::get<0>(
             distributed_objects_[header->distributed_object_index].objects))
-        .template threaded_action<Action>(*this,
-                                          std::move(std::get<Is>(args))...);
+        .template threaded_action<Action>(
+            *this, std::move(std::get<ArgIndexes::index>(*args))...);
   }
 }
 
