@@ -295,6 +295,13 @@ bool DistributedTaskDriver::is_locally_quiescent() {
 
 void DistributedTaskDriver::force_threads_to_stop() { thread_pool_->stop(); }
 
+void DistributedTaskDriver::invoke(Message_t& message,
+                                   const uint32_t thread_id) {
+  MessageHeader* message_header = Message_t::get_header(message);
+  (this->*threaded_action_absolute_ptr(message_header->member_function_ptr))(
+      message);
+}
+
 void DistributedTaskDriver::initiate_sends(const int max_to_send) {
   if (max_to_send <= 0) {
     throw std::runtime_error("max_to_send must be positive but is " +

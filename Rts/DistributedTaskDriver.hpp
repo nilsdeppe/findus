@@ -221,6 +221,15 @@ class DistributedTaskDriver {
          detail::to_member_function_ptr(&DistributedTaskDriver::anchor)});
   }
 
+  /*!
+   * \brief Invokes the action encoded in `message` on the thread with ID
+   * `thread_id`.
+   *
+   * This uses `threaded_action_absolute_ptr` to get which threaded action
+   * overload needs to be called and invokes it.
+   */
+  void invoke(Message_t& message, uint32_t thread_id);
+
   /// invoke_impl is invoked _by_ the thread pool on the task driver to
   /// initiate the action on the distributed action.
   template <class Action, class ParallelComponent, class... Args, size_t... Is>
