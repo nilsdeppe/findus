@@ -317,6 +317,33 @@ bool DistributedTaskDriver::is_locally_quiescent() {
 
 void DistributedTaskDriver::force_threads_to_stop() { thread_pool_->stop(); }
 
+void DistributedTaskDriver::run_to_quiescence(const int max_to_receive,
+                                              const int max_to_send) {
+  int local_qd_counter = 0;
+  while (true) {
+    initiate_receives(max_to_receive);
+    initiate_sends(max_to_send);
+    clean_incoming_mpi_messages();
+    clean_outgoing_mpi_messages();
+    // We check local QD first. If we have local QD, then we increment the
+    // local QD counter. If the local QD counter reaches
+    // local_qd_counts_for_global_qd, then we do a global QD check. This is so
+    // that we don't check global QD too frequently and are "very sure" we
+    // have local QD.
+    if (is_locally_quiescent()) {
+      ++local_qd_counter;
+      if (local_qd_counter >= local_qd_counts_for_global_qd_) {
+        local_qd_counter = 0;
+        if (global_qd_.check(rts_comm_)) {
+          global_qd_.wait_for_broadcast(rts_comm_);
+          global_qd_.safe_reset();
+          return;
+        }
+      }
+    }
+  }
+}
+
 void DistributedTaskDriver::invoke(Message_t& message,
                                    const uint32_t thread_id) {
   MessageHeader* message_header = Message_t::get_header(message);

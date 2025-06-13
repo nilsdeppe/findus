@@ -195,6 +195,29 @@ class DistributedTaskDriver {
    */
   void attach_debugger();
 
+  /*!
+   * \brief The MPI driver run on the main thread for a single phase of the
+   * evolution.
+   *
+   * A phase is ended when quiescence is reached.
+   *
+   * This function has a busy loop that does the following in order:
+   * 1. Probe for up to `N_{in}` incoming MPI messages and start their receives.
+   * 2. Check for up to `N_{out_msg}` and begin the send operations.
+   * 3. Check if any incoming MPI messages have completed, and if so add the
+   *    tasks to the queue. If we moved any then we will not do a check for
+   *    quiescence.
+   * 4. Check if any of the sent messages have completed and can be removed.
+   * 5. Perform a quiescence check as described below.
+   *
+   * ### Quiescence detection
+   *
+   * See rts::qd::Local and rts::qd::Global for documentation of the QD
+   * algorithms used.
+   *
+   */
+  void run_to_quiescence(int max_to_receive = 10, int max_to_send = 10);
+
  private:
   // The DistributedTaskDriver can only be created using the
   // create_distributed_task_driver() function.
