@@ -112,6 +112,13 @@ class DistributedTaskDriver {
                                             const int node_to_insert_on,
                                             Args&&... args);
 
+  /// \brief Forces the threads in the thread pool on this process to stop.
+  ///
+  /// The threads will stop independent of whether or not there are any messages
+  /// queued. This means you should only stop the threads once you are certain
+  /// quiescence is detected.
+  void force_threads_to_stop();
+
   /// \brief Returns the number of nodes/MPI ranks being used.
   int number_of_nodes() const { return number_of_nodes_; }
 
