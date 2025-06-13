@@ -85,7 +85,7 @@ class DistributedTaskDriver {
   DistributedTaskDriver& operator=(const DistributedTaskDriver& other) = delete;
   DistributedTaskDriver(DistributedTaskDriver&& other) = delete;
   DistributedTaskDriver& operator=(DistributedTaskDriver&& other) = delete;
-  ~DistributedTaskDriver() = default;
+  ~DistributedTaskDriver() noexcept;
 
   void send_data(const int target_node, Message_t message);
 

@@ -94,6 +94,15 @@ DistributedTaskDriver::DistributedTaskDriver(int* argc, char** argv[],
 
   thread_pool_ = std::make_unique<ThreadPool_t>(
       static_cast<uint32_t>(number_of_threads_), 1, this);
+
+DistributedTaskDriver::~DistributedTaskDriver() noexcept {
+  if (const auto mpi_result = MPI_Comm_free(&rts_comm_);
+      mpi_result != MPI_SUCCESS) {
+    std::cout << "Failed to free RTS communicator.\n" << std::flush;
+  }
+  if (initialize_mpi_) {
+    MPI_Finalize();
+  }
 }
 
 std::string DistributedTaskDriver::mpi_threading_to_string(
