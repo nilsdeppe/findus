@@ -108,7 +108,7 @@ std::string DistributedTaskDriver::mpi_threading_to_string(
     case MPI_THREAD_MULTIPLE:
       return "MPI_THREAD_MULTIPLE";
     default:
-      throw std::runtime_error("Unknown MPI threading support");
+      throw MpiException("Unknown MPI threading support");
   };
 }
 
@@ -315,8 +315,8 @@ void DistributedTaskDriver::invoke(Message_t& message,
 
 void DistributedTaskDriver::initiate_sends(const int max_to_send) {
   if (max_to_send <= 0) {
-    throw std::runtime_error("max_to_send must be positive but is " +
-                             std::to_string(max_to_send));
+    throw Exception("max_to_send must be positive but is " +
+                    std::to_string(max_to_send));
   }
   std::array<std::tuple<int, Message_t>, 10> bulk_outgoing_messages{};
   for (int i = 0; i < max_to_send; ++i) {
@@ -334,7 +334,7 @@ void DistributedTaskDriver::initiate_sends(const int max_to_send) {
               MPI_Request{},
               std::move(std::get<1>(bulk_outgoing_messages[to_send]))});
       if (not std::get<0>(outgoing_mpi_messages_.back()).has_value()) {
-        throw std::runtime_error(
+        throw Exception(
             "The outgoing MPI message's MPI_Request is not set but it should "
             "be. This is an internal error.");
       }
@@ -385,8 +385,8 @@ void DistributedTaskDriver::clean_outgoing_mpi_messages() {
 
 void DistributedTaskDriver::initiate_receives(const int max_to_receive) {
   if (max_to_receive <= 0) {
-    throw std::runtime_error("max_to_send must be positive but is " +
-                             std::to_string(max_to_receive));
+    throw Exception("max_to_send must be positive but is " +
+                    std::to_string(max_to_receive));
   }
   for (int number_of_receives = 0; number_of_receives < max_to_receive;
        ++number_of_receives) {
@@ -458,7 +458,7 @@ struct BulkEnqueueIterator {
 
   typename DistributedTaskDriver::Message_t operator*() {
     if (already_dereferenced) {
-      throw std::runtime_error{
+      throw Exception{
           "Already dereferenced the iterator and we can only dereference it "
           "once."};
     }
@@ -502,7 +502,7 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
   if (messages_to_emplace == 0) {
     return;
   } else if (messages_to_emplace < 0) {
-    throw std::runtime_error(
+    throw Exception(
         "The messages to emplace should be non-negative. This is an internal "
         "bug.");
   }
