@@ -284,6 +284,10 @@ void DistributedTaskDriver::attach_debugger() {
   }
 }
 
+bool DistributedTaskDriver::is_locally_quiescent() {
+  return thread_pool_->is_quiescent();
+}
+
 void DistributedTaskDriver::force_threads_to_stop() { thread_pool_->stop(); }
 
 void DistributedTaskDriver::initiate_sends(const int max_to_send) {
