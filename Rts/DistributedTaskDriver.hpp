@@ -52,15 +52,15 @@ class DistributedTaskDriver {
   struct Message_t {
     std::unique_ptr<char[]> message{nullptr};
 
-    static bool execute(rts::ThreadPool<Message, int>& pool, uint32_t thread_id,
-                        Message& message,
-                        DistributedTaskDriver* distributed_task_driver) {
-      throw Exception("Not yet implemented...");
-      // TODO: Invoke message on the task driver.
     static MessageHeader* get_header(Message_t& message) {
       return reinterpret_cast<MessageHeader*>(message.message.get());
     }
 
+    static bool execute(
+        rts::ThreadPool<Message_t, rts::DistributedTaskDriver*>& /*pool*/,
+        uint32_t thread_id, Message_t& message,
+        DistributedTaskDriver* distributed_task_driver) {
+      distributed_task_driver->invoke(message, thread_id);
       return true;
     }
   };
