@@ -109,6 +109,46 @@ DistributedTaskDriver::~DistributedTaskDriver() noexcept {
   }
 }
 
+void DistributedTaskDriver::launch_threads(
+    const std::optional<uint32_t> thread_for_logging) {
+  thread_pool_->launch_threads(thread_for_logging);
+}
+
+void DistributedTaskDriver::force_threads_to_stop() { thread_pool_->stop(); }
+
+bool DistributedTaskDriver::is_locally_quiescent() {
+  return thread_pool_->is_quiescent();
+}
+
+void DistributedTaskDriver::insert_barrier() const { MPI_Barrier(rts_comm_); }
+
+void DistributedTaskDriver::run_to_quiescence(const int max_to_receive,
+                                              const int max_to_send) {
+  int local_qd_counter = 0;
+  while (true) {
+    initiate_receives(max_to_receive);
+    initiate_sends(max_to_send);
+    clean_incoming_mpi_messages();
+    clean_outgoing_mpi_messages();
+    // We check local QD first. If we have local QD, then we increment the
+    // local QD counter. If the local QD counter reaches
+    // local_qd_counts_for_global_qd, then we do a global QD check. This is so
+    // that we don't check global QD too frequently and are "very sure" we
+    // have local QD.
+    if (is_locally_quiescent()) {
+      ++local_qd_counter;
+      if (local_qd_counter >= local_qd_counts_for_global_qd_) {
+        local_qd_counter = 0;
+        if (global_qd_.check(rts_comm_)) {
+          global_qd_.wait_for_broadcast(rts_comm_);
+          global_qd_.safe_reset();
+          return;
+        }
+      }
+    }
+  }
+}
+
 std::string DistributedTaskDriver::mpi_threading_to_string(
     const int mpi_threading) {
   switch (mpi_threading) {
@@ -124,18 +164,6 @@ std::string DistributedTaskDriver::mpi_threading_to_string(
       throw MpiException("Unknown MPI threading support");
   };
 }
-
-void DistributedTaskDriver::send_data(const int target_node,
-                                      Message_t message) {
-  if (target_node == my_node_id_) {
-    thread_pool_->add_task(std::move(message));
-  } else {
-    outgoing_messages_.enqueue(
-        std::tuple<int, Message_t>{target_node, std::move(message)});
-  }
-}
-
-void DistributedTaskDriver::insert_barrier() const { MPI_Barrier(rts_comm_); }
 
 namespace {
 std::vector<int> split_string_as_ints(const std::string& str,
@@ -306,49 +334,21 @@ void DistributedTaskDriver::attach_debugger() {
   }
 }
 
-void DistributedTaskDriver::launch_threads(
-    const std::optional<uint32_t> thread_for_logging) {
-  thread_pool_->launch_threads(thread_for_logging);
-}
-
-bool DistributedTaskDriver::is_locally_quiescent() {
-  return thread_pool_->is_quiescent();
-}
-
-void DistributedTaskDriver::force_threads_to_stop() { thread_pool_->stop(); }
-
-void DistributedTaskDriver::run_to_quiescence(const int max_to_receive,
-                                              const int max_to_send) {
-  int local_qd_counter = 0;
-  while (true) {
-    initiate_receives(max_to_receive);
-    initiate_sends(max_to_send);
-    clean_incoming_mpi_messages();
-    clean_outgoing_mpi_messages();
-    // We check local QD first. If we have local QD, then we increment the
-    // local QD counter. If the local QD counter reaches
-    // local_qd_counts_for_global_qd, then we do a global QD check. This is so
-    // that we don't check global QD too frequently and are "very sure" we
-    // have local QD.
-    if (is_locally_quiescent()) {
-      ++local_qd_counter;
-      if (local_qd_counter >= local_qd_counts_for_global_qd_) {
-        local_qd_counter = 0;
-        if (global_qd_.check(rts_comm_)) {
-          global_qd_.wait_for_broadcast(rts_comm_);
-          global_qd_.safe_reset();
-          return;
-        }
-      }
-    }
-  }
-}
-
 void DistributedTaskDriver::invoke(Message_t& message,
                                    const uint32_t thread_id) {
   MessageHeader* message_header = Message_t::get_header(message);
   (this->*threaded_action_absolute_ptr(message_header->member_function_ptr))(
       message);
+}
+
+void DistributedTaskDriver::send_data(const int target_node,
+                                      Message_t message) {
+  if (target_node == my_node_id_) {
+    thread_pool_->add_task(std::move(message));
+  } else {
+    outgoing_messages_.enqueue(
+        std::tuple<int, Message_t>{target_node, std::move(message)});
+  }
 }
 
 void DistributedTaskDriver::initiate_sends(const int max_to_send) {
@@ -556,6 +556,8 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
                           static_cast<size_t>(messages_to_emplace));
   incoming_mpi_messages_.erase(received_start, incoming_mpi_messages_.end());
 }
+
+static const std::unique_ptr<DistributedTaskDriver> task_driver = nullptr;
 
 DistributedTaskDriver& create_distributed_task_driver(int* argc,
                                                       char** argv[]) {

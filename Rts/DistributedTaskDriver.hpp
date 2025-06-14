@@ -29,8 +29,17 @@
 
 namespace rts {
 namespace detail {
+/*!
+ * \brief Counter used to assign each distributed object a unique integer ID.
+ *
+ * The function `detail::distributed_object_index()` gives the resulting index
+ * for a parallel component.
+ */
 extern uint32_t distributed_object_index_counter;
 
+/*!
+ * \brief Returns the unique ID for the parallel component.
+ */
 template <typename ParallelComponent>
 uint32_t distributed_object_index() {
   static uint32_t index = (distributed_object_index_counter++);
@@ -50,28 +59,41 @@ struct ArgIndex {
 
 class DistributedTaskDriver {
  public:
+  /*!
+   * \brief The type of the messages sent by the runtime system.
+   *
+   * The underlying data is essentially just a byte stream, which is stored in a
+   * `std::unique_ptr<char[]>`. There is currently no small message
+   * optimization.
+   */
   struct Message_t {
     std::unique_ptr<char[]> message{nullptr};
 
+    /// \brief Returns the message header.
     static MessageHeader* get_header(Message_t& message) {
       return reinterpret_cast<MessageHeader*>(message.message.get());
     }
 
+    /// \brief Executes the message.
     static bool execute(
         rts::ThreadPool<Message_t, rts::DistributedTaskDriver*>& /*pool*/,
-        uint32_t thread_id, Message_t& message,
+        const uint32_t thread_id, Message_t& message,
         DistributedTaskDriver* distributed_task_driver) {
       distributed_task_driver->invoke(message, thread_id);
       return true;
     }
   };
+
+  /// \brief The type of the underlying thread pool and dynamic tasking.
   using ThreadPool_t = rts::ThreadPool<Message_t, DistributedTaskDriver*>;
+
   /// \brief The type used for storing the incoming MPI messages while the NIC
   /// is receiving the data.
   ///
   /// Once a receive is complete, the messages need to be moved to the task
   /// queue.
   using IncomingMpiMessages_t = std::vector<std::tuple<MPI_Request, Message_t>>;
+
   /// \brief The type used for storing the outgoming MPI messages while the NIC
   /// is sending the data.
   ///
@@ -79,23 +101,57 @@ class DistributedTaskDriver {
   using OutgoingMpiMessages_t =
       std::vector<std::tuple<std::optional<MPI_Request>, Message_t>>;
 
-  // We can only have one DistributedTaskDriver per execution, so intentionally
-  // disable semantics.
+  /// @{
+  /// \brief Use `create_distributed_task_driver()` to create the task driver
+  /// singleton.
   DistributedTaskDriver() = delete;
   DistributedTaskDriver(const DistributedTaskDriver& other) = delete;
   DistributedTaskDriver& operator=(const DistributedTaskDriver& other) = delete;
   DistributedTaskDriver(DistributedTaskDriver&& other) = delete;
   DistributedTaskDriver& operator=(DistributedTaskDriver&& other) = delete;
   ~DistributedTaskDriver() noexcept;
+  /// @}
 
-  template <class Action, class ParallelComponent, class IndexType,
-            class... Args>
-  std::enable_if_t<rts::is_collection_v<ParallelComponent>> invoke(
-      const IndexType& user_index, Args&&... args);
+  /*!
+   * \brief Launch the threads in the thread pool.
+   *
+   * By default thread `0` will handle all logging. Passing `std::nullopt`
+   * means none of the threads will do logging. Since logging needs to be done
+   * in serial for each output method, having one thread responsible for all
+   * logging is easiest. This could be generalized if necessary.
+   */
+  void launch_threads(std::optional<uint32_t> thread_for_logging = 0);
 
-  template <class Action, class ParallelComponent, class... Args>
-  std::enable_if_t<not rts::is_collection_v<ParallelComponent>> invoke(
-      const int target_node, Args&&... args);
+  /// \brief Forces the threads in the thread pool on this process to stop.
+  ///
+  /// The threads will stop independent of whether or not there are any messages
+  /// queued. This means you should only stop the threads once you are certain
+  /// quiescence is detected.
+  void force_threads_to_stop();
+
+  /// \brief Returns `true` if the process is locally quiescent.
+  ///
+  /// Messages from other processes can cause this to no longer be true.
+  ///
+  /// This function should rarely, if ever, be called explicit. Instead, use
+  /// `run_to_quiescence()`.
+  bool is_locally_quiescent();
+
+  /// \brief Returns the number of nodes/MPI ranks being used.
+  int number_of_nodes() const { return number_of_nodes_; }
+
+  /// \brief The ID of the current node that this is invoked on.
+  int current_node_id() const { return my_node_id_; }
+
+  /// \brief The total number of threads being used, including the driver
+  /// thread.
+  int total_number_of_threads() const { return number_of_threads_; }
+
+  /// \brief The MPI major version being used.
+  int mpi_version() const { return mpi_version_; }
+
+  /// \brief The MPI minor/subversion being used.
+  int mpi_subversion() const { return mpi_subversion_; }
 
   /// \brief Wait for the all MPI ranks in the RTS communicator
   ///
@@ -129,71 +185,8 @@ class DistributedTaskDriver {
    */
   template <class ParallelComponent, class IndexType, class... Args>
   void insert_parallel_component_collection(const IndexType& user_index,
-                                            const int node_to_insert_on,
+                                            int node_to_insert_on,
                                             Args&&... args);
-
-  /*!
-   * \brief Launch the threads in the thread pool.
-   *
-   * By default thread `0` will handle all logging. Passing `std::nullopt`
-   * means none of the threads will do logging. Since logging needs to be done
-   * in serial for each output method, having one thread responsible for all
-   * logging is easiest. This could be generalized if necessary.
-   */
-  void launch_threads(const std::optional<uint32_t> thread_for_logging = 0);
-
-  /// \brief Returns `true` if the process is locally quiescent.
-  ///
-  /// Messages from other processes can cause this to no longer be true.
-  ///
-  /// This function should rarely, if ever, be called explicit. Instead, use
-  /// `run_to_quiescence()`.
-  bool is_locally_quiescent();
-
-  /// \brief Forces the threads in the thread pool on this process to stop.
-  ///
-  /// The threads will stop independent of whether or not there are any messages
-  /// queued. This means you should only stop the threads once you are certain
-  /// quiescence is detected.
-  void force_threads_to_stop();
-
-  /// \brief Returns the number of nodes/MPI ranks being used.
-  int number_of_nodes() const { return number_of_nodes_; }
-
-  /// \brief The ID of the current node that this is invoked on.
-  int current_node_id() const { return my_node_id_; }
-
-  /// \brief The total number of threads being used, including the driver
-  /// thread.
-  int total_number_of_threads() const { return number_of_threads_; }
-
-  /// \brief The MPI major version being used.
-  int mpi_version() const { return mpi_version_; }
-
-  /// \brief The MPI minor/subversion being used.
-  int mpi_subversion() const { return mpi_subversion_; }
-
-  /*!
-   * \brief Provide an infinite loop to attach a debugger during startup. Useful
-   * for debugging MPI runs.
-   *
-   * Each MPI rank prints out name `rts_pid_#_host_NAME` to the working
-   * directory. This allows you to attach GDB to the running process using
-   * `gdb --pid=PID`, once for each MPI rank. You must then halt the program
-   * using `C-c` and then call `set var i = 7` inside GDB. Once you've done this
-   * on each MPI rank, you can have each MPI rank `continue`.
-   *
-   * To add support for attaching to a debugger in an executable, you must add
-   * `driver.attach_debugger()` to the start of the executable after you call
-   * `rts::create_distributed_task_driver()`. Then, when you launch the
-   * executable launch it as
-   * ```shell
-   * RTS_ATTACH_DEBUGGER=1 mpirun -np N ...
-   * ```
-   * The environment variable `RTS_ATTACH_DEBUGGER` being set tells the code to
-   * allow attaching from a debugger.
-   */
-  void attach_debugger();
 
   /*!
    * \brief The MPI driver run on the main thread for a single phase of the
@@ -218,6 +211,15 @@ class DistributedTaskDriver {
    */
   void run_to_quiescence(int max_to_receive = 10, int max_to_send = 10);
 
+  template <class Action, class ParallelComponent, class IndexType,
+            class... Args>
+  std::enable_if_t<rts::is_collection_v<ParallelComponent>> invoke(
+      const IndexType& user_index, Args&&... args);
+
+  template <class Action, class ParallelComponent, class... Args>
+  std::enable_if_t<not rts::is_collection_v<ParallelComponent>> invoke(
+      int target_node, Args&&... args);
+
  private:
   // The DistributedTaskDriver can only be created using the
   // create_distributed_task_driver() function.
@@ -237,11 +239,56 @@ class DistributedTaskDriver {
       const IndexType& user_index);
   /// \endcond
 
-  static std::string mpi_threading_to_string(const int mpi_threading);
+  static std::string mpi_threading_to_string(int mpi_threading);
 
   // The anchor function is used to compute relative pointers to member
   // functions that invoke actions.
   void anchor() {}
+
+  /*!
+   * \brief Provide an infinite loop to attach a debugger during startup. Useful
+   * for debugging MPI runs.
+   *
+   * Each MPI rank prints out name `rts_pid_#_host_NAME` to the working
+   * directory. This allows you to attach GDB to the running process using
+   * `gdb --pid=PID`, once for each MPI rank. You must then halt the program
+   * using `C-c` and then call `set var i = 7` inside GDB. Once you've done this
+   * on each MPI rank, you can have each MPI rank `continue`.
+   *
+   * To add support for attaching to a debugger in an executable, you must add
+   * `driver.attach_debugger()` to the start of the executable after you call
+   * `rts::create_distributed_task_driver()`. Then, when you launch the
+   * executable launch it as
+   * ```shell
+   * RTS_ATTACH_DEBUGGER=1 mpirun -np N ...
+   * ```
+   * The environment variable `RTS_ATTACH_DEBUGGER` being set tells the code to
+   * allow attaching from a debugger.
+   */
+  void attach_debugger();
+
+  /*!
+   * \brief Invokes the action encoded in `message` on the thread with ID
+   * `thread_id`.
+   *
+   * This uses `threaded_action_absolute_ptr` to get which threaded action
+   * overload needs to be called and invokes it.
+   */
+  void invoke(Message_t& message, uint32_t thread_id);
+
+  /*!
+   * \brief Send the message to the target node.
+   *
+   * If the target node is the current node then the message is inserted into
+   * the local message queue. If the target is remote then the message is
+   * inserted into the outgoing message queue.
+   */
+  void send_data(int target_node, Message_t message);
+
+  /// invoke_impl is invoked _by_ the thread pool on the task driver to
+  /// initiate the action on the distributed action.
+  template <class Action, class ParallelComponent, class... ArgIndexes>
+  void threaded_action_impl(Message_t& message);
 
   // Compute the threaded action member function pointer location relative to
   // the anchor() member function pointer. This is then sent to other nodes.
@@ -266,53 +313,6 @@ class DistributedTaskDriver {
          detail::to_member_function_ptr<void, DistributedTaskDriver>(
              &DistributedTaskDriver::anchor)});
   }
-
-  void send_data(const int target_node, Message_t message);
-
-  /*!
-   * \brief Invokes the action encoded in `message` on the thread with ID
-   * `thread_id`.
-   *
-   * This uses `threaded_action_absolute_ptr` to get which threaded action
-   * overload needs to be called and invokes it.
-   */
-  void invoke(Message_t& message, uint32_t thread_id);
-
-  /// invoke_impl is invoked _by_ the thread pool on the task driver to
-  /// initiate the action on the distributed action.
-  template <class Action, class ParallelComponent, class... ArgIndexes>
-  void threaded_action_impl(Message_t& message);
-
-  /*!
-   * \brief The type used to store each distributed object or collection.
-   *
-   * We use a `std::variant` of `std::unique_ptr` so that it is clear if we
-   * should be indexing into a collection or not. Essentially, this is used to
-   * maximize the chance of catching subtle errors since indexing a magic number
-   * in the map is not guaranteed to be safe.
-   */
-  struct DistributedOjectClassHolder {
-    struct CollectionHolder {
-      int node_id = -1;
-      std::unique_ptr<DistributedObjectBase> object = nullptr;
-    };
-
-    using Map_t = std::unordered_map<uint64_t, CollectionHolder>;
-
-    DistributedOjectClassHolder(
-        std::unique_ptr<DistributedObjectBase> in_object, std::string in_name)
-        : objects(std::move(in_object)), name(std::move(in_name)) {}
-
-    DistributedOjectClassHolder(
-        std::unordered_map<uint64_t, CollectionHolder> in_objects,
-        std::string in_name)
-        : objects(std::move(in_objects)), name(std::move(in_name)) {}
-
-    using variant_t =
-        std::variant<std::unique_ptr<DistributedObjectBase>, Map_t>;
-    variant_t objects;
-    std::string name;
-  };
 
   /*!
    * \brief Initiate several sends to remote distributed objects.
@@ -364,6 +364,37 @@ class DistributedTaskDriver {
    * This function is not threadsafe.
    */
   void clean_incoming_mpi_messages();
+
+  /*!
+   * \brief The type used to store each distributed object or collection.
+   *
+   * We use a `std::variant` of `std::unique_ptr` so that it is clear if we
+   * should be indexing into a collection or not. Essentially, this is used to
+   * maximize the chance of catching subtle errors since indexing a magic number
+   * in the map is not guaranteed to be safe.
+   */
+  struct DistributedOjectClassHolder {
+    struct CollectionHolder {
+      int node_id = -1;
+      std::unique_ptr<DistributedObjectBase> object = nullptr;
+    };
+
+    using Map_t = std::unordered_map<uint64_t, CollectionHolder>;
+
+    DistributedOjectClassHolder(
+        std::unique_ptr<DistributedObjectBase> in_object, std::string in_name)
+        : objects(std::move(in_object)), name(std::move(in_name)) {}
+
+    DistributedOjectClassHolder(
+        std::unordered_map<uint64_t, CollectionHolder> in_objects,
+        std::string in_name)
+        : objects(std::move(in_objects)), name(std::move(in_name)) {}
+
+    using variant_t =
+        std::variant<std::unique_ptr<DistributedObjectBase>, Map_t>;
+    variant_t objects;
+    std::string name;
+  };
 
   MPI_Comm rts_comm_{};
   bool initialize_mpi_{false};
@@ -667,10 +698,6 @@ ParallelComponent* local_parallel_component(
   }
   return dynamic_cast<ParallelComponent*>(object_it->second.get());
 }
-
-/// \cond
-static const std::unique_ptr<DistributedTaskDriver> task_driver = nullptr;
-/// \endcond
 
 /// \brief Create the DistributedTaskDriver::the_driver object that can be
 /// used to globally access the task driver.
