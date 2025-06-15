@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <exception>
 #include <initializer_list>
 #include <limits>
 #include <memory>
@@ -211,14 +212,37 @@ class DistributedTaskDriver {
    */
   void run_to_quiescence(int max_to_receive = 10, int max_to_send = 10);
 
+  /*!
+   * \brief Invokes the `Action` on the `ParallelComponent`.
+   *
+   * Allows invoking/calling `Actions` on local or remote parallel
+   * components. If the parallel component is a collection then
+   * `user_index_or_target_node` must be a 64-byte user index with an
+   * overloaded `std::hash` implementation. If the parallel component is a
+   * regular component, then `user_index_or_target_node` must be the node on
+   * which the action should be invoked.
+   *
+   * The `args...` are the argument with which the member function
+   * `threaded_action` on the receiving parallel component will be
+   * invoked. An example of a threaded action member function of a parallel
+   * component is
+   * ```cpp
+   * template <class Action, class... Args>
+   * void threaded_action(rts::DistributedTaskDriver& driver, Args... args);
+   * ```
+   * Specialization to specific actions is essentially providing remotely
+   * callable member functions. For example,
+   * ```cpp
+   * template <>
+   * void threaded_action<MyAction>(rts::DistributedTaskDriver& task_driver,
+   *                                const int t)
+   * ```
+   * provides remotely callable member function labeled or tagged by the
+   * "action" struct/class/type, `MyAction` in this case.
+   */
   template <class Action, class ParallelComponent, class IndexType,
             class... Args>
-  std::enable_if_t<rts::is_collection_v<ParallelComponent>> invoke(
-      const IndexType& user_index, Args&&... args);
-
-  template <class Action, class ParallelComponent, class... Args>
-  std::enable_if_t<not rts::is_collection_v<ParallelComponent>> invoke(
-      int target_node, Args&&... args);
+  void invoke(const IndexType& user_index_or_target_node, Args&&... args);
 
  private:
   // The DistributedTaskDriver can only be created using the
@@ -500,73 +524,48 @@ void DistributedTaskDriver::insert_parallel_component_collection(
 }
 
 template <class Action, class ParallelComponent, class IndexType, class... Args>
-std::enable_if_t<rts::is_collection_v<ParallelComponent>>
-DistributedTaskDriver::invoke(const IndexType& user_index, Args&&... args) {
+void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
+                                   Args&&... args) {
   static_assert(((not(std::is_pointer_v<std::decay_t<Args>> or
                       std::is_array_v<std::decay_t<Args>>)) &&
                  ...),
                 "We cannot serialize raw pointers or C-style arrays in a "
                 "safe manner. Please wrap these in a container that can "
                 "safely handle the serialization.");
-  static_assert(sizeof(IndexType) == sizeof(std::uint64_t));
+  static_assert(sizeof(IndexType) == sizeof(std::uint64_t) or
+                std::is_same_v<IndexType, int>);
 
-  const auto object_index =
-      rts::detail::distributed_object_index<ParallelComponent>();
-  const std::uint64_t index = std::hash<IndexType>{}(user_index);
-  DistributedOjectClassHolder::Map_t& collection =
-      std::get<1>(distributed_objects_[object_index].objects);
-  const int target_node = collection.at(index).node_id;
-  if (target_node == my_node_id_ or
-      ((std::is_trivially_copyable_v<std::decay_t<Args>> && ...))) {
-    // Regardless of whether or not we are crossing an address space
-    // boundary we cannot store or forward references in the Data, we can
-    // only safely store values.
-    using Data_t = std::tuple<std::decay_t<Args>...>;
-    const std::uint32_t data_offset =
-        sizeof(MessageHeader)
-        // Add extra bytes to make sure we can align Data_t
-        // properly. We compute the remainder of the MessageHeader size and
-        // the alignment of the data. This would give us, e.g. 5 bytes, which
-        // means we have e.g. 37 bytes for MessageHeader. The amount we
-        // would need to align then is given by the C++:
-        + (alignof(Data_t) - sizeof(MessageHeader) % alignof(Data_t));
-    const std::uint64_t buffer_size = data_offset
-                                      // Add the size of the data type (tuple)
-                                      + sizeof(Data_t);
-    std::unique_ptr<char[]> buffer{new (std::align_val_t(
-        std::max(alignof(MessageHeader), alignof(Data_t)))) char[buffer_size]};
-
-    MessageHeader* message = new (buffer.get())
-        MessageHeader{threaded_action_relative_ptr<Action, ParallelComponent,
-                                                   std::decay_t<Args>...>(
-                          std::make_index_sequence<sizeof...(Args)>{}),
-                      index,
-                      buffer_size,
-                      detail::distributed_object_index<ParallelComponent>(),
-                      data_offset,
-                      current_node_id(),
-                      target_node,
-                      global_qd_.local_sweep_number()};
-    rts::set_data_was_serialized(*message, false);
-    Data_t* data_location = rts::create_data_in_message<Data_t>(*message);
-
-    *data_location = Data_t{std::forward<Args>(args)...};
-    send_data(target_node, {std::move(buffer)});
+  int target_node = -1;
+  std::uint64_t collection_index = MessageHeader::no_collection_index();
+  if constexpr (rts::is_collection_v<ParallelComponent>) {
+    const auto object_index =
+        rts::detail::distributed_object_index<ParallelComponent>();
+    collection_index = std::hash<IndexType>{}(user_index_or_target_node);
+    try {
+      DistributedOjectClassHolder::Map_t& collection =
+          std::get<1>(distributed_objects_[object_index].objects);
+      try {
+        target_node = collection.at(collection_index).node_id;
+      } catch (const std::exception& e) {
+        std::stringstream ss;
+        ss << user_index_or_target_node;
+        throw Exception{
+            "Failed to retrieve collection element " + ss.str() +
+            " from collection parallel component " + ParallelComponent::name() +
+            ". Exception being handle has message: " + std::string{e.what()}};
+      }
+    } catch (const std::exception& e) {
+      std::stringstream ss;
+      ss << user_index_or_target_node;
+      throw Exception{"Failed to retrieve the parallel component '" +
+                      ParallelComponent::name() +
+                      "' as a collection. This is likely an internal bug. "
+                      "Please file an issue with steps on how to reproduce."};
+    }
   } else {
-    throw Exception{"Not implemented"};
-    // send_data(target_node, std::move(buffer));
+    target_node = user_index_or_target_node;
   }
-}
 
-template <class Action, class ParallelComponent, class... Args>
-std::enable_if_t<not rts::is_collection_v<ParallelComponent>>
-DistributedTaskDriver::invoke(const int target_node, Args&&... args) {
-  static_assert(((not(std::is_pointer_v<std::decay_t<Args>> or
-                      std::is_array_v<std::decay_t<Args>>)) &&
-                 ...),
-                "We cannot serialize raw pointers or C-style arrays in a "
-                "safe manner. Please wrap these in a container that can "
-                "safely handle the serialization.");
   if (target_node == my_node_id_ or
       ((std::is_trivially_copyable_v<std::decay_t<Args>> && ...))) {
     // Regardless of whether or not we are crossing an address space
@@ -591,7 +590,7 @@ DistributedTaskDriver::invoke(const int target_node, Args&&... args) {
         MessageHeader{threaded_action_relative_ptr<Action, ParallelComponent,
                                                    std::decay_t<Args>...>(
                           std::make_index_sequence<sizeof...(Args)>{}),
-                      MessageHeader::no_collection_index(),
+                      collection_index,
                       buffer_size,
                       detail::distributed_object_index<ParallelComponent>(),
                       data_offset,
@@ -604,8 +603,8 @@ DistributedTaskDriver::invoke(const int target_node, Args&&... args) {
     *data_location = Data_t{std::forward<Args>(args)...};
     send_data(target_node, {std::move(buffer)});
   } else {
-    throw Exception{"Non-collection remote invoke is not implemented"};
-    // send_data(target_node, {std::move(buffer)});
+    throw Exception{"Serialization in invoke() is not yet implemented."};
+    // send_data(target_node, std::move(buffer));
   }
 }
 
