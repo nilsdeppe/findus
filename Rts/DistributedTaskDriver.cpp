@@ -22,6 +22,7 @@
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/Exceptions/Mpi.hpp"
 #include "Rts/MessageTags.hpp"
+#include "Rts/ParentAndChildren.hpp"
 
 namespace rts {
 DistributedTaskDriver::DistributedTaskDriver(int* argc, char** argv[],
@@ -94,6 +95,9 @@ DistributedTaskDriver::DistributedTaskDriver(int* argc, char** argv[],
 
   thread_pool_ = std::make_unique<ThreadPool_t>(
       static_cast<uint32_t>(number_of_threads_), 1, this);
+
+  parent_and_children_ =
+      detail::parent_and_children(current_node_id(), number_of_nodes());
 
   // Set global quiescence detection bookkeeping.
   global_qd_ = qd::Global{current_node_id(), number_of_nodes(), 10};
