@@ -25,6 +25,7 @@
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/IsCollection.hpp"
 #include "Rts/MessageHeader.hpp"
+#include "Rts/ParentAndChildren.hpp"
 #include "Rts/QuiescenceDetection.hpp"
 #include "Rts/ThreadPool.hpp"
 
@@ -433,6 +434,7 @@ class DistributedTaskDriver {
   std::unique_ptr<ThreadPool_t> thread_pool_{};
   std::vector<DistributedOjectClassHolder> distributed_objects_;
 
+  detail::ParentAndChildren parent_and_children_{};
   IncomingMpiMessages_t incoming_mpi_messages_{};
   OutgoingMpiMessages_t outgoing_mpi_messages_{};
   moodycamel::ConcurrentQueue<std::tuple<int, Message_t>> outgoing_messages_{};
