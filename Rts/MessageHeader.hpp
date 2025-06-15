@@ -81,7 +81,7 @@ struct alignas(64) MessageHeader {
  * `MessageHeader`, padding, and the serialized data.
  */
 inline std::uint64_t number_of_bytes_in_message(const MessageHeader& message) {
-  return std::uint64_t{std::numeric_limits<std::uint64_t>::max() >> 1} bitand
+  return std::uint64_t{std::numeric_limits<std::uint64_t>::max() >> 3} bitand
          message.number_of_bytes_in_message;
 }
 
@@ -106,6 +106,36 @@ inline void set_data_was_serialized(MessageHeader& message,
         std::uint64_t{std::numeric_limits<std::uint64_t>::max() >> 1} bitand
         message.number_of_bytes_in_message;
   }
+}
+
+/// \brief Returns `true` if the message is a broadcast to a parallel
+/// component or to all elements of a parallel component collection
+inline bool message_is_broadcast(const MessageHeader& message) {
+  return static_cast<bool>((std::uint64_t{0b1} << 62) bitand
+                           message.number_of_bytes_in_message);
+}
+
+/// \brief Marks the message as a broadcast to a parallel component or to all
+/// elements of a parallel component collection
+inline void set_message_is_broadcast(MessageHeader& message) {
+  message.number_of_bytes_in_message =
+      std::uint64_t{0b1} << 62 bitor message.number_of_bytes_in_message;
+}
+
+/// \brief Returns `true` if the message is a broadcast to a subset of processes
+/// of a parallel component or to a subset of the elements of a parallel
+/// component collection
+inline bool message_is_broadcast_to(const MessageHeader& message) {
+  return static_cast<bool>((std::uint64_t{0b1} << 61) bitand
+                           message.number_of_bytes_in_message);
+}
+
+/// \brief Marks that the message is a broadcast to a subset of
+/// processes of a parallel component or to a subset of the elements of a
+/// parallel component collection
+inline void set_message_is_broadcast_to(MessageHeader& message) {
+  message.number_of_bytes_in_message =
+      std::uint64_t{0b1} << 61 bitor message.number_of_bytes_in_message;
 }
 
 /*!
