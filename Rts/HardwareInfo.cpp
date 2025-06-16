@@ -5,12 +5,14 @@
 #include "HardwareInfo.hpp"
 
 #include <array>
+#include <cassert>
 #include <hwloc.h>
 #include <string>
 
 #include "Rts/Exceptions/Exception.hpp"
 
-namespace rts::hardware_info::detail {
+namespace rts::hardware_info {
+namespace detail {
 std::array<CacheInfo, 3> cache_info() {
   hwloc_topology_t topology_;
   if (const auto hwloc_result = hwloc_topology_init(&topology_);
@@ -46,6 +48,15 @@ std::array<CacheInfo, 3> cache_info() {
       info[i - 1] = {i, cache->attr->cache.size, cache->attr->cache.linesize};
     }
   }
+  hwloc_topology_destroy(topology_);
   return info;
 }
-}  // namespace rts::hardware_info::detail
+}  // namespace detail
+
+CacheInfo cache_info(const size_t level) {
+  assert(level > 0);
+  assert(level <= 3);
+  static const auto info = detail::cache_info();
+  return info[level - 1];
+}
+}  // namespace rts::hardware_info

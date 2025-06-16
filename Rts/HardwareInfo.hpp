@@ -6,7 +6,7 @@
 
 #include <array>
 #include <cstddef>
-#include <hwloc.h>
+#include <cstdint>
 #include <new>
 
 namespace rts::hardware_info {
@@ -50,10 +50,5 @@ std::array<CacheInfo, 3> cache_info();
  *
  * \note `1 <= level <= 3` is required.
  */
-inline CacheInfo cache_info(const size_t level) {
-  assert(level > 0);
-  assert(level <= 3);
-  static const auto info = detail::cache_info();
-  return info[level - 1];
-}
+CacheInfo cache_info(size_t level);
 }  // namespace rts::hardware_info
