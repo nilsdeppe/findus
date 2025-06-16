@@ -424,7 +424,14 @@ void DistributedTaskDriver::initiate_sends(const int max_to_send) {
 void DistributedTaskDriver::clean_outgoing_mpi_messages() {
   auto erase_start = std::remove_if(
       outgoing_mpi_messages_.begin(), outgoing_mpi_messages_.end(),
-      [](std::tuple<std::optional<MPI_Request>, Message_t>& elem) {
+      [this](std::tuple<std::optional<MPI_Request>, Message_t>& elem) {
+        if (not std::get<0>(elem).has_value()) {
+          throw Exception{
+              "Trying to clear an outgoing MPI message on process " +
+              std::to_string(current_node_id()) +
+              " with an empty request. This is a bug so please file an issue "
+              "with a minimal reproducible example."};
+        }
         int flag{0};
         if (const auto mpi_result = MPI_Request_get_status(
                 std::get<0>(elem).value(), &flag, MPI_STATUS_IGNORE);
@@ -436,8 +443,7 @@ void DistributedTaskDriver::clean_outgoing_mpi_messages() {
                   MPI_Request_free(&std::get<0>(elem).value());
               mpi_result != MPI_SUCCESS) {
             throw MpiException{
-                "Failed to call MPI_Request_free on a regular "
-                "message."};
+                "Failed to call MPI_Request_free on a regular message."};
           }
           std::get<0>(elem) = std::nullopt;
           return true;
