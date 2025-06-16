@@ -60,6 +60,34 @@ CacheInfo cache_info(const size_t level) {
   return info[level - 1];
 }
 
+namespace {
+CpuInfo cpu_info_impl() {
+  hwloc_topology_t topology{};
+  if (const auto hwloc_result = hwloc_topology_init(&topology);
+      hwloc_result < 0) {
+    throw Exception("error calling hwloc_topology_init: " +
+                    std::to_string(hwloc_result));
+  }
+  if (const auto hwloc_result = hwloc_topology_load(topology);
+      hwloc_result < 0) {
+    throw Exception("Error calling hwloc_topology_load: " +
+                    std::to_string(hwloc_result));
+  }
+  CpuInfo info{
+      hwloc_get_nbobjs_by_type(topology, hwloc_obj_type_t::HWLOC_OBJ_PACKAGE),
+      hwloc_get_nbobjs_by_type(topology, hwloc_obj_type_t::HWLOC_OBJ_NUMANODE),
+      hwloc_get_nbobjs_by_type(topology, hwloc_obj_type_t::HWLOC_OBJ_CORE),
+      hwloc_get_nbobjs_by_type(topology, hwloc_obj_type_t::HWLOC_OBJ_PU)};
+  hwloc_topology_destroy(topology);
+  return info;
+}
+}  // namespace
+
+CpuInfo cpu_info() {
+  static auto info = cpu_info_impl();
+  return info;
+}
+
 void bind_current_thread_to_core(const size_t core_id) {
   // Bind/pin the thread to a CPU core.
   //

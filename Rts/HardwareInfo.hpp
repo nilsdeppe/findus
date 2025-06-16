@@ -53,6 +53,27 @@ std::array<CacheInfo, 3> cache_info();
 CacheInfo cache_info(size_t level);
 
 /*!
+ * \brief Info about the CPU(s) on the physical node.
+ */
+struct CpuInfo {
+  /// \brief The number of processors on the physical node.
+  int number_of_processors;
+  /// \brief The number of NUMA (Non-Uniform Memory Access) nodes on the
+  /// physical node.
+  int number_of_numa_nodes;
+  /// \brief The number of cores on the physical node.
+  int number_of_cores;
+  /// \brief The number of processing units/hyper threads/simultaneous
+  /// multithreading threads on the physical node.
+  int number_of_processing_units;
+};
+
+/*!
+ * \brief Get info about the CPU(s) on the physical node.
+ */
+CpuInfo cpu_info();
+
+/*!
  * \brief Binds/pins the current thread to the specified core. This is sometimes
  * called "affinity".
  *
