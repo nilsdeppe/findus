@@ -419,6 +419,7 @@ class DistributedTaskDriver {
         std::variant<std::unique_ptr<DistributedObjectBase>, Map_t>;
     variant_t objects;
     std::string name;
+    int number_of_local_objects{-1};
   };
 
   MPI_Comm rts_comm_{};
@@ -457,6 +458,7 @@ void DistributedTaskDriver::insert_parallel_component(Args&&... args) {
       std::unique_ptr<DistributedObjectBase>{
           std::make_unique<ParallelComponent>(std::forward<Args>(args)...)},
       ParallelComponent::name());
+  distributed_objects_.back().number_of_local_objects = 1;
   if (index + 1 != distributed_objects_.size()) {
     throw Exception("The index " + std::to_string(index) +
                     " of the parallel component " + ParallelComponent::name() +
@@ -479,9 +481,10 @@ void DistributedTaskDriver::insert_parallel_component_collection(
   using Map =
       std::variant_alternative_t<1, DistributedOjectClassHolder::variant_t>;
   if (index == distributed_objects_.size()) {
-    distributed_objects_.emplace_back(
-        Map{},
-        ParallelComponent::name());
+    // If we do not have the distributed object collection already inserted,
+    // insert it.
+    distributed_objects_.emplace_back(Map{}, ParallelComponent::name());
+    distributed_objects_.back().number_of_local_objects = 0;
   }
   if (index + 1 != distributed_objects_.size()) {
     throw Exception("The index " + std::to_string(index) +
@@ -510,6 +513,7 @@ void DistributedTaskDriver::insert_parallel_component_collection(
             node_to_insert_on, std::unique_ptr<DistributedObjectBase>{
                                    std::make_unique<ParallelComponent>(
                                        std::forward<Args>(args)...)}}});
+    ++distributed_objects_[index].number_of_local_objects;
   } else if (node_to_insert_on >= number_of_nodes_) {
     throw Exception("Cannot insert collection " + ParallelComponent::name() +
                     " into node " + std::to_string(node_to_insert_on) +
