@@ -51,4 +51,13 @@ std::array<CacheInfo, 3> cache_info();
  * \note `1 <= level <= 3` is required.
  */
 CacheInfo cache_info(size_t level);
+
+/*!
+ * \brief Binds/pins the current thread to the specified core. This is sometimes
+ * called "affinity".
+ *
+ * If the core ID is larger than the number of cores on the node an exception is
+ * throw.
+ */
+void bind_current_thread_to_core(size_t core_id);
 }  // namespace rts::hardware_info
