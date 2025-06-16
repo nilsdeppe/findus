@@ -6,7 +6,6 @@
 
 #include <atomic>
 #include <cstddef>
-#include <hwloc.h>
 #include <iostream>
 #include <mutex>
 #include <optional>
@@ -15,6 +14,8 @@
 #include <vector>
 
 #include "ConcurrentQueue.hpp"
+#include "Rts/Exceptions/Exception.hpp"
+#include "Rts/HardwareInfo.hpp"
 #include "Rts/QuiescenceDetection.hpp"
 #include "Spinlock.hpp"
 
@@ -125,8 +126,6 @@ class ThreadPool {
   qd::Local local_qd_{};
 
   moodycamel::ConcurrentQueue<std::string> logging_queue_{};
-
-  hwloc_topology_t topology_{};
 };
 
 template <class MessageType, class ProcessLocalDataType>
@@ -142,27 +141,15 @@ inline ThreadPool<MessageType, ProcessLocalDataType>::ThreadPool(
       task_queue_(1024, number_of_threads, 0),
       local_qd_{},
       logging_queue_{} {
-  // Pin the threads to CPU cores. This is often called "affinity"
-  //
-  // Modified from:
-  // https://github.com/eliben/code-for-blog/blob/master/2016/threads-affinity/hwloc-example.cpp
-  if (hwloc_topology_init(&topology_) < 0) {
-    throw std::runtime_error("error calling hwloc_topology_init");
+  if (const auto cpu_info = hardware_info::cpu_info();
+      static_cast<std::uint32_t>(cpu_info.number_of_cores) <
+      thread_pin_offset_ + number_of_threads) {
+    throw Exception{"There are fewer cores (" +
+                    std::to_string(cpu_info.number_of_cores) +
+                    ") than the offset (" + std::to_string(thread_pin_offset_) +
+                    ") and number of threads (" +
+                    std::to_string(number_of_threads) + " can accommodate."};
   }
-  if (hwloc_topology_load(topology_) < 0) {
-    throw std::runtime_error("error calling hwloc_topology_load");
-  }
-  // PU=processing unit, which are hardware threads.
-  [[maybe_unused]] const int number_of_processing_units =
-      hwloc_get_nbobjs_by_type(topology_, hwloc_obj_type_t::HWLOC_OBJ_PU);
-  const int number_of_cores =
-      hwloc_get_nbobjs_by_type(topology_, hwloc_obj_type_t::HWLOC_OBJ_CORE);
-  if (number_of_cores < thread_pin_offset_ + number_of_threads) {
-    throw std::runtime_error(
-        "There are fewer cores than the offset and number of threads can "
-        "accomodate");
-  }
-
   producer_tokens_.reserve(number_of_threads);
   consumer_tokens_.reserve(number_of_threads);
   for (uint32_t i = 0; i < number_of_threads; i++) {
@@ -184,14 +171,7 @@ template <class MessageType, class ProcessLocalDataType>
 inline void ThreadPool<MessageType, ProcessLocalDataType>::pin_and_thread_loop(
     const uint32_t thread_id,
     const std::optional<uint32_t> thread_to_print_from) {
-  hwloc_obj_t core_to_pin =
-      hwloc_get_obj_by_type(topology_, hwloc_obj_type_t::HWLOC_OBJ_CORE,
-                            thread_pin_offset_ + thread_id);
-
-  if (hwloc_set_cpubind(topology_, core_to_pin->cpuset, HWLOC_CPUBIND_THREAD) <
-      0) {
-    throw std::runtime_error("Error calling hwloc_set_cpubind\n");
-  }
+  hardware_info::bind_current_thread_to_core(thread_pin_offset_ + thread_id);
   return thread_loop(thread_id, thread_to_print_from);
 }
 
