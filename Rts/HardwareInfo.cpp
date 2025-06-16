@@ -59,4 +59,42 @@ CacheInfo cache_info(const size_t level) {
   static const auto info = detail::cache_info();
   return info[level - 1];
 }
+
+void bind_current_thread_to_core(const size_t core_id) {
+  // Bind/pin the thread to a CPU core.
+  //
+  // Modified from:
+  // https://github.com/eliben/code-for-blog/blob/master/2016/threads-affinity/hwloc-example.cpp
+  hwloc_topology_t topology{};
+  if (const auto hwloc_result = hwloc_topology_init(&topology);
+      hwloc_result < 0) {
+    throw Exception("error calling hwloc_topology_init: " +
+                    std::to_string(hwloc_result));
+  }
+  if (const auto hwloc_result = hwloc_topology_load(topology);
+      hwloc_result < 0) {
+    throw Exception("Error calling hwloc_topology_load: " +
+                    std::to_string(hwloc_result));
+  }
+  const int number_of_cores =
+      hwloc_get_nbobjs_by_type(topology, hwloc_obj_type_t::HWLOC_OBJ_CORE);
+
+  if (core_id >= number_of_cores) {
+    throw Exception{"Cannot bind to core " + std::to_string(core_id) +
+                    " because we only have " + std::to_string(number_of_cores) +
+                    " cores."};
+  }
+
+  const hwloc_obj_t core_to_pin = hwloc_get_obj_by_type(
+      topology, hwloc_obj_type_t::HWLOC_OBJ_CORE, core_id);
+
+  if (const auto hwloc_result = hwloc_set_cpubind(topology, core_to_pin->cpuset,
+                                                  HWLOC_CPUBIND_THREAD);
+      hwloc_result < 0) {
+    throw Exception("Error calling hwloc_set_cpubind: " +
+                    std::to_string(hwloc_result));
+  }
+
+  hwloc_topology_destroy(topology);
+}
 }  // namespace rts::hardware_info
