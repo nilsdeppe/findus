@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -16,11 +17,13 @@
 #include <string>
 #include <thread>
 #include <tuple>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/Exceptions/Mpi.hpp"
+#include "Rts/HardwareInfo.hpp"
 #include "Rts/MessageTags.hpp"
 #include "Rts/ParentAndChildren.hpp"
 
@@ -95,6 +98,24 @@ DistributedTaskDriver::DistributedTaskDriver(int* argc, char** argv[],
 
   thread_pool_ = std::make_unique<ThreadPool_t>(
       static_cast<uint32_t>(number_of_threads_), 1, this);
+  if (current_node_id() == 0) {
+    const hardware_info::CpuInfo cpu_info = hardware_info::cpu_info();
+    std::printf(
+        "rts: Hardware info from process 0:\n"
+        "rts:   Number of processors:       %9d\n"
+        "rts:   Number of NUMA nodes:       %9d\n"
+        "rts:   Number of cores:            %9d\n"
+        "rts:   Number of hardware threads: %9d\n"
+        "rts:   L1 cache size (kB):         %9d\n"
+        "rts:   L2 cache size (kB):         %9d\n"
+        "rts:   L3 cache size (kB):         %9d\n",
+        cpu_info.number_of_processors, cpu_info.number_of_numa_nodes,
+        cpu_info.number_of_cores, cpu_info.number_of_processing_units,
+        static_cast<int>(hardware_info::cache_info(1).size) / 1024,
+        static_cast<int>(hardware_info::cache_info(2).size) / 1024,
+        static_cast<int>(hardware_info::cache_info(3).size) / 1024);
+  }
+
 
   parent_and_children_ =
       detail::parent_and_children(current_node_id(), number_of_nodes());
