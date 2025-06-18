@@ -195,7 +195,7 @@ bool Global::check(MPI_Comm& comm) {
   return terminate_ == 1 ? true : false;
 }
 
-void Global::wait_for_broadcast(MPI_Comm& comm) {
+void Global::wait_for_broadcast() {
   if (broadcast_left_child_request_.has_value()) {
     if (const auto mpi_result =
             MPI_Wait(&broadcast_left_child_request_.value(), MPI_STATUS_IGNORE);
