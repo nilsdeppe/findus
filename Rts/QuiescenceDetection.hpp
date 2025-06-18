@@ -290,7 +290,7 @@ class Global {
   ///
   /// In addition to waiting for all the termination broadcasts to complete,
   /// it also verifies that all down and up messages are complete.
-  void wait_for_broadcast(MPI_Comm& comm);
+  void wait_for_broadcast();
 
   /// \brief Should be called every time a regular message is received with
   /// sweep number in that regular message.

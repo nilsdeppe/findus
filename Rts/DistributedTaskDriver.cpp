@@ -165,7 +165,7 @@ void DistributedTaskDriver::run_to_quiescence(const int max_to_receive,
       if (local_qd_counter >= local_qd_counts_for_global_qd_) {
         local_qd_counter = 0;
         if (global_qd_.check(rts_comm_)) {
-          global_qd_.wait_for_broadcast(rts_comm_);
+          global_qd_.wait_for_broadcast();
           global_qd_.safe_reset();
           return;
         }
