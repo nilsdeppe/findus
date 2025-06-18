@@ -29,6 +29,8 @@ target_link_libraries(
   PUBLIC
   MPI::MPI_CXX
   -lhwloc
+  PRIVATE
+  RtsFlags
 )
 
 if (BUILD_TESTING AND TARGET doctest::doctest)
