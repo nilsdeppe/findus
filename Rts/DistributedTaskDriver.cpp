@@ -364,7 +364,7 @@ void DistributedTaskDriver::attach_debugger() {
 void DistributedTaskDriver::invoke(Message_t& message,
                                    const uint32_t thread_id) {
   MessageHeader* message_header = Message_t::get_header(message);
-  (this->*threaded_action_absolute_ptr(message_header->member_function_ptr))(
+  (this->*threaded_action_absolute_ptr(message_header->member_function_ptr()))(
       message);
 }
 
@@ -407,7 +407,7 @@ void DistributedTaskDriver::initiate_sends(const int max_to_send) {
       Message_t& message = std::get<1>(outgoing_mpi_messages_.back());
       MessageHeader& message_header = *Message_t::get_header(message);
       const int num_bytes =
-          static_cast<int>(number_of_bytes_in_message(message_header));
+          static_cast<int>(message_header.number_of_bytes_in_message());
       if (const auto mpi_result =
               MPI_Isend(message.message.get(), num_bytes, MPI_BYTE, dest,
                         message_tags::regular, rts_comm_, &request);
@@ -582,7 +582,7 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
     global_qd_.increment_processed();
     global_qd_.update_last_regular_message_sweep_number(
         Message_t::get_header(std::get<1>(*it))
-            ->quiescence_detection_sweep_number);
+            ->quiescence_detection_sweep_number());
     MPI_Request_free(&std::get<0>(*it));
   }
   thread_pool_->add_tasks(BulkEnqueueIterator{received_start},

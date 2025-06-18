@@ -602,8 +602,9 @@ void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
                       data_offset,
                       current_node_id(),
                       target_node,
-                      global_qd_.local_sweep_number()};
-    rts::set_data_was_serialized(*message, false);
+                      global_qd_.local_sweep_number(),
+                      false,
+                      MessageType::Invoke};
     Data_t* data_location = rts::create_data_in_message<Data_t>(*message);
 
     *data_location = Data_t{std::forward<Args>(args)...};
@@ -617,9 +618,9 @@ void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
 template <class Action, class ParallelComponent, class... ArgIndexes>
 void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
   MessageHeader* header = Message_t::get_header(message);
-  if (header->distributed_object_index >= distributed_objects_.size()) {
+  if (header->distributed_object_index() >= distributed_objects_.size()) {
     throw rts::Exception{"Requested distributed object with index " +
-                         std::to_string(header->distributed_object_index) +
+                         std::to_string(header->distributed_object_index()) +
                          " but only have " +
                          std::to_string(distributed_objects_.size())};
   }
@@ -627,7 +628,7 @@ void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
   using Data_t = std::tuple<typename ArgIndexes::type...>;
   Data_t args_data{};
   Data_t* args = nullptr;
-  if (rts::data_was_serialized(*header)) {
+  if (header->data_was_serialized()) {
     args = std::addressof(args_data);
     (void)std::initializer_list<char>{[&args_data, &message]() {
       (void)message;
@@ -642,15 +643,15 @@ void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
   if constexpr (rts::is_collection_v<ParallelComponent>) {
     dynamic_cast<ParallelComponent&>(
         *std::get<1>(
-             distributed_objects_[header->distributed_object_index].objects)
-             .at(header->target_collection_index)
+             distributed_objects_[header->distributed_object_index()].objects)
+             .at(header->target_collection_index())
              .object)
         .template threaded_action<Action>(
             *this, std::move(std::get<ArgIndexes::index>(*args))...);
   } else {
     dynamic_cast<ParallelComponent&>(
         *std::get<0>(
-            distributed_objects_[header->distributed_object_index].objects))
+            distributed_objects_[header->distributed_object_index()].objects))
         .template threaded_action<Action>(
             *this, std::move(std::get<ArgIndexes::index>(*args))...);
   }
