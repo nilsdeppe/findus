@@ -5,14 +5,13 @@
 #include "HardwareInfo.hpp"
 
 #include <array>
-#include <cassert>
 #include <hwloc.h>
 #include <string>
 
 #include "Rts/Exceptions/Exception.hpp"
 
 namespace rts::hardware_info {
-namespace detail {
+namespace {
 std::array<CacheInfo, 3> cache_info() {
   hwloc_topology_t topology_;
   if (const auto hwloc_result = hwloc_topology_init(&topology_);
@@ -51,12 +50,14 @@ std::array<CacheInfo, 3> cache_info() {
   hwloc_topology_destroy(topology_);
   return info;
 }
-}  // namespace detail
+}  // namespace
 
 CacheInfo cache_info(const size_t level) {
-  assert(level > 0);
-  assert(level <= 3);
-  static const auto info = detail::cache_info();
+  if (level > 3 or level == 0) {
+    throw Exception{"Cache level must be 1, 2, or 3, got " +
+                    std::to_string(level)};
+  }
+  static const auto info = cache_info();
   return info[level - 1];
 }
 
@@ -70,14 +71,37 @@ CpuInfo cpu_info_impl() {
   }
   if (const auto hwloc_result = hwloc_topology_load(topology);
       hwloc_result < 0) {
+    hwloc_topology_destroy(topology);
     throw Exception("Error calling hwloc_topology_load: " +
                     std::to_string(hwloc_result));
   }
-  CpuInfo info{
+  const CpuInfo info{
       hwloc_get_nbobjs_by_type(topology, hwloc_obj_type_t::HWLOC_OBJ_PACKAGE),
       hwloc_get_nbobjs_by_type(topology, hwloc_obj_type_t::HWLOC_OBJ_NUMANODE),
       hwloc_get_nbobjs_by_type(topology, hwloc_obj_type_t::HWLOC_OBJ_CORE),
       hwloc_get_nbobjs_by_type(topology, hwloc_obj_type_t::HWLOC_OBJ_PU)};
+  if (info.number_of_processors < 1) {
+    hwloc_topology_destroy(topology);
+    throw Exception{"Error calling hwloc, got fewer than 1 processors: " +
+                    std::to_string(info.number_of_processors)};
+  }
+  if (info.number_of_numa_nodes < 1) {
+    hwloc_topology_destroy(topology);
+    throw Exception{"Error calling hwloc, got fewer than 1 NUMA nodes: " +
+                    std::to_string(info.number_of_numa_nodes)};
+  }
+  if (info.number_of_cores < 1) {
+    hwloc_topology_destroy(topology);
+    throw Exception{"Error calling hwloc, got fewer than 1 core: " +
+                    std::to_string(info.number_of_cores)};
+  }
+  if (info.number_of_processing_units < 1) {
+    hwloc_topology_destroy(topology);
+    throw Exception{
+        "Error calling hwloc, got fewer than 1 processing "
+        "units/hyperthreads/simultaneous multithreads: " +
+        std::to_string(info.number_of_processing_units)};
+  }
   hwloc_topology_destroy(topology);
   return info;
 }
@@ -101,13 +125,21 @@ void bind_current_thread_to_core(const size_t core_id) {
   }
   if (const auto hwloc_result = hwloc_topology_load(topology);
       hwloc_result < 0) {
+    hwloc_topology_destroy(topology);
     throw Exception("Error calling hwloc_topology_load: " +
                     std::to_string(hwloc_result));
   }
   const int number_of_cores =
       hwloc_get_nbobjs_by_type(topology, hwloc_obj_type_t::HWLOC_OBJ_CORE);
 
-  if (core_id >= number_of_cores) {
+  if (number_of_cores < 0) {
+    hwloc_topology_destroy(topology);
+    throw Exception{"hwloc gave a negative number of cores, " +
+                    std::to_string(number_of_cores)};
+  }
+
+  if (core_id >= static_cast<size_t>(number_of_cores)) {
+    hwloc_topology_destroy(topology);
     throw Exception{"Cannot bind to core " + std::to_string(core_id) +
                     " because we only have " + std::to_string(number_of_cores) +
                     " cores."};
@@ -119,6 +151,7 @@ void bind_current_thread_to_core(const size_t core_id) {
   if (const auto hwloc_result = hwloc_set_cpubind(topology, core_to_pin->cpuset,
                                                   HWLOC_CPUBIND_THREAD);
       hwloc_result < 0) {
+    hwloc_topology_destroy(topology);
     throw Exception("Error calling hwloc_set_cpubind: " +
                     std::to_string(hwloc_result));
   }
@@ -126,3 +159,65 @@ void bind_current_thread_to_core(const size_t core_id) {
   hwloc_topology_destroy(topology);
 }
 }  // namespace rts::hardware_info
+
+#if defined(RTS_ENABLE_TESTING)
+
+#include <doctest/doctest.h>
+#include <string>
+
+#include "Rts/Detail/GetOutput.hpp"
+
+namespace rts::hardware_info {
+TEST_CASE("HardwareInfo") {
+  CHECK_THROWS_AS(cache_info(4), Exception);
+  try {
+    cache_info(4);
+  } catch (const Exception& e) {
+    CHECK(std::string{e.what()} == "Cache level must be 1, 2, or 3, got 4");
+  }
+  CHECK_THROWS_AS(cache_info(0), Exception);
+  try {
+    cache_info(0);
+  } catch (const Exception& e) {
+    CHECK(std::string{e.what()} == "Cache level must be 1, 2, or 3, got 0");
+  }
+  for (size_t i = 1; i < 4; ++i) {
+    const CacheInfo ci = cache_info(i);
+    CHECK(ci.level == i);
+    CHECK(ci.size > 0);
+    // Cache size is likely under 1GB on all systems. Increase in necessary.
+    CHECK(ci.size < 1024 * 1024 * 1024);
+    CHECK(ci.linesize > 0);
+    // Cache size is likely under 1kB on all systems. Increase in necessary.
+    CHECK(ci.linesize < 1024);
+  }
+
+  CHECK(cpu_info().number_of_processors > 0);
+  // Unlikely to have more than 4 processors per node. Increase if necessary.
+  CHECK(cpu_info().number_of_processors < 5);
+  CHECK(cpu_info().number_of_numa_nodes > 0);
+  // Unlikely to have more than 4 NUMA nodes per node. Increase if necessary.
+  CHECK(cpu_info().number_of_numa_nodes < 5);
+  CHECK(cpu_info().number_of_cores > 0);
+  // Unlikely to have more than 1024 cores per node. Increase if necessary.
+  CHECK(cpu_info().number_of_cores < 1025);
+  CHECK(cpu_info().number_of_processing_units > 0);
+  // Unlikely to have more than 2048 PUs per node. Increase if necessary.
+  CHECK(cpu_info().number_of_processing_units < 2049);
+
+  bind_current_thread_to_core(1);
+
+  // Unlikely to have 1 million cores. Increase if necessary.
+  const size_t core_bind_id = 1000000;
+  CHECK_THROWS(bind_current_thread_to_core(core_bind_id));
+  try {
+    bind_current_thread_to_core(core_bind_id);
+  } catch (const Exception& e) {
+    CHECK(std::string{e.what()} ==
+          "Cannot bind to core " + std::to_string(core_bind_id) +
+              " because we only have " +
+              std::to_string(cpu_info().number_of_cores) + " cores.");
+  }
+}
+}  // namespace rts::hardware_info
+#endif

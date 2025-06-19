@@ -7,7 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <new>
+#include <new>  // for hardware_destructive_interference_size
 
 namespace rts::hardware_info {
 #ifdef __cpp_lib_hardware_interference_size
@@ -39,10 +39,6 @@ struct CacheInfo {
   /// sharing.
   uint64_t linesize;
 };
-
-namespace detail {
-std::array<CacheInfo, 3> cache_info();
-}  // namespace detail
 
 /*!
  * \brief Get cache size and linesize in bytes for either the level 1, 2, or 3
