@@ -9,12 +9,12 @@
 
 namespace rts {
 /*!
- * \brief Represent the result of an action invocation.
+ * \brief Represents the result of an action invocation.
  *
  * This is used to communicate back to the RTS if a message should be
  * resubmitted to the thread pool.
  */
-enum class ActionState : uint16_t {
+enum class ActionState : std::uint8_t {
   /// A default state to catch uninitialized states.
   Uninitialized = 0,
   /// The action was invoked successfully.
@@ -28,5 +28,5 @@ enum class ActionState : uint16_t {
 };
 
 /// \brief Stream operator for `rts::ActionState`
-std::ostream& operator<<(std::ostream& os, const ActionState& action_state);
+std::ostream& operator<<(std::ostream& os, const ActionState action_state);
 }  // namespace rts
