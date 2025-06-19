@@ -9,19 +9,29 @@
 #include "Rts/DistributedObject.hpp"
 
 namespace rts {
+/*!
+ *
+ */
 template <class ParallelComponent>
 class DistributedObjectCollection
     : public DistributedObject<ParallelComponent> {
  public:
-  DistributedObjectCollection() {
-    static_assert(
-        std::is_base_of_v<DistributedObjectCollection<ParallelComponent>,
-                          ParallelComponent>,
-        "The ParallelComponent must inherit from "
-        "DistributedObject<ParallelComponent>");
-  }
-  ~DistributedObjectCollection() override = default;
+  DistributedObjectCollection();
+  ~DistributedObjectCollection() override;
 
   using DistributedObject<ParallelComponent>::DistributedObject;
 };
+
+template <class ParallelComponent>
+DistributedObjectCollection<ParallelComponent>::DistributedObjectCollection() {
+  static_assert(
+      std::is_base_of_v<DistributedObjectCollection<ParallelComponent>,
+                        ParallelComponent>,
+      "The ParallelComponent must inherit from "
+      "DistributedObject<ParallelComponent>");
+}
+
+template <class ParallelComponent>
+DistributedObjectCollection<ParallelComponent>::~DistributedObjectCollection() =
+    default;
 }  // namespace rts

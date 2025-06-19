@@ -21,7 +21,7 @@
 #include <variant>
 #include <vector>
 
-#include "Rts/DistributedObjectBase.hpp"
+#include "Rts/Detail/DistributedObjectBase.hpp"
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/IsCollection.hpp"
 #include "Rts/MessageHeader.hpp"
@@ -401,13 +401,14 @@ class DistributedTaskDriver {
   struct DistributedOjectClassHolder {
     struct CollectionHolder {
       int node_id = -1;
-      std::unique_ptr<DistributedObjectBase> object = nullptr;
+      std::unique_ptr<detail::DistributedObjectBase> object = nullptr;
     };
 
     using Map_t = std::unordered_map<uint64_t, CollectionHolder>;
 
     DistributedOjectClassHolder(
-        std::unique_ptr<DistributedObjectBase> in_object, std::string in_name)
+        std::unique_ptr<detail::DistributedObjectBase> in_object,
+        std::string in_name)
         : objects(std::move(in_object)), name(std::move(in_name)) {}
 
     DistributedOjectClassHolder(
@@ -416,7 +417,7 @@ class DistributedTaskDriver {
         : objects(std::move(in_objects)), name(std::move(in_name)) {}
 
     using variant_t =
-        std::variant<std::unique_ptr<DistributedObjectBase>, Map_t>;
+        std::variant<std::unique_ptr<detail::DistributedObjectBase>, Map_t>;
     variant_t objects;
     std::string name;
     int number_of_local_objects{-1};
@@ -455,7 +456,7 @@ void DistributedTaskDriver::insert_parallel_component(Args&&... args) {
         std::to_string(index) + " and name " + ParallelComponent::name());
   }
   distributed_objects_.emplace_back(
-      std::unique_ptr<DistributedObjectBase>{
+      std::unique_ptr<detail::DistributedObjectBase>{
           std::make_unique<ParallelComponent>(std::forward<Args>(args)...)},
       ParallelComponent::name());
   distributed_objects_.back().number_of_local_objects = 1;
@@ -510,7 +511,7 @@ void DistributedTaskDriver::insert_parallel_component_collection(
     collection.emplace(std::pair{
         collection_index,
         DistributedOjectClassHolder::CollectionHolder{
-            node_to_insert_on, std::unique_ptr<DistributedObjectBase>{
+            node_to_insert_on, std::unique_ptr<detail::DistributedObjectBase>{
                                    std::make_unique<ParallelComponent>(
                                        std::forward<Args>(args)...)}}});
     ++distributed_objects_[index].number_of_local_objects;
@@ -521,11 +522,11 @@ void DistributedTaskDriver::insert_parallel_component_collection(
                     std::to_string(number_of_nodes_) + " nodes.\n");
   } else {
     // Insert for tracking which node this collection element is on.
-    collection.emplace(
-        std::pair{collection_index,
-                  DistributedOjectClassHolder::CollectionHolder{
-                      node_to_insert_on,
-                      std::unique_ptr<DistributedObjectBase>{nullptr}}});
+    collection.emplace(std::pair{
+        collection_index,
+        DistributedOjectClassHolder::CollectionHolder{
+            node_to_insert_on,
+            std::unique_ptr<detail::DistributedObjectBase>{nullptr}}});
   }
 }
 

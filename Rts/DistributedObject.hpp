@@ -6,24 +6,21 @@
 
 #include <type_traits>
 
-#include "Rts/ActionState.hpp"
-#include "Rts/DistributedObjectBase.hpp"
+#include "Rts/Detail/DistributedObjectBase.hpp"
 
 namespace rts {
 template <class ParallelComponent>
-class DistributedObject : public DistributedObjectBase {
+class DistributedObject : public detail::DistributedObjectBase {
  public:
-  DistributedObject() {
-    static_assert(std::is_base_of_v<DistributedObject<ParallelComponent>,
-                                    ParallelComponent>,
-                  "The ParallelComponent must inherit from "
-                  "DistributedObject<ParallelComponent>");
-  }
+  DistributedObject();
   ~DistributedObject() override = default;
-
-  ActionState invoke_action(const uint32_t function_index,
-                            char* serialized_data) override {
-    return {};
-  }
 };
+
+template <class ParallelComponent>
+DistributedObject<ParallelComponent>::DistributedObject() {
+  static_assert(std::is_base_of_v<DistributedObject<ParallelComponent>,
+                                  ParallelComponent>,
+                "The ParallelComponent must inherit from "
+                "DistributedObject<ParallelComponent>");
+}
 }  // namespace rts
