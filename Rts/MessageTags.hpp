@@ -10,8 +10,10 @@ namespace rts {
 /// \brief The MPI tags for different types of messages sent across the system.
 ///
 /// The default offset is `1024`, chosen somewhat arbitrarily but to avoid 0
-/// to reduce collision with other libraries. This can be overridden by the
-/// macro `RTS_MESSAGE_OFFSET`.
+/// to reduce collision with other libraries. This can be overridden by passing
+/// `-D RTS_MESSAGE_OFFSET=NUMBER` to CMake when building the RTS. This cannot
+/// be changed at user application compilation time because RTS internals
+/// depend on the underlying values.
 enum message_tags : int {
   /// \brief The tag for a regular message between different distributed
   /// objects.
@@ -35,5 +37,6 @@ enum message_tags : int {
   logging
 };
 
+/// \brief Stream operator for `message_tags`.
 std::ostream& operator<<(std::ostream& os, message_tags tag);
 }  // namespace rts
