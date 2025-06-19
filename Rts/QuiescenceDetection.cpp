@@ -20,48 +20,48 @@
 
 namespace rts::qd {
 bool Local::is_quiescent(const std::int64_t total_number_of_threads) {
-  if (phase == 1) {
-    if (number_of_idle_threads.load(std::memory_order_acquire) !=
+  if (phase_ == 1) {
+    if (number_of_idle_threads_.load(std::memory_order_acquire) !=
         total_number_of_threads) {
       return false;
     }
-    if (const std::int64_t message_count = number_of_messages_sent.load(
+    if (const std::int64_t message_count = number_of_messages_sent_.load(
             std::memory_order::memory_order_acquire);
         // sends == receives
-        message_count == number_of_messages_processed.load(
+        message_count == number_of_messages_processed_.load(
                              std::memory_order::memory_order_acquire)) {
-      previous_count = message_count;
-      phase = 2;
+      previous_count_ = message_count;
+      phase_ = 2;
       return false;
     }
     // sends != receives
     return false;
-  } else if (phase == 2) {
-    if (number_of_idle_threads.load(std::memory_order_acquire) !=
+  } else if (phase_ == 2) {
+    if (number_of_idle_threads_.load(std::memory_order_acquire) !=
         total_number_of_threads) {
-      phase = 1;
+      phase_ = 1;
       return false;
     }
 
-    if (const std::int64_t message_count = number_of_messages_sent.load(
+    if (const std::int64_t message_count = number_of_messages_sent_.load(
             std::memory_order::memory_order_acquire);
         // sends == receives
-        message_count == number_of_messages_processed.load(
+        message_count == number_of_messages_processed_.load(
                              std::memory_order::memory_order_acquire)
-        // AND previous_count == current_count
-        and previous_count == message_count) {
+        // AND previous_count_ == current_count
+        and previous_count_ == message_count) {
       return true;
     }
-    // sends != receives or (previous_count != current_count)
+    // sends != receives or (previous_count_ != current_count)
     //
-    // Our previous hope for quiescence failed, go back to phase 1.
-    phase = 1;
+    // Our previous hope for quiescence failed, go back to phase_ 1.
+    phase_ = 1;
     return false;
   }
   throw std::runtime_error{
       "The only valid local quiescence detection phases are 1 and 2, but "
       "have the value " +
-      std::to_string(phase)};
+      std::to_string(phase_)};
 }
 
 Global::Global() = default;
@@ -560,3 +560,70 @@ void Global::send_quiescence_broadcast_to(
   }
 }
 }  // namespace rts::qd
+
+#if defined(RTS_ENABLE_TESTING)
+
+#include <doctest/doctest.h>
+
+namespace rts::qd {
+void test_local_qd() {
+  // Note: Testing for race conditions is inherently difficult, since they
+  // involve undefined behavior and non-deterministic thread interleavings.
+  // While we can use sleeps or artificial delays to try to expose some races,
+  // such tests only simulate possible scenarios—they cannot guarantee that
+  // thread-safety issues are absent. By definition, it's impossible to verify
+  // in a test that all concurrent executions are safe.
+
+  // Test quiescence detection with 3 threads.
+  constexpr int number_of_threads = 3;
+
+  // Note: We cannot test the exception because there is no external way to
+  // set the phase_ member variable to a different value without some spooky
+  // pointer reinterpret_cast magic that is extremely fragile.
+
+  Local local;
+  // Not enough idle threads, not quiescent, phase 1
+  CHECK(local.is_quiescent(number_of_threads) == false);
+
+  // Make all threads idle, still not quiescent because messages not
+  // sent/processed
+  for (int i = 0; i < number_of_threads; ++i) {
+    local.increment_idle_thread_count();
+  }
+  CHECK(local.is_quiescent(number_of_threads) == false);
+  // We should be quiescent on a second call.
+  CHECK(local.is_quiescent(number_of_threads) == true);
+
+  // One message sent but not processed, so no longer quiescent
+  local.increment_sent();
+  CHECK(local.is_quiescent(number_of_threads) == false);
+
+  // Now process one message: sent == processed, should move to phase 2, but
+  // still return false
+  local.increment_processed();
+  CHECK(local.is_quiescent(number_of_threads) == false);
+
+  // Next call (still in phase 2, nothing changed), now should return true
+  // (quiescent)
+  CHECK(local.is_quiescent(number_of_threads) == true);
+
+  // Now make some thread non-idle; phase should reset to 1 and return false
+  local.decrement_idle_thread_count();
+  CHECK(local.is_quiescent(number_of_threads) == false);
+
+  // Restore idle threads, process another message, but sent != processed
+  // (should stay false)
+  local.increment_idle_thread_count();
+  local.increment_sent();
+  CHECK(local.is_quiescent(number_of_threads) == false);
+
+  // Now process it, sent == processed, should return false for new phase2, then
+  // true
+  local.increment_processed();
+  CHECK(local.is_quiescent(number_of_threads) == false);
+  CHECK(local.is_quiescent(number_of_threads) == true);
+}
+
+TEST_CASE("QuiescenceDetection") { test_local_qd(); }
+}  // namespace rts::qd
+#endif
