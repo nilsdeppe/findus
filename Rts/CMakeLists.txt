@@ -40,7 +40,7 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
   # so that any library or executable linked against it can safely ignore
   # whether or not doctest is needed.
   add_library(_RtsDoctestImpl
-    DoctestImpl.cpp
+    Detail/DoctestImpl.cpp
   )
   target_link_libraries(_RtsDoctestImpl
     PRIVATE
@@ -56,7 +56,7 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
   # Add a separate testing executable for the unit tests.
   add_executable(
     Test
-    Test.cpp
+    Detail/Test.cpp
   )
   target_link_libraries(Test
     PRIVATE
