@@ -624,6 +624,26 @@ void test_local_qd() {
   CHECK(local.is_quiescent(number_of_threads) == true);
 }
 
-TEST_CASE("QuiescenceDetection") { test_local_qd(); }
+void test_safe_add() {
+  constexpr auto max = std::numeric_limits<std::int64_t>::max();
+
+  CHECK(safe_add(1, 2) == 3);
+  CHECK(safe_add(max, 0) == max);
+  CHECK(safe_add(0, max) == max);
+  CHECK(safe_add(max, 5) == max);
+  CHECK(safe_add(5, max) == max);
+  CHECK(safe_add(max, max) == max);
+  CHECK(safe_add(-5, 2) == -3);
+  CHECK(safe_add(-5, -7) == -12);
+
+  // Check that adding to min does not trip the guard
+  constexpr auto min = std::numeric_limits<std::int64_t>::min();
+  CHECK(safe_add(min, 1) == min + 1);
+}
+
+TEST_CASE("QuiescenceDetection") {
+  test_local_qd();
+  test_safe_add();
+}
 }  // namespace rts::qd
 #endif
