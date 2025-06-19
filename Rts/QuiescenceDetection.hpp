@@ -60,25 +60,25 @@ class Local {
  public:
   /// Increment the number of idle threads
   void increment_idle_thread_count() {
-    number_of_idle_threads.fetch_add(1,
-                                     std::memory_order::memory_order_acq_rel);
+    number_of_idle_threads_.fetch_add(1,
+                                      std::memory_order::memory_order_acq_rel);
   }
 
   /// Decrement the number of idle threads
   void decrement_idle_thread_count() {
-    number_of_idle_threads.fetch_sub(1,
-                                     std::memory_order::memory_order_acq_rel);
+    number_of_idle_threads_.fetch_sub(1,
+                                      std::memory_order::memory_order_acq_rel);
   }
 
   /// Increment the number of messages sent
   void increment_sent() {
-    number_of_messages_sent.fetch_add(1,
-                                      std::memory_order::memory_order_acq_rel);
+    number_of_messages_sent_.fetch_add(1,
+                                       std::memory_order::memory_order_acq_rel);
   }
 
   /// Increment the number of messages processed
   void increment_processed() {
-    number_of_messages_processed.fetch_add(
+    number_of_messages_processed_.fetch_add(
         1, std::memory_order::memory_order_acq_rel);
   }
 
@@ -97,20 +97,20 @@ class Local {
   /// The phase of the SKR algorithm we are in.
   ///
   /// Valid states are 1 and 2.
-  std::uint8_t phase{1};
+  std::uint8_t phase_{1};
   /// In the SKR algorithm the number_of_idle_threads being equal to the
   /// number of threads means all threads have sent their idle status.
   alignas(hardware_info::hardware_destructive_interference_size)
-      std::atomic<std::int64_t> number_of_idle_threads{0};
+      std::atomic<std::int64_t> number_of_idle_threads_{0};
   /// number_of_messages_sent is N_c in the SKR algorithm.
   alignas(hardware_info::hardware_destructive_interference_size)
-      std::atomic<std::int64_t> number_of_messages_sent{0};
+      std::atomic<std::int64_t> number_of_messages_sent_{0};
   /// number_of_messages_processed is N_p in the SKR algorithm.
   alignas(hardware_info::hardware_destructive_interference_size)
-      std::atomic<std::int64_t> number_of_messages_processed{0};
+      std::atomic<std::int64_t> number_of_messages_processed_{0};
   /// previous_count is N_p in the SKR algorithm.
   alignas(hardware_info::hardware_destructive_interference_size) std::int64_t
-      previous_count{0};
+      previous_count_{0};
 };
 
 /*!
