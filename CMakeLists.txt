@@ -25,6 +25,7 @@ if (BUILD_TESTING)
 endif(BUILD_TESTING)
 
 find_package(MPI REQUIRED COMPONENTS CXX)
+find_package(hwloc REQUIRED)
 
 add_subdirectory(Rts)
 
@@ -37,6 +38,5 @@ target_link_libraries(
   Main
   PUBLIC
   MPI::MPI_CXX
-  -lhwloc
   ToyRTS
 )
