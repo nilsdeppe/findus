@@ -131,6 +131,9 @@ class DistributedTaskDriver {
   /// quiescence is detected.
   void force_threads_to_stop();
 
+  /// \brief Returns the ID of the current thread.
+  std::uint32_t thread_id() const { return thread_id_; }
+
   /// \brief Returns `true` if the process is locally quiescent.
   ///
   /// Messages from other processes can cause this to no longer be true.
@@ -432,6 +435,11 @@ class DistributedTaskDriver {
   int mpi_version_{0};
   int mpi_subversion_{0};
   int node_id_for_receive_{0};
+  // Note: the thread_id_ is set upon entry from the thread pool.
+  // We have an offset of 1 because we consider thread 0 on the process to be
+  // the communication thread.
+  static constexpr std::uint32_t thread_id_offset_ = 1;
+  static thread_local std::uint32_t thread_id_;
 
   std::unique_ptr<ThreadPool_t> thread_pool_{};
   std::vector<DistributedOjectClassHolder> distributed_objects_;

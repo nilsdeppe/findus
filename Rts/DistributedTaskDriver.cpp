@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <mpi.h>
 #include <optional>
@@ -363,6 +364,7 @@ void DistributedTaskDriver::attach_debugger() {
 
 void DistributedTaskDriver::invoke(Message_t& message,
                                    const uint32_t thread_id) {
+  thread_id_ = thread_id_offset_ + thread_id;
   MessageHeader* message_header = Message_t::get_header(message);
   (this->*threaded_action_absolute_ptr(message_header->member_function_ptr()))(
       message);
@@ -589,6 +591,9 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
                           static_cast<size_t>(messages_to_emplace));
   incoming_mpi_messages_.erase(received_start, incoming_mpi_messages_.end());
 }
+
+thread_local std::uint32_t DistributedTaskDriver::thread_id_ =
+    std::numeric_limits<std::uint32_t>::max();
 
 static const std::unique_ptr<DistributedTaskDriver> task_driver = nullptr;
 
