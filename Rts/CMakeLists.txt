@@ -29,9 +29,9 @@ target_link_libraries(
   ${LIBRARY}
   PUBLIC
   MPI::MPI_CXX
-  -lhwloc
   PRIVATE
   RtsFlags
+  hwloc::hwloc
 )
 
 if (BUILD_TESTING AND TARGET doctest::doctest)
