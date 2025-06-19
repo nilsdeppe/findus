@@ -16,6 +16,12 @@ struct ParentAndChildren {
   int right_process_id{-1};
 };
 
+/// \brief Equivalence for ParentAndChildren
+bool operator==(const ParentAndChildren& lhs, const ParentAndChildren& rhs);
+
+/// \brief Inequivalence for ParentAndChildren
+bool operator!=(const ParentAndChildren& lhs, const ParentAndChildren& rhs);
+
 /// \brief Stream operator for `ParentAndChildren`
 std::ostream& operator<<(std::ostream& os, const ParentAndChildren& t);
 
