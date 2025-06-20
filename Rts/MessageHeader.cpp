@@ -11,6 +11,7 @@
 #include <string>
 #include <type_traits>
 
+#include "Rts/Detail/GetOutput.hpp"
 #include "Rts/Detail/MemberFunctionPtr.hpp"
 #include "Rts/Exceptions/Exception.hpp"
 
@@ -83,6 +84,23 @@ MessageHeader::MessageHeader(detail::MemberFunctionPtr member_function_ptr,
   set_message_type(number_of_bytes_in_message_, message_type);
 }
 
+void MessageHeader::change_destination_process_id(
+    const std::int32_t destination_process_id) {
+  destination_process_id_ = destination_process_id;
+}
+
+void MessageHeader::convert_broadcast_to_invoke(
+    const std::uint64_t target_collection_index) {
+  if (not is_broadcast() and not is_broadcast_to()) {
+    throw Exception{"Cannot convert message type " +
+                    detail::get_output(message_type()) +
+                    " to an Invoke message because we can only convert "
+                    "Broadcast and BroadcastTo messages."};
+  }
+  set_message_type(number_of_bytes_in_message_, MessageType::Invoke);
+  target_collection_index_ = target_collection_index;
+}
+
 static_assert(std::alignment_of_v<MessageHeader> == 64);
 static_assert(
     std::is_same_v<std::underlying_type_t<MessageType>, std::uint8_t>);
@@ -92,8 +110,6 @@ static_assert(
 
 #include <doctest/doctest.h>
 #include <memory>
-
-#include "Rts/Detail/GetOutput.hpp"
 
 namespace rts {
 namespace {
@@ -153,16 +169,12 @@ TEST_CASE("MessageHeader") {
     CHECK(*data_from_message<T>(message_header) == expected_data);
     CHECK(alignof(T) == message_header.data_alignment());
 
-    CHECK_THROWS_AS(data_from_message<char>(message_header), Exception);
-    try {
-      data_from_message<char>(message_header);
-    } catch (const Exception& e) {
-      CHECK(std::string{e.what()} ==
-            std::string{"The data alignment in the message ("} +
-                std::to_string(alignof(T)) +
-                std::string{
-                    ") does not match the alignment of the returned type 1"});
-    }
+    const std::string expected_message =
+        std::string{"The data alignment in the message ("} +
+        std::to_string(alignof(T)) +
+        std::string{") does not match the alignment of the returned type 1"};
+    CHECK_THROWS_WITH_AS(data_from_message<char>(message_header),
+                         expected_message.c_str(), Exception);
   };
 
   for (const auto message_type : {MessageType::Invoke, MessageType::Broadcast,
@@ -209,20 +221,49 @@ TEST_CASE("MessageHeader") {
       }
     }
   }
-  CHECK_THROWS(MessageHeader{foo_ptr, 0, 1099511627776, 11, 10, 2, 7, 8, false,
-                             MessageType::Invoke});
+  CHECK_THROWS_WITH_AS(
+      MessageHeader(foo_ptr, 0, 1099511627776, 11, 10, 2, 7, 8, false,
+                    MessageType::Invoke),
+      "Message size must be under 1099511627776 bytes but got 1099511627776",
+      Exception);
   CHECK_NOTHROW(MessageHeader{foo_ptr, 0, 1099511627775, 11, 10, 2, 7, 8, false,
                               MessageType::Invoke});
-  try {
-    MessageHeader{foo_ptr, 0,     1099511627776,      11, 10, 2, 7,
-                  8,       false, MessageType::Invoke};
-  } catch (const Exception& e) {
-    CHECK(
-        std::string{e.what()} ==
-        "Message size must be under 1099511627776 bytes but got 1099511627776");
-  }
   // Check alignment bits math works out as expected.
   CHECK(MessageHeader::max_alignment == 255);
+
+  {
+    INFO("Test change_destination_process_id()");
+    MessageHeader header{foo_ptr, 2, 64, 0,     8,
+                         3,       1, 0,  false, MessageType::Broadcast};
+    CHECK(header.destination_process_id() == 1);
+    header.change_destination_process_id(42);
+    CHECK(header.destination_process_id() == 42);
+  }
+
+  {
+    INFO("Test convert_broadcast_to_invoke()");
+    MessageHeader broadcast{foo_ptr, 0, 64, 0,     8,
+                            3,       1, 0,  false, MessageType::Broadcast};
+    CHECK(broadcast.is_broadcast());
+    broadcast.convert_broadcast_to_invoke(17);
+    CHECK(broadcast.message_type() == MessageType::Invoke);
+    CHECK(broadcast.target_collection_index() == 17);
+
+    MessageHeader broadcast_to{foo_ptr, 8, 64, 0,     8,
+                               3,       1, 0,  false, MessageType::BroadcastTo};
+    CHECK(broadcast_to.is_broadcast_to());
+    broadcast_to.convert_broadcast_to_invoke(4321);
+    CHECK(broadcast_to.message_type() == MessageType::Invoke);
+    CHECK(broadcast_to.target_collection_index() == 4321);
+
+    MessageHeader invoke{foo_ptr, 9, 64, 0,     8,
+                         3,       1, 0,  false, MessageType::Invoke};
+    CHECK_THROWS_WITH_AS(
+        invoke.convert_broadcast_to_invoke(99),
+        "Cannot convert message type Invoke to an Invoke message because we "
+        "can only convert Broadcast and BroadcastTo messages.",
+        Exception);
+  }
 }
 }  // namespace rts
 #endif

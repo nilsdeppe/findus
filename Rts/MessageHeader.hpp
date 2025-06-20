@@ -161,6 +161,23 @@ struct alignas(64) MessageHeader {
     return (data_alignment_mask bitand number_of_bytes_in_message_) >> 52;
   }
 
+  /// \brief Changes the destination to process ID.
+  ///
+  /// This is used in broadcast operations where a broadcast is sent to each
+  /// child process. We copy the original message and then update the
+  /// destination, which is original set to the self process ID.
+  void change_destination_process_id(std::int32_t destination_process_id);
+
+  /// \brief Convert Broadcast or BroadcastTo message to an Invoke message.
+  ///
+  /// This is used in broadcast operations where the broadcast message has a
+  /// placeholder target collection index that is overridden to the specified
+  /// target index that is node-local and the rts::MessageType is changed from
+  /// rts::MessageType::Broadcast or rts::MessageType::BroadcastTo to
+  /// rts::MessageType::Invoke. An Exception is thrown if the message type
+  /// isn't for a broadcast.
+  void convert_broadcast_to_invoke(std::uint64_t target_collection_index);
+
   /// \brief The number of bits used to store type alignment information.
   static constexpr std::uint8_t alignment_bits = 8;
   /// \brief The maximum type alignment supported.
