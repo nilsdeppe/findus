@@ -4,9 +4,15 @@
 
 #include "Rts/MessageHeader.hpp"
 
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <ostream>
+#include <string>
 #include <type_traits>
 
 #include "Rts/Detail/MemberFunctionPtr.hpp"
+#include "Rts/Exceptions/Exception.hpp"
 
 namespace rts {
 std::ostream& operator<<(std::ostream& os, MessageType t) {
@@ -33,17 +39,19 @@ void set_data_was_serialized(std::uint64_t& metadata,
                              const bool data_was_serialized) {
   if (data_was_serialized) {
     // Set highest bit to 1
-    metadata = std::uint64_t{0b1} << 63 bitor metadata;
+    metadata = MessageHeader::data_was_serialized_mask bitor metadata;
   } else {
     // Set highest bit to zero
-    metadata =
-        std::uint64_t{std::numeric_limits<std::uint64_t>::max() >> 1} bitand
-        metadata;
+    metadata = (compl MessageHeader::data_was_serialized_mask) bitand metadata;
   }
 }
 
 void set_message_type(std::uint64_t& message_metadata,
                       const MessageType message_type) {
+  // Zero out bits.
+  message_metadata =
+      (compl MessageHeader::message_type_mask) bitand message_metadata;
+  // Set bits
   message_metadata =
       (static_cast<std::uint64_t>(message_type) << 60) bitor message_metadata;
 }
@@ -66,6 +74,11 @@ MessageHeader::MessageHeader(detail::MemberFunctionPtr member_function_ptr,
       source_process_id_(source_process_id),
       destination_process_id_(destination_process_id),
       quiescence_detection_sweep_number_(quiescence_detection_sweep_number) {
+  // 1099511627775 is 2^40-1, the largest number we can represent with 40 bits.
+  if (number_of_bytes_in_message > 1099511627775) {
+    throw Exception{"Message size must be under 1099511627776 bytes but got " +
+                    std::to_string(number_of_bytes_in_message)};
+  }
   set_data_was_serialized(number_of_bytes_in_message_, was_serialized);
   set_message_type(number_of_bytes_in_message_, message_type);
 }
@@ -84,10 +97,14 @@ static_assert(
 
 namespace rts {
 namespace {
-struct TestClass {
+struct alignas(64) TestClass {
   void foo() {}
   void bar() {}
+  std::uint64_t value;
 };
+bool operator==(const TestClass& lhs, const TestClass& rhs) {
+  return lhs.value == rhs.value;
+}
 }  // namespace
 
 TEST_CASE("MessageType") {
@@ -101,13 +118,18 @@ TEST_CASE("MessageType") {
 }
 
 TEST_CASE("MessageHeader") {
+  CHECK(alignof(TestClass) == 64);
   const auto foo_ptr = detail::to_member_function_ptr(&TestClass::foo);
 
   const auto test_impl = [&foo_ptr](
                              MessageHeader& message_header,
                              const MessageType expected_message_type,
                              const std::uint64_t expected_collection_index,
-                             const bool expected_data_was_serialized) {
+                             const bool expected_data_was_serialized,
+                             const auto& expected_data) {
+    using T = std::decay_t<decltype(expected_data)>;
+    T* message_data = rts::create_data_in_message<T>(message_header);
+    *message_data = expected_data;
     CHECK(message_header.member_function_ptr() == foo_ptr);
     CHECK(message_header.target_collection_index() ==
           expected_collection_index);
@@ -126,9 +148,21 @@ TEST_CASE("MessageHeader") {
     CHECK(message_header.is_broadcast_to() ==
           (expected_message_type == MessageType::BroadcastTo));
 
-    CHECK(reinterpret_cast<char*>(data_from_message<int>(message_header)) ==
+    CHECK(reinterpret_cast<char*>(data_from_message<T>(message_header)) ==
           std::next(reinterpret_cast<char*>(&message_header), 128));
-    CHECK(*data_from_message<int>(message_header) == 13);
+    CHECK(*data_from_message<T>(message_header) == expected_data);
+    CHECK(alignof(T) == message_header.data_alignment());
+
+    CHECK_THROWS_AS(data_from_message<char>(message_header), Exception);
+    try {
+      data_from_message<char>(message_header);
+    } catch (const Exception& e) {
+      CHECK(std::string{e.what()} ==
+            std::string{"The data alignment in the message ("} +
+                std::to_string(alignof(T)) +
+                std::string{
+                    ") does not match the alignment of the returned type 1"});
+    }
   };
 
   for (const auto message_type : {MessageType::Invoke, MessageType::Broadcast,
@@ -138,11 +172,12 @@ TEST_CASE("MessageHeader") {
            {static_cast<std::uint64_t>(5),
             MessageHeader::no_collection_index()}) {
         constexpr size_t bytes_in_message = 256;
-        std::unique_ptr<char[]> buffer{new (
-            std::align_val_t(alignof(MessageHeader))) char[bytes_in_message]};
+        std::unique_ptr<char[]> buffer{new (std::align_val_t(
+            std::max(alignof(MessageHeader),
+                     alignof(TestClass)))) char[bytes_in_message]};
         constexpr std::uint64_t expected_data_offset = 128;
         REQUIRE(sizeof(MessageHeader) <= expected_data_offset);
-        MessageHeader* message_header =
+        MessageHeader* message_header_int =
             new (buffer.get()) MessageHeader{foo_ptr,
                                              collection_index,
                                              bytes_in_message,
@@ -153,13 +188,41 @@ TEST_CASE("MessageHeader") {
                                              8,
                                              data_is_serialized,
                                              message_type};
-        int* message_data = rts::create_data_in_message<int>(*message_header);
-        *message_data = 13;
-        test_impl(*message_header, message_type, collection_index,
-                  data_is_serialized);
+        const int expected_int = 13;
+        test_impl(*message_header_int, message_type, collection_index,
+                  data_is_serialized, expected_int);
+
+        MessageHeader* message_header_test_class =
+            new (buffer.get()) MessageHeader{foo_ptr,
+                                             collection_index,
+                                             bytes_in_message,
+                                             11,
+                                             expected_data_offset,
+                                             2,
+                                             7,
+                                             8,
+                                             data_is_serialized,
+                                             message_type};
+        const TestClass expected_test_class{19};
+        test_impl(*message_header_test_class, message_type, collection_index,
+                  data_is_serialized, expected_test_class);
       }
     }
   }
+  CHECK_THROWS(MessageHeader{foo_ptr, 0, 1099511627776, 11, 10, 2, 7, 8, false,
+                             MessageType::Invoke});
+  CHECK_NOTHROW(MessageHeader{foo_ptr, 0, 1099511627775, 11, 10, 2, 7, 8, false,
+                              MessageType::Invoke});
+  try {
+    MessageHeader{foo_ptr, 0,     1099511627776,      11, 10, 2, 7,
+                  8,       false, MessageType::Invoke};
+  } catch (const Exception& e) {
+    CHECK(
+        std::string{e.what()} ==
+        "Message size must be under 1099511627776 bytes but got 1099511627776");
+  }
+  // Check alignment bits math works out as expected.
+  CHECK(MessageHeader::max_alignment == 255);
 }
 }  // namespace rts
 #endif
