@@ -1,0 +1,253 @@
+# Distributed under the MIT License.
+# See LICENSE.txt for details.
+
+# Last updated for Doxygen 1.9.1
+# See https://www.doxygen.nl/manual/config.html
+# for documentation on the commands in this file.
+
+#---------------------------------------------------------------------------
+# Project related configuration options
+#---------------------------------------------------------------------------
+
+PROJECT_NAME           = ToyRTS
+
+PROJECT_NUMBER         = @CODE_VERSION@
+
+OUTPUT_DIRECTORY       = @PROJECT_BINARY_DIR@/docs
+
+STRIP_FROM_PATH        = @PROJECT_SOURCE_DIR@
+
+JAVADOC_AUTOBRIEF      = YES
+
+MULTILINE_CPP_IS_BRIEF = YES
+
+TAB_SIZE               = 2
+
+ALIASES                = "codeversion=@CODE_VERSION@" \
+                         "semantics=<p></p><i>Semantics:</i>" \
+                         "metareturns=<p></p><i>Returns:</i> " \
+                         "return=<p></p><i>Returns:</i> " \
+                         "requires=<p></p><i>Requires:</i> " \
+                         "effects=<p></p><i>Effects:</i> " \
+                         "synchronization=<p></p><i>Synchronization:</i> " \
+                         "postconditions=<p></p><i>Postconditions:</i> " \
+                         "returns=<p></p><i>Returns:</i> " \
+                         "throws=<p></p><i>Throws:</i> " \
+                         "complexity=<p></p><i>Complexity:</i> " \
+                         "remarks=<p></p><i>Remarks:</i> " \
+                         "errorconditions=<p></p><i>Error Conditions:</i> " \
+                         "notes=<p></p><i>Notes:</i> " \
+                         "details=<p></p><h3>Details</h3>" \
+                         "usage=<p></p><h3>Usage</h3>" \
+                         "example=<p></p><h3>Example</h3>" \
+                         "derivedrequires=<p></p><i>Derived Class Requires:</i>"
+
+DISTRIBUTE_GROUP_DOC   = YES
+
+SUBGROUPING            = YES
+
+#---------------------------------------------------------------------------
+# Build related configuration options
+#---------------------------------------------------------------------------
+
+EXTRACT_ALL            = YES
+
+EXTRACT_PRIVATE        = NO
+
+EXTRACT_STATIC         = YES
+
+EXTRACT_LOCAL_CLASSES  = NO
+
+# We want to be able to have undocumented members, such as size() that show
+# up but what they do is rather obvious.
+WARN_IF_UNDOCUMENTED   = NO
+
+CASE_SENSE_NAMES       = YES
+
+GENERATE_TODOLIST      = NO
+
+GENERATE_TESTLIST      = NO
+
+GENERATE_BUGLIST       = NO
+
+STRIP_CODE_COMMENTS    = NO
+
+SHOW_FILES             = NO
+
+SHOW_USED_FILES        = YES
+
+VERBATIM_HEADERS       = NO
+
+# CITE_BIB_FILES         = @PROJECT_SOURCE_DIR@/docs/References.bib \
+#                          @PROJECT_SOURCE_DIR@/docs/Dependencies.bib
+
+#---------------------------------------------------------------------------
+# configuration options related to the input files
+#---------------------------------------------------------------------------
+
+# Add the documentation pages in the order they should appear in the tree view.
+# Use `\subpage` within the pages to establish a hierarchy.
+INPUT = @PROJECT_SOURCE_DIR@/docs \
+        @PROJECT_SOURCE_DIR@/Rts
+
+USE_MDFILE_AS_MAINPAGE = @PROJECT_SOURCE_DIR@/docs/Main.md
+
+# We don't parse cpp files because Doxygen has trouble with some template
+# expressions and we place documentation in header files anyway.
+FILE_PATTERNS          = *.hpp \
+                         *.md
+
+RECURSIVE              = YES
+
+EXCLUDE                =
+
+EXCLUDE_SYMLINKS       = NO
+
+EXCLUDE_PATTERNS       =
+
+EXCLUDE_SYMBOLS        = std*                                         \
+                         YAML*
+
+EXAMPLE_PATH           = @PROJECT_SOURCE_DIR@/Rts
+
+EXAMPLE_PATTERNS       =
+
+EXAMPLE_RECURSIVE      = NO
+
+# Input filters run over content before it is parsed by Doxygen. They are
+# invoked with a file name as additional argument. We run the following filters:
+# - Format markdown math for Doxygen. See the documentation in
+#   `markdown-math-filter.pl` for details.
+# INPUT_FILTER           = "@PERL_EXECUTABLE@ -0777 -p @PROJECT_SOURCE_DIR@/docs/config/markdown-math-filter.pl"
+
+#---------------------------------------------------------------------------
+# configuration options related to the output
+#---------------------------------------------------------------------------
+
+GENERATE_HTML          = @DOX_GENERATE_HTML@
+
+HTML_HEADER            = @PROJECT_SOURCE_DIR@/docs/config/header.html
+
+HTML_FOOTER            = @PROJECT_SOURCE_DIR@/docs/config/footer.html
+
+IMAGE_PATH             = @PROJECT_SOURCE_DIR@/docs/
+
+GENERATE_LATEX         = NO
+
+GENERATE_RTF           = NO
+
+GENERATE_XML           = @DOX_GENERATE_XML@
+
+XML_OUTPUT             = xml
+
+#---------------------------------------------------------------------------
+# Configuration options related to the preprocessor
+#---------------------------------------------------------------------------
+
+ENABLE_PREPROCESSING   = YES
+
+MACRO_EXPANSION        = YES
+
+# Macros we actually want to expand during preprocessing
+# EXPAND_AS_DEFINED      =
+
+EXPAND_ONLY_PREDEF     = YES
+
+SEARCH_INCLUDES        = YES
+
+# PREDEFINED             = DOXYGEN_INVOKED
+
+#---------------------------------------------------------------------------
+# Configuration::additions related to external references
+#---------------------------------------------------------------------------
+
+# The tag file for cppref can be updated as new features are added to the
+# standard library and to C++ by cloning
+# https://github.com/p12tic/cppreference-doc (if that is no longer
+# available there is a fork available at
+# https://github.com/nilsdeppe/cppreference-doc), entering the directory
+# and running `make doc_doxygen`. The up-to-date tag file is place in the
+# `output` subdirectory and can then be copied into the SpECTRE repo
+# TAGFILES += "@PROJECT_SOURCE_DIR@/docs/config/cppreference-doxygen-web.tag.xml=http://en.cppreference.com/w/"
+
+ALLEXTERNALS           = NO
+
+#---------------------------------------------------------------------------
+# Configuration options related to the dot tool
+#---------------------------------------------------------------------------
+
+HAVE_DOT               = NO
+
+CLASS_GRAPH            = NO
+
+COLLABORATION_GRAPH    = NO
+
+GROUP_GRAPHS           = NO
+
+UML_LOOK               = NO
+
+TEMPLATE_RELATIONS     = NO
+
+INCLUDE_GRAPH          = NO
+
+INCLUDED_BY_GRAPH      = NO
+
+CALL_GRAPH             = NO
+
+CALLER_GRAPH           = NO
+
+GRAPHICAL_HIERARCHY    = NO
+
+DIRECTORY_GRAPH        = NO
+
+DOT_IMAGE_FORMAT       = svg
+
+MAX_DOT_GRAPH_DEPTH    = 0
+
+GENERATE_LEGEND        = NO
+
+#---------------------------------------------------------------------------
+# HTML layout file
+#---------------------------------------------------------------------------
+
+LAYOUT_FILE = @DOXYGEN_LAYOUT_FILE@
+
+HTML_EXTRA_FILES       = @PROJECT_SOURCE_DIR@/docs/config/icons/octicons.eot \
+                         @PROJECT_SOURCE_DIR@/docs/config/icons/octicons.svg \
+                         @PROJECT_SOURCE_DIR@/docs/config/icons/octicons.ttf \
+                         @PROJECT_SOURCE_DIR@/docs/config/icons/octicons.woff \
+                         @PROJECT_SOURCE_DIR@/docs/config/octicons.css \
+                         @AWESOME_CSS_DIR@/doxygen-awesome-fragment-copy-button.js \
+                         @AWESOME_CSS_DIR@/doxygen-awesome-interactive-toc.js \
+                         @AWESOME_CSS_DIR@/doxygen-awesome-paragraph-link.js \
+                         @PROJECT_SOURCE_DIR@/docs/.nojekyll
+
+GENERATE_TREEVIEW      = YES
+
+# This width must correspond to `side-nav-fixed-width` in `custom.css`
+# TREEVIEW_WIDTH         = 280
+
+HTML_EXTRA_STYLESHEET  = @AWESOME_CSS_DIR@/doxygen-awesome.css \
+                         @AWESOME_CSS_DIR@/doxygen-awesome-sidebar-only.css
+
+HTML_COLORSTYLE_HUE    = 209
+HTML_COLORSTYLE_SAT    = 255
+HTML_COLORSTYLE_GAMMA  = 113
+
+USE_MATHJAX = YES
+
+# MATHJAX_RELPATH ultimately links to docs/config/MathJax.js, which is
+# copied to docs/html/MathJax.js with the HTML_EXTRA_FILES
+MATHJAX_RELPATH = ./
+
+# Since Doxygen doesn't support MathJax 3 yet, we configure all the
+# extensions/packages through the docs/config/MathJax.js file.
+MATHJAX_EXTENSIONS =
+
+MATHJAX_CODEFILE =
+
+#---------------------------------------------------------------------------
+# Configuration::additions related to the search engine
+#---------------------------------------------------------------------------
+
+SEARCHENGINE           = YES

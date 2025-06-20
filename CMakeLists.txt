@@ -1,3 +1,6 @@
+# Copyright, Nils Deppe, 2022-
+# Distributed under the MIT License.
+# See LICENSE.txt for details.
 
 set(CODE_NAME ToyRts)
 set(CODE_VERSION 0.1.0)
@@ -16,6 +19,19 @@ if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.25)
   set(RTS_FETCHCONTENT_BASE_ARGS SYSTEM)
 else()
   set(RTS_FETCHCONTENT_BASE_ARGS "")
+endif()
+
+option(RTS_BUILD_DOCS "Enable building documentation" ON)
+option(
+  RTS_DOCS_ONLY
+  "Skip all initialization not required for rendering documentation"
+  OFF
+)
+if (RTS_BUILD_DOCS)
+  include(Documentation)
+  if (RTS_DOCS_ONLY)
+    return()
+  endif()
 endif()
 
 include(RtsFlags)
