@@ -11,6 +11,7 @@
 #include <string>
 
 #include "Rts/Detail/MemberFunctionPtr.hpp"
+#include "Rts/Exceptions/Exception.hpp"
 
 namespace rts {
 /*!
@@ -113,8 +114,7 @@ struct alignas(64) MessageHeader {
    * `MessageHeader`, padding, and the serialized data.
    */
   std::uint64_t number_of_bytes_in_message() const {
-    return std::uint64_t{std::numeric_limits<std::uint64_t>::max() >> 16} bitand
-           number_of_bytes_in_message_;
+    return number_of_bytes_in_message_mask bitand number_of_bytes_in_message_;
   }
 
   /*!
@@ -122,9 +122,7 @@ struct alignas(64) MessageHeader {
    */
   MessageType message_type() const {
     return static_cast<MessageType>(
-        ((static_cast<std::uint64_t>(0b111) << 60) bitand
-         number_of_bytes_in_message_) >>
-        60);
+        (message_type_mask bitand number_of_bytes_in_message_) >> 60);
   }
   /// \brief Returns `true` if the message is a broadcast.
   bool is_broadcast() const { return message_type() == MessageType::Broadcast; }
@@ -137,7 +135,7 @@ struct alignas(64) MessageHeader {
   /// \brief Returns `true` if the data was serialized and `false` if the data
   /// was in-place constructed.
   bool data_was_serialized() const {
-    return static_cast<bool>((std::uint64_t{0b1} << 63) bitand
+    return static_cast<bool>(data_was_serialized_mask bitand
                              number_of_bytes_in_message_);
   }
 
@@ -159,9 +157,52 @@ struct alignas(64) MessageHeader {
     return quiescence_detection_sweep_number_;
   }
 
+  std::uint32_t data_alignment() const {
+    return (data_alignment_mask bitand number_of_bytes_in_message_) >> 52;
+  }
+
+  /// \brief The number of bits used to store type alignment information.
+  static constexpr std::uint8_t alignment_bits = 8;
+  /// \brief The maximum type alignment supported.
+  static constexpr std::uint64_t max_alignment =
+      (std::uint64_t(1) << alignment_bits) - 1;
+
+  /// \brief The bitmask used to retrieve whether the data was serialized.
+  static constexpr std::uint64_t data_was_serialized_mask = std::uint64_t{0b1}
+                                                            << 63;
+  /// \brief The bitmask used to retrieve the rts::MessageType.
+  static constexpr std::uint64_t message_type_mask = std::uint64_t{0b111} << 60;
+  /// \brief The bitmask used to retrieve the data alignment.
+  static constexpr std::uint64_t data_alignment_mask =
+      MessageHeader::max_alignment << 52;
+  /// \brief The bitmask used to retrieve the number of bytes in the message.
+  static constexpr std::uint64_t number_of_bytes_in_message_mask =
+      (std::uint64_t{1} << 40) - 1;
+
  private:
+  template <class DataTypeReturned>
+  friend auto create_data_in_message(MessageHeader& message_header)
+      -> DataTypeReturned*;
+
+  void set_data_alignment(const std::uint64_t alignment) {
+    // Zero out bits.
+    number_of_bytes_in_message_ =
+        (compl data_alignment_mask) bitand number_of_bytes_in_message_;
+    // Set alignment.
+    number_of_bytes_in_message_ =
+        (alignment << 52) bitor number_of_bytes_in_message_;
+  }
+
   detail::MemberFunctionPtr member_function_ptr_ = {};
   std::uint64_t target_collection_index_ = 0;
+  // Holds several different pieces of information:
+  // 1. Lowest 40 bits are the number of bytes in the message.
+  //    Note: 40 bits gives a little over 1.09TB per message.
+  // 2. Highest bit is a flag as to whether the data was serialized.
+  // 3. 2nd to 4th (inclusive) highest bits (3 total) are the message type.
+  // 4. 5th to 12th (inclusive) highest bits are the alignment of the data.
+  //    Note: this means data may be at most 255 byte aligned.
+  // 5. 13th to 24th (inclusive) are currently unused.
   std::uint64_t number_of_bytes_in_message_ = 0;
   std::uint32_t distributed_object_index_ = 0;
   std::uint32_t data_offset_ = 0;
@@ -189,7 +230,7 @@ auto create_data_in_message(MessageHeader& message_header)
     -> DataTypeReturned* {
   if ((reinterpret_cast<std::uintptr_t>(message_header.data_location()) %
        alignof(DataTypeReturned)) != 0) {
-    throw std::runtime_error{
+    throw Exception{
         "Unable to convert data at address to the requested type because the "
         "alignment of the requested type is stricter than the alignment of the "
         "data. This means it is not possible to do a safe conversion or to "
@@ -200,6 +241,7 @@ auto create_data_in_message(MessageHeader& message_header)
                     std::to_string(reinterpret_cast<std::uintptr_t>(
                         message_header.data_location()))}};
   }
+  message_header.set_data_alignment(alignof(DataTypeReturned));
   DataTypeReturned* data =
       new (message_header.data_location()) DataTypeReturned{};
   return data;
@@ -223,7 +265,7 @@ template <class DataTypeReturned>
 auto data_from_message(MessageHeader& message_header) -> DataTypeReturned* {
   if ((reinterpret_cast<std::uintptr_t>(message_header.data_location()) %
        alignof(DataTypeReturned)) != 0) {
-    throw std::runtime_error{
+    throw Exception{
         "Unable to convert data at address to the requested type because the "
         "alignment of the requested type is stricter than the alignment of the "
         "data. This means it is not possible to do a safe conversion or to "
@@ -233,6 +275,12 @@ auto data_from_message(MessageHeader& message_header) -> DataTypeReturned* {
         std::string{" and the memory address is " +
                     std::to_string(reinterpret_cast<std::uintptr_t>(
                         message_header.data_location()))}};
+  }
+  if (alignof(DataTypeReturned) != message_header.data_alignment()) {
+    throw Exception{"The data alignment in the message (" +
+                    std::to_string(message_header.data_alignment()) +
+                    ") does not match the alignment of the returned type " +
+                    std::to_string(alignof(DataTypeReturned))};
   }
   return reinterpret_cast<DataTypeReturned*>(message_header.data_location());
 }
