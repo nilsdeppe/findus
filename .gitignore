@@ -73,3 +73,4 @@ TAGS
 tags
 # Keep Tags/ directories on case-insensitive file systems
 !Tags/
+.aider*
