@@ -101,6 +101,25 @@ void MessageHeader::convert_broadcast_to_invoke(
   target_collection_index_ = target_collection_index;
 }
 
+std::ostream& operator<<(std::ostream& os, const MessageHeader& header) {
+  os << "MessageHeader {"
+     << "\n  member_function_ptr: " << header.member_function_ptr()
+     << "\n  target_collection_index: " << header.target_collection_index()
+     << "\n  number_of_bytes_in_message: "
+     << header.number_of_bytes_in_message()
+     << "\n  distributed_object_index: " << header.distributed_object_index()
+     << "\n  data_offset: " << header.data_offset()
+     << "\n  source_process_id: " << header.source_process_id()
+     << "\n  destination_process_id: " << header.destination_process_id()
+     << "\n  quiescence_detection_sweep_number: "
+     << header.quiescence_detection_sweep_number()
+     << "\n  data_alignment: " << header.data_alignment()
+     << "\n  data_was_serialized: "
+     << (header.data_was_serialized() ? "true" : "false")
+     << "\n  message_type: " << header.message_type() << "\n}";
+  return os;
+}
+
 static_assert(std::alignment_of_v<MessageHeader> == 64);
 static_assert(
     std::is_same_v<std::underlying_type_t<MessageType>, std::uint8_t>);
@@ -263,6 +282,24 @@ TEST_CASE("MessageHeader") {
         "Cannot convert message type Invoke to an Invoke message because we "
         "can only convert Broadcast and BroadcastTo messages.",
         Exception);
+  }
+  {
+    const MessageHeader header{foo_ptr, 42, 256, 11,    128,
+                               2,       7,  8,   false, MessageType::Broadcast};
+    const std::string output = detail::get_output(header);
+    CHECK(output.find("MessageHeader {") != std::string::npos);
+    CHECK(output.find("member_function_ptr:") != std::string::npos);
+    CHECK(output.find("target_collection_index: 42") != std::string::npos);
+    CHECK(output.find("number_of_bytes_in_message: 256") != std::string::npos);
+    CHECK(output.find("distributed_object_index: 11") != std::string::npos);
+    CHECK(output.find("data_offset: 128") != std::string::npos);
+    CHECK(output.find("source_process_id: 2") != std::string::npos);
+    CHECK(output.find("destination_process_id: 7") != std::string::npos);
+    CHECK(output.find("quiescence_detection_sweep_number: 8") !=
+          std::string::npos);
+    CHECK(output.find("data_alignment:") != std::string::npos);
+    CHECK(output.find("data_was_serialized: false") != std::string::npos);
+    CHECK(output.find("message_type: Broadcast") != std::string::npos);
   }
 }
 }  // namespace rts
