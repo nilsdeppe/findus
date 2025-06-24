@@ -161,6 +161,8 @@ struct alignas(64) MessageHeader {
     return (data_alignment_mask bitand number_of_bytes_in_message_) >> 52;
   }
 
+  std::uint32_t data_offset() const { return data_offset_; }
+
   /// \brief Changes the destination to process ID.
   ///
   /// This is used in broadcast operations where a broadcast is sent to each
@@ -228,6 +230,9 @@ struct alignas(64) MessageHeader {
   std::uint64_t quiescence_detection_sweep_number_ =
       std::numeric_limits<std::uint64_t>::max();
 };
+
+/// \brief Stream operator for rts::MessageHeader
+std::ostream& operator<<(std::ostream& os, const MessageHeader& header);
 
 /*!
  * \brief Creates the `DataTypeReturned` in the data portion of the message.
