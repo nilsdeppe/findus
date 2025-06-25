@@ -45,6 +45,7 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
   )
   target_link_libraries(_RtsDoctestImpl
     PRIVATE
+    MPI::MPI_CXX
     RtsFlags
     doctest::doctest
   )
