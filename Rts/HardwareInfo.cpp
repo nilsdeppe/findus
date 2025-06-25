@@ -4,11 +4,19 @@
 
 #include "HardwareInfo.hpp"
 
+#include <algorithm>
 #include <array>
+#include <functional>
 #include <hwloc.h>
+#include <iomanip>
+#include <iostream>
+#include <mpi.h>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 #include "Rts/Exceptions/Exception.hpp"
+#include "Rts/Exceptions/Mpi.hpp"
 
 namespace rts::hardware_info {
 namespace {
@@ -178,14 +186,145 @@ void bind_current_thread_to_core(const size_t core_id) {
 
   hwloc_topology_destroy(topology);
 }
+
+namespace {
+struct GatheredHardwareInfo {
+  hardware_info::CpuInfo cpu_info;
+  std::array<hardware_info::CacheInfo, 3> cache_info;
+};
+
+[[maybe_unused]] bool operator==(const GatheredHardwareInfo& lhs,
+                                 const GatheredHardwareInfo& rhs) {
+  return lhs.cpu_info == rhs.cpu_info and lhs.cache_info == rhs.cache_info;
+}
+
+/*!
+ * \brief Converts a sorted list of process IDs into a compact, comma-separated
+ * string with ranges.
+ *
+ * This function takes a sorted vector of process IDs and returns a string where
+ * consecutive sequences are represented as ranges (e.g., "0-3,5,7-9" for input
+ * [0,1,2,3,5,7,8,9]). Single process IDs are listed individually.
+ *
+ * \param process_ids A sorted vector of process IDs.
+ * \return A comma-separated string with ranges representing the process IDs.
+ *
+ * \note The input vector must be sorted in ascending order for correct range
+ * detection. \note If the input vector is empty, an empty string is returned.
+ *
+ * \example
+ * std::string s = process_ids_to_ranges({0,1,2,3,5,7,8,9}); // s == "0-3,5,7-9"
+ */
+std::string process_ids_to_ranges(const std::vector<int>& process_ids) {
+  if (process_ids.empty()) {
+    return "";
+  }
+
+  std::string result;
+  int range_start = process_ids[0];
+  int previous_process_id = process_ids[0];
+
+  for (size_t i = 1; i <= process_ids.size(); ++i) {
+    if (i < process_ids.size() and process_ids[i] == previous_process_id + 1) {
+      previous_process_id = process_ids[i];
+      continue;
+    }
+    // End of a range
+    if (range_start == previous_process_id) {
+      result += std::to_string(range_start);
+    } else {
+      result += std::to_string(range_start) + "-" +
+                std::to_string(previous_process_id);
+    }
+    if (i < process_ids.size()) {
+      result += ",";
+      range_start = previous_process_id = process_ids[i];
+    }
+  }
+  return result;
+}
+}  // namespace
+}  // namespace rts::hardware_info
+
+template <>
+struct std::hash<rts::hardware_info::GatheredHardwareInfo> {
+  std::size_t operator()(
+      const rts::hardware_info::GatheredHardwareInfo& x) const noexcept {
+    return std::hash<std::string_view>{}(
+        std::string_view{reinterpret_cast<const char*>(&x),
+                         sizeof(rts::hardware_info::GatheredHardwareInfo)});
+  }
+};
+
+namespace rts::hardware_info {
+void print_hardware_info(const MPI_Comm comm) {
+  int this_process_id = -1;
+  if (MPI_Comm_rank(comm, &this_process_id) != MPI_SUCCESS) {
+    throw MpiException("Failed to get node rank when printing hardware info.");
+  }
+  int number_of_processes = -1;
+  if (MPI_Comm_size(comm, &number_of_processes) != MPI_SUCCESS) {
+    throw MpiException(
+        "Failed to get the number of nodes when printing hardware info.");
+  }
+
+  GatheredHardwareInfo local_hardware_info;
+  local_hardware_info.cpu_info = hardware_info::cpu_info();
+  local_hardware_info.cache_info[0] = hardware_info::cache_info(1);
+  local_hardware_info.cache_info[1] = hardware_info::cache_info(2);
+  local_hardware_info.cache_info[2] = hardware_info::cache_info(3);
+
+  std::vector<GatheredHardwareInfo> all_info;
+  if (this_process_id == 0) {
+    all_info.resize(static_cast<size_t>(number_of_processes));
+  }
+
+  if (const auto mpi_result = MPI_Gather(
+          &local_hardware_info, sizeof(GatheredHardwareInfo), MPI_BYTE,
+          all_info.data(), sizeof(GatheredHardwareInfo), MPI_BYTE, 0, comm);
+      mpi_result != MPI_SUCCESS) {
+    throw MpiException{"Failed Gather of hardware info for print with " +
+                       std::to_string(mpi_result)};
+  }
+
+  if (this_process_id == 0) {
+    std::unordered_map<GatheredHardwareInfo, std::vector<int>> groups{};
+    // Note: the process IDs for each GatheredHardwareInfo is guaranteed to be
+    // sorted.
+    for (int process_id = 0; process_id < number_of_processes; ++process_id) {
+      const auto& info = all_info[static_cast<size_t>(process_id)];
+      groups[info].push_back(process_id);
+    }
+
+    constexpr size_t print_width = 9;
+    for (const auto& [group, process_ids] : groups) {
+      // Print the hardware info for this group of process IDs.
+      std::cout
+          << "rts: Hardware info from processes "
+          << process_ids_to_ranges(process_ids)
+          << ":\nrts:   Number of processors:       " << std::setw(print_width)
+          << group.cpu_info.number_of_processors
+          << "\nrts:   Number of NUMA nodes:       " << std::setw(print_width)
+          << group.cpu_info.number_of_numa_nodes
+          << "\nrts:   Number of cores:            " << std::setw(print_width)
+          << group.cpu_info.number_of_cores
+          << "\nrts:   Number of hardware threads: " << std::setw(print_width)
+          << group.cpu_info.number_of_processing_units
+          << "\nrts:   L1 cache size (kB):         " << std::setw(print_width)
+          << static_cast<int>(group.cache_info[0].size) / 1024
+          << "\nrts:   L2 cache size (kB):         " << std::setw(print_width)
+          << static_cast<int>(group.cache_info[1].size) / 1024
+          << "\nrts:   L3 cache size (kB):         " << std::setw(print_width)
+          << static_cast<int>(group.cache_info[2].size) / 1024 << "\n";
+    }
+  }
+}
 }  // namespace rts::hardware_info
 
 #if defined(RTS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
-#include <string>
-
-#include "Rts/Detail/GetOutput.hpp"
+#include <doctest/extensions/doctest_mpi.h>
 
 namespace rts::hardware_info {
 TEST_CASE("HardwareInfo") {
@@ -266,6 +405,47 @@ TEST_CASE("HardwareInfo") {
   CHECK(a_cpu_info != d_cpu_info);
   CHECK(a_cpu_info != e_cpu_info);
   CHECK(a_cpu_info != f_cpu_info);
+
+  CHECK(process_ids_to_ranges({}) == "");
+  CHECK(process_ids_to_ranges({5}) == "5");
+  CHECK(process_ids_to_ranges({1, 3, 5}) == "1,3,5");
+  CHECK(process_ids_to_ranges({1, 2, 3, 5, 7}) == "1-3,5,7");
+  CHECK(process_ids_to_ranges({1, 3, 5, 6, 7}) == "1,3,5-7");
+  CHECK(process_ids_to_ranges({0, 1, 2, 3, 5, 7, 8, 9}) == "0-3,5,7-9");
+  CHECK(process_ids_to_ranges({4, 5, 6, 7}) == "4-7");
+  CHECK(process_ids_to_ranges({2, 4, 5, 6, 8}) == "2,4-6,8");
+}
+
+MPI_TEST_CASE("HardwareInfoParallel", 2) {
+  // Only check output on rank 0, since only rank 0 prints
+  if (test_rank == 0) {
+    // Redirect std::cout to a stringstream
+    std::stringstream buffer;
+    std::streambuf* old_cout = std::cout.rdbuf(buffer.rdbuf());
+
+    // Call the function
+    rts::hardware_info::print_hardware_info(test_comm);
+
+    // Restore std::cout
+    std::cout.rdbuf(old_cout);
+
+    // Get the output
+    std::string output = buffer.str();
+
+    // Check that some expected substrings are present
+    CHECK(output.find("rts: Hardware info") != std::string::npos);
+    CHECK(output.find("rts:   Number of processors:") != std::string::npos);
+    CHECK(output.find("rts:   Number of NUMA nodes:") != std::string::npos);
+    CHECK(output.find("rts:   Number of cores:") != std::string::npos);
+    CHECK(output.find("rts:   Number of hardware threads:") !=
+          std::string::npos);
+    CHECK(output.find("rts:   L1 cache size (kB):") != std::string::npos);
+    CHECK(output.find("rts:   L2 cache size (kB):") != std::string::npos);
+    CHECK(output.find("rts:   L3 cache size (kB):") != std::string::npos);
+  } else {
+    // On other ranks, just call the function (no output to check)
+    rts::hardware_info::print_hardware_info(test_comm);
+  }
 }
 }  // namespace rts::hardware_info
 #endif

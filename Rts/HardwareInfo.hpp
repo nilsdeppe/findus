@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <mpi.h>
 #include <new>  // for hardware_destructive_interference_size
 
 namespace rts::hardware_info {
@@ -109,4 +110,28 @@ CpuInfo cpu_info();
  * throw.
  */
 void bind_current_thread_to_core(size_t core_id);
+
+/*!
+ * \brief Prints hardware information for all processes in `comm`.
+ *
+ * Gathers hardware information including number of processors, NUMA nodes,
+ * cores, hardware threads, and cache sizes from all processes in the provided
+ * communicator. It then groups processes with identical hardware configurations
+ * and prints a summary to standard output. If all processes have the same
+ * hardware, a single summary is printed; otherwise, each group of processes
+ * with matching hardware is printed separately.
+ *
+ * Only rank 0 prints the output; other ranks participate in gathering the
+ * information.
+ *
+ * \param comm The MPI communicator over which to gather and print hardware
+ * information.
+ *
+ * \throws rts::MpiException if MPI calls fail.
+ * \throws rts::Exception if hardware information cannot be retrieved.
+ *
+ * \see rts::hardware_info::cpu_info
+ * \see rts::hardware_info::cache_info
+ */
+void print_hardware_info(MPI_Comm comm);
 }  // namespace rts::hardware_info
