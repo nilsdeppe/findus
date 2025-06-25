@@ -72,4 +72,13 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
   doctest_force_link_static_lib_in_target(Test ToyRTS)
   # Discover the Test and add them to CTest so we don't have to.
   doctest_discover_tests(Test)
+
+  # Add a separate testing for the MPI tests.
+  # This is because initializing MPI adds about 0.6 seconds to the test runtime.
+  add_test(
+    NAME HardwareInfoParallel.2Processes
+    COMMAND
+    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    $<TARGET_FILE:Test> --test-case=HardwareInfoParallel --rts-mpi-test
+  )
 endif()
