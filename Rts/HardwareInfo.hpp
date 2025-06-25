@@ -41,6 +41,22 @@ struct CacheInfo {
 };
 
 /*!
+ * \brief Equality operator for CacheInfo.
+ * \param lhs The left-hand side CacheInfo.
+ * \param rhs The right-hand side CacheInfo.
+ * \return True if all fields are equal, false otherwise.
+ */
+bool operator==(const CacheInfo& lhs, const CacheInfo& rhs);
+
+/*!
+ * \brief Inequality operator for CacheInfo.
+ * \param lhs The left-hand side CacheInfo.
+ * \param rhs The right-hand side CacheInfo.
+ * \return True if any field differs, false otherwise.
+ */
+bool operator!=(const CacheInfo& lhs, const CacheInfo& rhs);
+
+/*!
  * \brief Get cache size and linesize in bytes for either the level 1, 2, or 3
  * cache.
  *
@@ -63,6 +79,22 @@ struct CpuInfo {
   /// multithreading threads on the physical node.
   int number_of_processing_units;
 };
+
+/*!
+ * \brief Equality operator for CpuInfo.
+ * \param lhs The left-hand side CpuInfo.
+ * \param rhs The right-hand side CpuInfo.
+ * \return True if all fields are equal, false otherwise.
+ */
+bool operator==(const CpuInfo& lhs, const CpuInfo& rhs);
+
+/*!
+ * \brief Inequality operator for CpuInfo.
+ * \param lhs The left-hand side CpuInfo.
+ * \param rhs The right-hand side CpuInfo.
+ * \return True if any field differs, false otherwise.
+ */
+bool operator!=(const CpuInfo& lhs, const CpuInfo& rhs);
 
 /*!
  * \brief Get info about the CPU(s) on the physical node.
