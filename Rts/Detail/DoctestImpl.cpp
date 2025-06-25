@@ -4,7 +4,8 @@
 
 #if defined(RTS_ENABLE_TESTING)
 #define DOCTEST_CONFIG_IMPLEMENT
-#include "doctest/doctest.h"
+#include <doctest/doctest.h>
+#include <doctest/extensions/doctest_mpi.h>
 #else
 static_assert(
     false, "Should never compile DoctestImpl.cpp when testing isn't enabled.");
