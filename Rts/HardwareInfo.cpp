@@ -52,6 +52,15 @@ std::array<CacheInfo, 3> cache_info() {
 }
 }  // namespace
 
+bool operator==(const CacheInfo& lhs, const CacheInfo& rhs) {
+  return lhs.level == rhs.level and lhs.size == rhs.size and
+         lhs.linesize == rhs.linesize;
+}
+
+bool operator!=(const CacheInfo& lhs, const CacheInfo& rhs) {
+  return not(lhs == rhs);
+}
+
 CacheInfo cache_info(const size_t level) {
   if (level > 3 or level == 0) {
     throw Exception{"Cache level must be 1, 2, or 3, got " +
@@ -106,6 +115,17 @@ CpuInfo cpu_info_impl() {
   return info;
 }
 }  // namespace
+
+bool operator==(const CpuInfo& lhs, const CpuInfo& rhs) {
+  return lhs.number_of_processors == rhs.number_of_processors and
+         lhs.number_of_numa_nodes == rhs.number_of_numa_nodes and
+         lhs.number_of_cores == rhs.number_of_cores and
+         lhs.number_of_processing_units == rhs.number_of_processing_units;
+}
+
+bool operator!=(const CpuInfo& lhs, const CpuInfo& rhs) {
+  return not(lhs == rhs);
+}
 
 CpuInfo cpu_info() {
   static auto info = cpu_info_impl();
@@ -218,6 +238,34 @@ TEST_CASE("HardwareInfo") {
               " because we only have " +
               std::to_string(cpu_info().number_of_cores) + " cores.");
   }
+
+  const CacheInfo a_cache_info{1, 32768, 64};
+  const CacheInfo b_cache_info{1, 32768, 64};
+  const CacheInfo c_cache_info{2, 32768, 64};
+  const CacheInfo d_cache_info{1, 65536, 64};
+  const CacheInfo e_cache_info{1, 32768, 128};
+
+  CHECK(a_cache_info == b_cache_info);
+  CHECK_FALSE(a_cache_info != b_cache_info);
+
+  CHECK(a_cache_info != c_cache_info);
+  CHECK(a_cache_info != d_cache_info);
+  CHECK(a_cache_info != e_cache_info);
+
+  const CpuInfo a_cpu_info{2, 1, 8, 16};
+  const CpuInfo b_cpu_info{2, 1, 8, 16};
+  const CpuInfo c_cpu_info{4, 1, 8, 16};
+  const CpuInfo d_cpu_info{2, 2, 8, 16};
+  const CpuInfo e_cpu_info{2, 1, 4, 16};
+  const CpuInfo f_cpu_info{2, 1, 8, 8};
+
+  CHECK(a_cpu_info == b_cpu_info);
+  CHECK_FALSE(a_cpu_info != b_cpu_info);
+
+  CHECK(a_cpu_info != c_cpu_info);
+  CHECK(a_cpu_info != d_cpu_info);
+  CHECK(a_cpu_info != e_cpu_info);
+  CHECK(a_cpu_info != f_cpu_info);
 }
 }  // namespace rts::hardware_info
 #endif
