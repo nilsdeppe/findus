@@ -108,9 +108,17 @@ DistributedTaskDriver::DistributedTaskDriver(bool finalize_mpi,
 }
 
 DistributedTaskDriver::~DistributedTaskDriver() noexcept {
-  if (const auto mpi_result = MPI_Comm_free(&rts_comm_);
+  int mpi_is_finalized = 1;
+  if (const auto mpi_result = MPI_Finalized(&mpi_is_finalized);
       mpi_result != MPI_SUCCESS) {
-    std::cout << "Failed to free RTS communicator.\n" << std::flush;
+    std::cout << "Failed to check if MPI is finalized.\n" << std::flush;
+    mpi_is_finalized = 1;
+  }
+  if (not mpi_is_finalized) {
+    if (const auto mpi_result = MPI_Comm_free(&rts_comm_);
+        mpi_result != MPI_SUCCESS) {
+      std::cout << "Failed to free RTS communicator.\n" << std::flush;
+    }
   }
   if (finalize_mpi_) {
     MPI_Finalize();
@@ -577,22 +585,30 @@ thread_local std::uint32_t DistributedTaskDriver::thread_id_ =
 
 static const std::unique_ptr<DistributedTaskDriver> task_driver = nullptr;
 
-DistributedTaskDriver& create_distributed_task_driver(int* argc,
-                                                      char** argv[]) {
+DistributedTaskDriver& create_distributed_task_driver(
+    int* argc, char** argv[], const bool initialize_mpi) {
   if (task_driver != nullptr) {
     throw Exception(
         "Already initialized the task driver. You should only initialize the "
         "driver once.");
   }
-  int mpi_threading_support = MPI_SUCCESS;
-  if (MPI_Init_thread(argc, argv, MPI_THREAD_MULTIPLE,
-                      &mpi_threading_support) != MPI_SUCCESS) {
-    throw MpiException("Failed to initialize MPI");
+  int mpi_threading_support = MPI_THREAD_SINGLE;
+  if (initialize_mpi) {
+    if (argc == nullptr or argv == nullptr) {
+      throw Exception{
+          "Either argc or argv is nullptr. We cannot initialize MPI with them "
+          "being nullptrs."};
+    }
+    if (MPI_Init_thread(argc, argv, MPI_THREAD_MULTIPLE,
+                        &mpi_threading_support) != MPI_SUCCESS) {
+      throw MpiException("Failed to initialize MPI");
+    }
   }
 
+  // If we initialize MPI then we also finalize it on destruction.
   const_cast<std::unique_ptr<DistributedTaskDriver>&>(task_driver) =
       std::unique_ptr<DistributedTaskDriver>(new DistributedTaskDriver(
-          true, mpi_threading_support == MPI_THREAD_MULTIPLE));
+          initialize_mpi, mpi_threading_support == MPI_THREAD_MULTIPLE));
   task_driver->attach_debugger();
   return *task_driver.get();
 }

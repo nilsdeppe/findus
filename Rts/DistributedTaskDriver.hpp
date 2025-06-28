@@ -254,8 +254,8 @@ class DistributedTaskDriver {
   DistributedTaskDriver(bool finalize_mpi, bool mpi_supports_multithreading);
 
   /// \cond
-  friend DistributedTaskDriver& create_distributed_task_driver(int* argc,
-                                                               char** argv[]);
+  friend DistributedTaskDriver& create_distributed_task_driver(
+      int* argc, char** argv[], bool initialize_mpi);
 
   template <class ParallelComponent>
   friend ParallelComponent* local_parallel_component(
@@ -716,5 +716,6 @@ ParallelComponent* local_parallel_component(
 
 /// \brief Create the DistributedTaskDriver::the_driver object that can be
 /// used to globally access the task driver.
-DistributedTaskDriver& create_distributed_task_driver(int* argc, char** argv[]);
+DistributedTaskDriver& create_distributed_task_driver(int* argc, char** argv[],
+                                                      bool initialize_mpi);
 }  // namespace rts
