@@ -81,4 +81,10 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test> --test-case=HardwareInfoParallel --rts-mpi-test
   )
+  add_test(
+    NAME DistributedTaskDriver.2Processes
+    COMMAND
+    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    $<TARGET_FILE:Test> --test-case=DistributedTaskDriver --rts-mpi-test
+  )
 endif()

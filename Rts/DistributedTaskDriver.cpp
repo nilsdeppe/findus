@@ -25,6 +25,7 @@
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/Exceptions/Mpi.hpp"
 #include "Rts/HardwareInfo.hpp"
+#include "Rts/MessageHeader.hpp"
 #include "Rts/MessageTags.hpp"
 #include "Rts/ParentAndChildren.hpp"
 
@@ -123,6 +124,19 @@ DistributedTaskDriver::~DistributedTaskDriver() noexcept {
   if (finalize_mpi_) {
     MPI_Finalize();
   }
+}
+
+DistributedTaskDriver::Message_t DistributedTaskDriver::copy(
+    const DistributedTaskDriver::Message_t& message) const {
+  const MessageHeader& message_header = *Message_t::get_header(message);
+  std::unique_ptr<char[]> buffer{
+      new (std::align_val_t(
+          std::max(alignof(MessageHeader),
+                   static_cast<size_t>(message_header.data_alignment())))) char
+          [message_header.number_of_bytes_in_message()]};
+  std::memcpy(buffer.get(), message.message.get(),
+              message_header.number_of_bytes_in_message());
+  return {std::move(buffer)};
 }
 
 void DistributedTaskDriver::launch_threads(
@@ -617,3 +631,63 @@ namespace detail {
 uint32_t distributed_object_index_counter = 0;
 }  // namespace detail
 }  // namespace rts
+
+#if defined(RTS_ENABLE_TESTING)
+
+#include <doctest/doctest.h>
+#include <doctest/extensions/doctest_mpi.h>
+
+namespace rts {
+void test_copy_message(DistributedTaskDriver& driver) {
+  INFO("Test Copy Message_t");
+  // Setup a dummy MessageHeader
+  const rts::detail::MemberFunctionPtr dummy_ptr{};
+  const std::uint64_t target_collection_index = 42;
+  const std::uint64_t num_bytes = sizeof(rts::MessageHeader) + 16;
+  const std::uint32_t distributed_object_index = 7;
+  const std::uint32_t data_offset = sizeof(rts::MessageHeader);
+  const std::int32_t source_id = 1;
+  const std::int32_t dest_id = 2;
+  const std::uint64_t sweep = 123;
+  const bool was_serialized = false;
+  const rts::MessageType type = rts::MessageType::Invoke;
+
+  // Allocate buffer for message
+  std::unique_ptr<char[]> buffer(new char[num_bytes]);
+  // Placement new for header
+  const MessageHeader* header = new (buffer.get()) rts::MessageHeader(
+      dummy_ptr, target_collection_index, num_bytes, distributed_object_index,
+      data_offset, source_id, dest_id, sweep, was_serialized, type);
+
+  // Fill payload with known pattern
+  char* const payload = buffer.get() + data_offset;
+  for (size_t i = 0; i < 16; ++i) {
+    payload[i] = static_cast<char>(i + 10);
+  }
+
+  // Create the message
+  rts::DistributedTaskDriver::Message_t message;
+  message.message = std::move(buffer);
+
+  // Copy the message
+  DistributedTaskDriver::Message_t copied = driver.copy(message);
+
+  // Check header fields
+  const MessageHeader* copied_header =
+      rts::DistributedTaskDriver::Message_t::get_header(copied);
+  CHECK((*copied_header) == (*header));
+
+  // Check payload
+  const char* const copied_payload = copied.message.get() + data_offset;
+  for (size_t i = 0; i < 16; ++i) {
+    CHECK(copied_payload[i] == static_cast<char>(i + 10));
+  }
+}
+
+MPI_TEST_CASE("DistributedTaskDriver", 2) {
+  rts::DistributedTaskDriver& driver =
+      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  test_copy_message(driver);
+}
+}  // namespace rts
+#endif
