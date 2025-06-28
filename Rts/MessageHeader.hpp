@@ -231,6 +231,12 @@ struct alignas(64) MessageHeader {
       std::numeric_limits<std::uint64_t>::max();
 };
 
+/// \brief Equivalence operator for rts::MessageHeader
+bool operator==(const MessageHeader& lhs, const MessageHeader& rhs);
+
+/// \brief Inequivalence operator for rts::MessageHeader
+bool operator!=(const MessageHeader& lhs, const MessageHeader& rhs);
+
 /// \brief Stream operator for rts::MessageHeader
 std::ostream& operator<<(std::ostream& os, const MessageHeader& header);
 

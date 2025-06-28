@@ -101,6 +101,26 @@ void MessageHeader::convert_broadcast_to_invoke(
   target_collection_index_ = target_collection_index;
 }
 
+bool operator==(const MessageHeader& lhs, const MessageHeader& rhs) {
+  return lhs.member_function_ptr() == rhs.member_function_ptr() and
+         lhs.target_collection_index() == rhs.target_collection_index() and
+         lhs.number_of_bytes_in_message() ==
+             rhs.number_of_bytes_in_message() and
+         lhs.distributed_object_index() == rhs.distributed_object_index() and
+         lhs.data_offset() == rhs.data_offset() and
+         lhs.source_process_id() == rhs.source_process_id() and
+         lhs.destination_process_id() == rhs.destination_process_id() and
+         lhs.quiescence_detection_sweep_number() ==
+             rhs.quiescence_detection_sweep_number() and
+         lhs.data_alignment() == rhs.data_alignment() and
+         lhs.data_was_serialized() == rhs.data_was_serialized() and
+         lhs.message_type() == rhs.message_type();
+}
+
+bool operator!=(const MessageHeader& lhs, const MessageHeader& rhs) {
+  return not(lhs == rhs);
+}
+
 std::ostream& operator<<(std::ostream& os, const MessageHeader& header) {
   os << "MessageHeader {"
      << "\n  member_function_ptr: " << header.member_function_ptr()
@@ -300,6 +320,123 @@ TEST_CASE("MessageHeader") {
     CHECK(output.find("data_alignment:") != std::string::npos);
     CHECK(output.find("data_was_serialized: false") != std::string::npos);
     CHECK(output.find("message_type: Broadcast") != std::string::npos);
+  }
+
+  const rts::detail::MemberFunctionPtr dummy_ptr1{};
+  rts::detail::MemberFunctionPtr dummy_ptr2{};
+  dummy_ptr2.lower = 1;  // Make it different
+
+  const std::uint64_t target_collection_index = 42;
+  const std::uint64_t num_bytes = sizeof(rts::MessageHeader) + 16;
+  const std::uint32_t distributed_object_index = 7;
+  const std::uint32_t data_offset = sizeof(rts::MessageHeader);
+  const std::int32_t source_id = 1;
+  const std::int32_t dest_id = 2;
+  const std::uint64_t sweep = 123;
+  const bool was_serialized = false;
+  const rts::MessageType type = rts::MessageType::Invoke;
+
+  const rts::MessageHeader base(
+      dummy_ptr1, target_collection_index, num_bytes, distributed_object_index,
+      data_offset, source_id, dest_id, sweep, was_serialized, type);
+
+  const rts::MessageHeader identical(
+      dummy_ptr1, target_collection_index, num_bytes, distributed_object_index,
+      data_offset, source_id, dest_id, sweep, was_serialized, type);
+
+  CHECK(base == identical);
+  CHECK_FALSE(base != identical);
+
+  {
+    // member_function_ptr
+    CHECK(base != rts::MessageHeader(dummy_ptr2, target_collection_index,
+                                     num_bytes, distributed_object_index,
+                                     data_offset, source_id, dest_id, sweep,
+                                     was_serialized, type));
+  }
+  {
+    // target_collection_index
+    CHECK(base != rts::MessageHeader(dummy_ptr1, target_collection_index + 1,
+                                     num_bytes, distributed_object_index,
+                                     data_offset, source_id, dest_id, sweep,
+                                     was_serialized, type));
+  }
+  {
+    // number_of_bytes_in_message
+    CHECK(base != rts::MessageHeader(dummy_ptr1, target_collection_index,
+                                     num_bytes + 1, distributed_object_index,
+                                     data_offset, source_id, dest_id, sweep,
+                                     was_serialized, type));
+  }
+  {
+    // distributed_object_index
+    CHECK(base != rts::MessageHeader(dummy_ptr1, target_collection_index,
+                                     num_bytes, distributed_object_index + 1,
+                                     data_offset, source_id, dest_id, sweep,
+                                     was_serialized, type));
+  }
+  {
+    // data_offset
+    CHECK(base != rts::MessageHeader(dummy_ptr1, target_collection_index,
+                                     num_bytes, distributed_object_index,
+                                     data_offset + 1, source_id, dest_id, sweep,
+                                     was_serialized, type));
+  }
+  {
+    // source_process_id
+    CHECK(base != rts::MessageHeader(dummy_ptr1, target_collection_index,
+                                     num_bytes, distributed_object_index,
+                                     data_offset, source_id + 1, dest_id, sweep,
+                                     was_serialized, type));
+  }
+  {
+    // destination_process_id
+    CHECK(base != rts::MessageHeader(dummy_ptr1, target_collection_index,
+                                     num_bytes, distributed_object_index,
+                                     data_offset, source_id, dest_id + 1, sweep,
+                                     was_serialized, type));
+  }
+  {
+    // quiescence_detection_sweep_number
+    CHECK(base != rts::MessageHeader(dummy_ptr1, target_collection_index,
+                                     num_bytes, distributed_object_index,
+                                     data_offset, source_id, dest_id, sweep + 1,
+                                     was_serialized, type));
+  }
+  {
+    // data_alignment
+    auto buffer1 =
+        std::make_unique<char[]>(sizeof(rts::MessageHeader) + alignof(double));
+    auto* header1 = new (buffer1.get())
+        rts::MessageHeader(dummy_ptr1, target_collection_index, num_bytes,
+                           distributed_object_index, data_offset, source_id,
+                           dest_id, sweep, was_serialized, type);
+    rts::create_data_in_message<double>(*header1);
+
+    auto buffer2 =
+        std::make_unique<char[]>(sizeof(rts::MessageHeader) + alignof(int));
+    auto* header2 = new (buffer2.get())
+        rts::MessageHeader(dummy_ptr1, target_collection_index, num_bytes,
+                           distributed_object_index, data_offset, source_id,
+                           dest_id, sweep, was_serialized, type);
+    rts::create_data_in_message<int>(*header2);
+
+    CHECK_FALSE(*header1 == *header2);
+    CHECK(*header1 != *header2);
+  }
+  {
+    // data_was_serialized
+    CHECK(base != rts::MessageHeader(dummy_ptr1, target_collection_index,
+                                     num_bytes, distributed_object_index,
+                                     data_offset, source_id, dest_id, sweep,
+                                     not was_serialized, type));
+  }
+  {
+    // message_type
+    CHECK(base != rts::MessageHeader(
+                      dummy_ptr1, target_collection_index, num_bytes,
+                      distributed_object_index, data_offset, source_id, dest_id,
+                      sweep, was_serialized, rts::MessageType::Broadcast));
   }
 }
 }  // namespace rts
