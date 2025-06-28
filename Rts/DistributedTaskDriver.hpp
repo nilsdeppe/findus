@@ -251,7 +251,7 @@ class DistributedTaskDriver {
  private:
   // The DistributedTaskDriver can only be created using the
   // create_distributed_task_driver() function.
-  DistributedTaskDriver(int* argc, char** argv[], bool initialize_mpi = true);
+  DistributedTaskDriver(bool finalize_mpi, bool mpi_supports_multithreading);
 
   /// \cond
   friend DistributedTaskDriver& create_distributed_task_driver(int* argc,
@@ -427,7 +427,7 @@ class DistributedTaskDriver {
   };
 
   MPI_Comm rts_comm_{};
-  bool initialize_mpi_{false};
+  bool finalize_mpi_{false};
   bool mpi_supports_multithreading_{false};
   int number_of_nodes_{0};
   int my_node_id_{std::numeric_limits<int>::max()};

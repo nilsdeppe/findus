@@ -29,36 +29,18 @@
 #include "Rts/ParentAndChildren.hpp"
 
 namespace rts {
-DistributedTaskDriver::DistributedTaskDriver(int* argc, char** argv[],
-                                             bool initialize_mpi)
-    : initialize_mpi_(initialize_mpi) {
-  if (initialize_mpi_) {
-    int mpi_threading_support = MPI_SUCCESS;
-    if (MPI_Init_thread(argc, argv, MPI_THREAD_MULTIPLE,
-                        &mpi_threading_support) != MPI_SUCCESS) {
-      throw MpiException("Failed to initialize MPI");
-    }
-    if (mpi_threading_support == MPI_THREAD_SINGLE) {
-      throw MpiException("Cannot use MPI with only MPI_THREAD_SINGLE support.");
-    } else if (mpi_threading_support == MPI_THREAD_MULTIPLE) {
-      mpi_supports_multithreading_ = true;
-    }
-
-  } else {
-    int mpi_is_initialized = false;
-    if (MPI_Initialized(&mpi_is_initialized) != MPI_SUCCESS) {
-      throw MpiException("Failed to check if MPI is initialized.");
-    }
-    if (mpi_is_initialized == 0) {
-      throw MpiException(
-          "MPI is not initialized but DistributedTaskDriver was told not "
-          "to.");
-    }
-    if (MPI_Comm_rank(rts_comm_, &my_node_id_) != MPI_SUCCESS) {
-      throw MpiException(
-          "Failed to get node rank in ToyRTS communicator. We don't yet have "
-          "full support for not initializing MPI with ToyRTS.");
-    }
+DistributedTaskDriver::DistributedTaskDriver(bool finalize_mpi,
+                                             bool mpi_supports_multithreading)
+    : finalize_mpi_(finalize_mpi),
+      mpi_supports_multithreading_(mpi_supports_multithreading) {
+  int mpi_is_initialized = false;
+  if (MPI_Initialized(&mpi_is_initialized) != MPI_SUCCESS) {
+    throw MpiException("Failed to check if MPI is initialized.");
+  }
+  if (mpi_is_initialized == 0) {
+    throw MpiException(
+        "MPI is not initialized but DistributedTaskDriver was told not "
+        "to.");
   }
 
   if (MPI_Comm_dup(MPI_COMM_WORLD, &rts_comm_) != MPI_SUCCESS) {
@@ -130,7 +112,7 @@ DistributedTaskDriver::~DistributedTaskDriver() noexcept {
       mpi_result != MPI_SUCCESS) {
     std::cout << "Failed to free RTS communicator.\n" << std::flush;
   }
-  if (initialize_mpi_) {
+  if (finalize_mpi_) {
     MPI_Finalize();
   }
 }
@@ -602,9 +584,15 @@ DistributedTaskDriver& create_distributed_task_driver(int* argc,
         "Already initialized the task driver. You should only initialize the "
         "driver once.");
   }
+  int mpi_threading_support = MPI_SUCCESS;
+  if (MPI_Init_thread(argc, argv, MPI_THREAD_MULTIPLE,
+                      &mpi_threading_support) != MPI_SUCCESS) {
+    throw MpiException("Failed to initialize MPI");
+  }
+
   const_cast<std::unique_ptr<DistributedTaskDriver>&>(task_driver) =
-      std::unique_ptr<DistributedTaskDriver>(
-          new DistributedTaskDriver(argc, argv, true));
+      std::unique_ptr<DistributedTaskDriver>(new DistributedTaskDriver(
+          true, mpi_threading_support == MPI_THREAD_MULTIPLE));
   task_driver->attach_debugger();
   return *task_driver.get();
 }
