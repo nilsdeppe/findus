@@ -9,6 +9,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -22,6 +23,7 @@
 #include <utility>
 #include <vector>
 
+#include "Rts/Detail/GetOutput.hpp"
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/Exceptions/Mpi.hpp"
 #include "Rts/HardwareInfo.hpp"
@@ -541,6 +543,16 @@ struct BulkEnqueueIterator {
           "once."};
     }
     already_dereferenced = true;
+    if (const MessageType message_type =
+            DistributedTaskDriver::Message_t::get_header(std::get<1>(*it))
+                ->message_type();
+        message_type != MessageType::Invoke) {
+      throw Exception{
+          "The received message type must be Invoke. Other message types need "
+          "to be preprocessed and turned into Invoke messages. The message "
+          "type received is " +
+          detail::get_output(message_type)};
+    }
     return std::move(std::get<1>(*it));
   }
 
@@ -686,10 +698,53 @@ void test_copy_message(DistributedTaskDriver& driver) {
   }
 }
 
+void test_bulk_enequeue_iterator_exceptions() {
+  using Message_t = DistributedTaskDriver::Message_t;
+  using IncomingMpiMessages_t = DistributedTaskDriver::IncomingMpiMessages_t;
+
+  // Helper to create a Message_t with a given MessageType
+  auto make_message = [](rts::MessageType type) -> Message_t {
+    const std::uint64_t num_bytes = sizeof(rts::MessageHeader);
+    std::unique_ptr<char[]> buffer(new char[num_bytes]);
+    new (buffer.get())
+        rts::MessageHeader(rts::detail::MemberFunctionPtr{}, 0, num_bytes, 0, 0,
+                           0, 0, 0, false, type);
+    return {std::move(buffer)};
+  };
+
+  {
+    // 1. Test already dereferenced exception
+    IncomingMpiMessages_t vec{};
+    vec.emplace_back(MPI_Request{}, make_message(rts::MessageType::Invoke));
+    BulkEnqueueIterator bulk_it(vec.begin());
+    // First dereference should succeed
+    CHECK_NOTHROW(*bulk_it);
+    // Second dereference should throw
+    CHECK_THROWS_WITH_AS(*bulk_it,
+                         "Already dereferenced the iterator and we can only "
+                         "dereference it once.",
+                         rts::Exception);
+  }
+
+  {
+    // 2. Test message type not Invoke exception
+    IncomingMpiMessages_t vec{};
+    vec.emplace_back(MPI_Request{}, make_message(rts::MessageType::Broadcast));
+    BulkEnqueueIterator bulk_it(vec.begin());
+    CHECK_THROWS_WITH_AS(
+        *bulk_it,
+        "The received message type must be Invoke. Other message types need to "
+        "be preprocessed and turned into Invoke messages. The message type "
+        "received is Broadcast",
+        rts::Exception);
+  }
+}
+
 MPI_TEST_CASE("DistributedTaskDriver", 2) {
   rts::DistributedTaskDriver& driver =
       rts::create_distributed_task_driver(nullptr, nullptr, false);
   test_copy_message(driver);
+  test_bulk_enequeue_iterator_exceptions();
 }
 }  // namespace rts
 #endif
