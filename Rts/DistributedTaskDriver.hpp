@@ -76,6 +76,11 @@ class DistributedTaskDriver {
       return reinterpret_cast<MessageHeader*>(message.message.get());
     }
 
+    /// \brief Returns the message header.
+    static const MessageHeader* get_header(const Message_t& message) {
+      return reinterpret_cast<const MessageHeader*>(message.message.get());
+    }
+
     /// \brief Executes the message.
     static bool execute(
         rts::ThreadPool<Message_t, rts::DistributedTaskDriver*>& /*pool*/,
@@ -85,6 +90,9 @@ class DistributedTaskDriver {
       return true;
     }
   };
+
+  /// \brief Make a copy of Message_t.
+  Message_t copy(const DistributedTaskDriver::Message_t& message) const;
 
   /// \brief The type of the underlying thread pool and dynamic tasking.
   using ThreadPool_t = rts::ThreadPool<Message_t, DistributedTaskDriver*>;
