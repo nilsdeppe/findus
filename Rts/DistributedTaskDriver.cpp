@@ -445,31 +445,8 @@ void DistributedTaskDriver::initiate_sends(const int max_to_send) {
       break;
     }
     for (size_t to_send = 0; to_send < messages_retrieved; ++to_send) {
-      const int dest = std::get<0>(bulk_outgoing_messages[to_send]);
-      outgoing_mpi_messages_.push_back(
-          std::tuple<std::optional<MPI_Request>, Message_t>{
-              MPI_Request{},
-              std::move(std::get<1>(bulk_outgoing_messages[to_send]))});
-      if (not std::get<0>(outgoing_mpi_messages_.back()).has_value()) {
-        throw Exception(
-            "The outgoing MPI message's MPI_Request is not set but it should "
-            "be. This is an internal error.");
-      }
-      MPI_Request& request = std::get<0>(outgoing_mpi_messages_.back()).value();
-      Message_t& message = std::get<1>(outgoing_mpi_messages_.back());
-      MessageHeader& message_header = *Message_t::get_header(message);
-      const int num_bytes =
-          static_cast<int>(message_header.number_of_bytes_in_message());
-      if (const auto mpi_result =
-              MPI_Isend(message.message.get(), num_bytes, MPI_BYTE, dest,
-                        message_tags::regular, rts_comm_, &request);
-          mpi_result != MPI_SUCCESS) {
-        throw MpiException{"Failed to send regular message from rank " +
-                           std::to_string(current_node_id()) + " to rank " +
-                           std::to_string(dest) + ". MPI returned " +
-                           std::to_string(mpi_result)};
-      }
-      global_qd_.increment_sends();
+      send_message_impl(
+          std::move(std::get<1>(bulk_outgoing_messages[to_send])));
     }
     i += messages_retrieved;
   }
