@@ -321,6 +321,25 @@ class DistributedTaskDriver {
    */
   void send_data(int target_node, Message_t message);
 
+  /*!
+   * \brief Sends a message using non-blocking MPI.
+   *
+   * This function initiates a non-blocking MPI send (MPI_Isend) of the provided
+   * message. It  manages the MPI request, and updates quiescence detection
+   * counters.
+   *
+   * \param in_message The message to be sent.
+   *
+   * \throws Exception if `in_message.message` is a nullptr
+   * \throws Exception if the destination process is outside the range [0,
+   *         number_of_nodes).
+   * \throws Exception if the message has a negative number of bytes.
+   * \throws MpiException If MPI operations fail.
+   *
+   * \warning This function is not thread safe.
+   */
+  void send_message_impl(Message_t in_message);
+
   /// invoke_impl is invoked _by_ the thread pool on the task driver to
   /// initiate the action on the distributed action.
   template <class Action, class ParallelComponent, class... ArgIndexes>

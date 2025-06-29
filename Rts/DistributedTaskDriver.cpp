@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "Rts/Detail/GetOutput.hpp"
+#include "Rts/Detail/MpiErrorMessage.hpp"
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/Exceptions/Mpi.hpp"
 #include "Rts/HardwareInfo.hpp"
@@ -384,6 +385,51 @@ void DistributedTaskDriver::send_data(const int target_node,
     outgoing_messages_.enqueue(
         std::tuple<int, Message_t>{target_node, std::move(message)});
   }
+}
+
+void DistributedTaskDriver::send_message_impl(Message_t in_message) {
+  if (in_message.message == nullptr) {
+    throw Exception{
+        "The message passed in is a nullptr. This is an internal error."};
+  }
+  const auto destination_process_id =
+      Message_t::get_header(in_message)->destination_process_id();
+  if (destination_process_id < 0 or
+      destination_process_id >= number_of_nodes()) {
+    throw Exception{"The destination process ID (" +
+                    std::to_string(destination_process_id) +
+                    ") is outside of the range [0," +
+                    std::to_string(number_of_nodes()) + ")."};
+  }
+  outgoing_mpi_messages_.push_back(
+      std::tuple<std::optional<MPI_Request>, Message_t>{MPI_Request{},
+                                                        std::move(in_message)});
+  if (not std::get<0>(outgoing_mpi_messages_.back()).has_value()) {
+    throw Exception{
+        "The outgoing MPI message's MPI_Request is not set but it should "
+        "be. This is an internal error."};
+  }
+  MPI_Request& request = std::get<0>(outgoing_mpi_messages_.back()).value();
+  Message_t& message = std::get<1>(outgoing_mpi_messages_.back());
+  MessageHeader& message_header = *Message_t::get_header(message);
+  const int num_bytes =
+      static_cast<int>(message_header.number_of_bytes_in_message());
+  if (num_bytes < 0) {
+    throw Exception{
+        "The size of the outgoing message is negative, which could be "
+        "because the message is too large. Message size is " +
+        std::to_string(message_header.number_of_bytes_in_message())};
+  }
+  if (const auto mpi_result = MPI_Isend(
+          message.message.get(), num_bytes, MPI_BYTE, destination_process_id,
+          message_tags::regular, rts_comm_, &request);
+      mpi_result != MPI_SUCCESS) {
+    throw MpiException{"Failed to send regular message from rank " +
+                       std::to_string(current_node_id()) + " to rank " +
+                       std::to_string(destination_process_id) +
+                       detail::mpi_error_and_message(mpi_result)};
+  }
+  global_qd_.increment_sends();
 }
 
 void DistributedTaskDriver::initiate_sends(const int max_to_send) {
