@@ -597,7 +597,7 @@ struct BulkEnqueueIterator {
 }  // namespace
 
 void DistributedTaskDriver::clean_incoming_mpi_messages() {
-  auto received_start = std::remove_if(
+  auto first_received_message = std::remove_if(
       incoming_mpi_messages_.begin(), incoming_mpi_messages_.end(),
       [](std::tuple<MPI_Request, Message_t>& elem) {
         int flag{0};
@@ -612,7 +612,7 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
         return false;
       });
   const auto messages_to_emplace =
-      std::distance(received_start, incoming_mpi_messages_.end());
+      std::distance(first_received_message, incoming_mpi_messages_.end());
   if (messages_to_emplace == 0) {
     return;
   } else if (messages_to_emplace < 0) {
@@ -620,16 +620,18 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
         "The messages to emplace should be non-negative. This is an internal "
         "bug.");
   }
-  for (auto it = received_start; it != incoming_mpi_messages_.end(); ++it) {
+  for (auto it = first_received_message; it != incoming_mpi_messages_.end();
+       ++it) {
     global_qd_.increment_processed();
     global_qd_.update_last_regular_message_sweep_number(
         Message_t::get_header(std::get<1>(*it))
             ->quiescence_detection_sweep_number());
     MPI_Request_free(&std::get<0>(*it));
   }
-  thread_pool_->add_tasks(BulkEnqueueIterator{received_start},
+  thread_pool_->add_tasks(BulkEnqueueIterator{first_received_message},
                           static_cast<size_t>(messages_to_emplace));
-  incoming_mpi_messages_.erase(received_start, incoming_mpi_messages_.end());
+  incoming_mpi_messages_.erase(first_received_message,
+                               incoming_mpi_messages_.end());
 }
 
 thread_local std::uint32_t DistributedTaskDriver::thread_id_ =
