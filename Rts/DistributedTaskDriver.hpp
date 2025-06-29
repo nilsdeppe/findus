@@ -388,6 +388,28 @@ class DistributedTaskDriver {
   void initiate_sends(int max_to_send);
 
   /*!
+   * \brief Sends a copy of the given message to each child process in the
+   * process tree.
+   *
+   * This function determines the left and right child process IDs of the
+   * current process and sends a copy of the provided message to each child that
+   * exists (i.e., whose process ID is not -1). The destination process ID in
+   * the message header is updated for each child before sending.
+   *
+   * If both left and right children exist and have the same process ID, an
+   * exception is thrown.
+   *
+   * \param message The message to be sent to each child process. The message is
+   * copied for each child.
+   *
+   * \throws Exception if the left and right child process IDs are the same and
+   * not -1.
+   *
+   * \note If neither child exists, this function does nothing.
+   */
+  void send_to_children(const Message_t& message);
+
+  /*!
    * \brief Cleans up any completed outgoing MPI messages.
    *
    * This function is not threadsafe.

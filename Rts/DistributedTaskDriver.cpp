@@ -430,6 +430,23 @@ void DistributedTaskDriver::send_message_impl(Message_t in_message) {
   global_qd_.increment_sends();
 }
 
+void DistributedTaskDriver::send_to_children(const Message_t& message) {
+  const int left = parent_and_children_.left_process_id;
+  const int right = parent_and_children_.right_process_id;
+  if (left != -1 and right != -1 and left == right) {
+    throw Exception("Left and right children are the same process ID: " +
+                    std::to_string(left));
+  }
+
+  for (const int child : {left, right}) {
+    if (child != -1) {
+      Message_t child_copy = copy(message);
+      Message_t::get_header(child_copy)->change_destination_process_id(child);
+      send_message_impl(std::move(child_copy));
+    }
+  }
+}
+
 void DistributedTaskDriver::initiate_sends(const int max_to_send) {
   if (max_to_send <= 0) {
     throw Exception("max_to_send must be positive but is " +
