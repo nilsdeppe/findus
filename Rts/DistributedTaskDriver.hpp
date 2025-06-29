@@ -256,6 +256,38 @@ class DistributedTaskDriver {
             class... Args>
   void invoke(const IndexType& user_index_or_target_node, Args&&... args);
 
+  /*!
+   * \brief Broadcasts `args` to all members of the parallel component
+   * (collection) and invokes the `Action`.
+   *
+   * Allows invoking/calling `Actions` on all elements of a (collection)
+   * parallel component. The arguments `args...` are forwarded to the member
+   * function `threaded_action` on each receiving distributed object.
+   *
+   * An example of a threaded action member function of a parallel component is:
+   * ```cpp
+   * template <class Action, class... Args>
+   * void threaded_action(rts::DistributedTaskDriver& driver, Args... args);
+   * ```
+   * Specialization to specific actions is essentially providing remotely
+   * callable member functions. For example,
+   * ```cpp
+   * template <>
+   * void threaded_action<MyAction>(rts::DistributedTaskDriver& task_driver,
+   *                                const int t)
+   * ```
+   * provides a remotely callable member function labeled or tagged by the
+   * "action" struct/class/type, `MyAction` in this case.
+   *
+   * \tparam Action The action invoked on each distributed object.
+   * \tparam ParallelComponent The parallel component to broadcast to.
+   * \param args The arguments to sent to each distributed object.
+   *
+   * \throws Exception If any argument is a raw pointer or C-style array.
+   */
+  template <class Action, class ParallelComponent, class... Args>
+  void broadcast(Args&&... args);
+
  private:
   // The DistributedTaskDriver can only be created using the
   // create_distributed_task_driver() function.
@@ -443,6 +475,34 @@ class DistributedTaskDriver {
   void clean_incoming_mpi_messages();
 
   /*!
+   * \brief Expands a broadcast message into individual invoke messages for all
+   * local elements of a collection or regular component.
+   *
+   * This function takes a broadcast message and, for each local element of the
+   * targeted collection  (or for a regular component), creates a copy of the
+   * message, updates its header to convert it into an invoke message, and
+   * appends it to the provided task vector. The function ensures that only
+   * elements local to the current node are targeted.
+   *
+   * For collection components, the function iterates over all collection
+   * elements, and for each element that resides on the current node, it creates
+   * and appends an invoke message. For regular components, a single invoke
+   * message is created and appended.
+   *
+   * \param[out] all_tasks The vector to which the generated invoke messages
+   * will be appended.
+   * \param[in] message The original broadcast message to be expanded for local
+   * processing.
+   *
+   * \throws Exception If the distributed object index is out of range, or if
+   * the variant type of the distributed object is not supported for broadcasts.
+   *
+   * \note Only collection and regular components are currently supported for
+   * broadcast expansion. Other variant types will result in an exception.
+   */
+  void add_local_broadcast_tasks(std::vector<Message_t>& all_tasks,
+                                 const Message_t& message) const;
+  /*!
    * \brief The type used to store each distributed object or collection.
    *
    * We use a `std::variant` of `std::unique_ptr` so that it is clear if we
@@ -499,6 +559,9 @@ class DistributedTaskDriver {
   moodycamel::ConcurrentQueue<std::tuple<int, Message_t>> outgoing_messages_{};
   qd::Global global_qd_{};
   static constexpr int local_qd_counts_for_global_qd_ = 50;
+
+  // Special values used for different types of messages.
+  static constexpr int broadcast_process_id = -1;
 };
 
 template <class ParallelComponent, class... Args>
@@ -670,6 +733,54 @@ void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
   } else {
     throw Exception{"Serialization in invoke() is not yet implemented."};
     // send_data(target_node, std::move(buffer));
+  }
+}
+
+template <class Action, class ParallelComponent, class... Args>
+void DistributedTaskDriver::broadcast(Args&&... args) {
+  static_assert(((not(std::is_pointer_v<std::decay_t<Args>> or
+                      std::is_array_v<std::decay_t<Args>>)) &&
+                 ...),
+                "We cannot serialize raw pointers or C-style arrays in a "
+                "safe manner. Please wrap these in a container that can "
+                "safely handle the serialization.");
+  if ((std::is_trivially_copyable_v<std::decay_t<Args>> && ...)) {
+    // Regardless of whether or not we are crossing an address space
+    // boundary we cannot store or forward references in the Data, we can
+    // only safely store values.
+    using Data_t = std::tuple<std::decay_t<Args>...>;
+    const std::uint32_t data_offset =
+        sizeof(MessageHeader)
+        // Add extra bytes to make sure we can align Data_t
+        // properly. We compute the remainder of the MessageHeader size and
+        // the alignment of the data. This would give us, e.g. 5 bytes, which
+        // means we have e.g. 37 bytes for MessageHeader. The amount we
+        // would need to align then is given by the C++:
+        + (alignof(Data_t) - sizeof(MessageHeader) % alignof(Data_t));
+    const std::uint64_t buffer_size = data_offset
+                                      // Add the size of the data type
+                                      + sizeof(Data_t);
+    std::unique_ptr<char[]> buffer{new (std::align_val_t(
+        std::max(alignof(MessageHeader), alignof(Data_t)))) char[buffer_size]};
+
+    MessageHeader* message = new (buffer.get())
+        MessageHeader{threaded_action_relative_ptr<Action, ParallelComponent,
+                                                   std::decay_t<Args>...>(
+                          std::make_index_sequence<sizeof...(Args)>{}),
+                      MessageHeader::no_collection_index(), buffer_size,
+                      detail::distributed_object_index<ParallelComponent>(),
+                      data_offset, current_node_id(),
+                      // For broadcasts we first set the target process ID to
+                      // self, then update it as we send to different processes.
+                      current_node_id(), global_qd_.local_sweep_number(), false,
+                      MessageType::Broadcast};
+    Data_t* data_location = rts::create_data_in_message<Data_t>(*message);
+
+    *data_location = Data_t{std::forward<Args>(args)...};
+    send_data(broadcast_process_id, {std::move(buffer)});
+  } else {
+    throw Exception{"Serialization in broadcast() is not yet implemented."};
+    // send_data(broadcast_process_id, std::move(buffer));
   }
 }
 

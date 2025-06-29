@@ -7,10 +7,12 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <mpi.h>
@@ -23,6 +25,7 @@
 #include <utility>
 #include <vector>
 
+#include "Rts/Detail/DistributedObjectIndex.hpp"
 #include "Rts/Detail/GetOutput.hpp"
 #include "Rts/Detail/MpiErrorMessage.hpp"
 #include "Rts/Exceptions/Exception.hpp"
@@ -448,8 +451,48 @@ void DistributedTaskDriver::initiate_sends(const int max_to_send) {
       break;
     }
     for (size_t to_send = 0; to_send < messages_retrieved; ++to_send) {
-      send_message_impl(
-          std::move(std::get<1>(bulk_outgoing_messages[to_send])));
+      const bool is_broadcast =
+          Message_t::get_header(std::get<1>(bulk_outgoing_messages[to_send]))
+              ->is_broadcast();
+      if (is_broadcast) {
+        Message_t& message = std::get<1>(bulk_outgoing_messages[to_send]);
+        MessageHeader& message_header = *Message_t::get_header(message);
+        // If we are not on process 0 we send to process 0 which starts the
+        // tree-based broadcast to its children.
+        if (message_header.destination_process_id() == current_node_id() and
+            message_header.source_process_id() == current_node_id() and
+            current_node_id() != 0) {
+          message_header.change_destination_process_id(0);
+          send_message_impl(std::move(message));
+          continue;
+        }
+        // Perform tree-based broadcast to children.
+        send_to_children(message);
+
+        // Send to local collection elements.
+        if (message_header.distributed_object_index() >=
+            distributed_objects_.size()) {
+          throw Exception{
+              "The distributed object index in the message, " +
+              std::to_string(message_header.distributed_object_index()) +
+              ", is out of range. Maximum index is " +
+              std::to_string(distributed_objects_.size() - 1)};
+        }
+        auto& distributed_object =
+            distributed_objects_[message_header.distributed_object_index()];
+
+        std::vector<Message_t> all_local_messages{};
+        all_local_messages.reserve(
+            static_cast<size_t>(distributed_object.number_of_local_objects));
+
+        add_local_broadcast_tasks(all_local_messages, message);
+        thread_pool_->add_tasks(
+            std::make_move_iterator(all_local_messages.begin()),
+            all_local_messages.size());
+      } else {
+        send_message_impl(
+            std::move(std::get<1>(bulk_outgoing_messages[to_send])));
+      }
     }
     i += messages_retrieved;
   }
@@ -620,18 +663,158 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
         "The messages to emplace should be non-negative. This is an internal "
         "bug.");
   }
+  int number_of_message_to_enqueue = 0;
   for (auto it = first_received_message; it != incoming_mpi_messages_.end();
        ++it) {
     global_qd_.increment_processed();
+    Message_t& message = std::get<1>(*it);
+    MessageHeader& message_header = *Message_t::get_header(message);
     global_qd_.update_last_regular_message_sweep_number(
-        Message_t::get_header(std::get<1>(*it))
-            ->quiescence_detection_sweep_number());
+        message_header.quiescence_detection_sweep_number());
     MPI_Request_free(&std::get<0>(*it));
+    if (message_header.is_broadcast()) {
+      send_to_children(message);
+    }
+
+    if (not message_header.is_broadcast_to()) {
+      // For all message types other than BroadcastTo we send
+      // distributed_object.number_of_local_objects number of local messages.
+      const auto dist_object_index = message_header.distributed_object_index();
+
+      // Check if this is a collection or a non-collection parallel component
+      if (dist_object_index >= distributed_objects_.size()) {
+        throw Exception{"The distributed object index " +
+                        std::to_string(dist_object_index) +
+                        " is out of range. We have " +
+                        std::to_string(distributed_objects_.size()) +
+                        " total parallel components/distributed objects."};
+      }
+      const DistributedOjectClassHolder& distributed_object =
+          distributed_objects_[dist_object_index];
+      if (distributed_object.number_of_local_objects == -1) {
+        throw Exception{"The number of local objects for parallel component " +
+                        distributed_object.name + " on process ID " +
+                        std::to_string(current_node_id()) +
+                        " is -1. This is an internal bug. The number of local "
+                        "objects must be non-negative."};
+      }
+      number_of_message_to_enqueue +=
+          distributed_object.number_of_local_objects;
+    } else {
+      throw Exception{
+          "BroadcastTo messages not yet supported in "
+          "clean_incoming_mpi_messages()."};
+    }
   }
-  thread_pool_->add_tasks(BulkEnqueueIterator{first_received_message},
-                          static_cast<size_t>(messages_to_emplace));
+
+  if (number_of_message_to_enqueue < 0) {
+    throw Exception{
+        "The number_of_message_to_enqueue must be non-negative but it is " +
+        std::to_string(number_of_message_to_enqueue)};
+  }
+
+  // Note: We could combine this computation of `all_messages_are_invoke` with
+  // the preceding for loop that counts the number of messages to enqueue.
+  // However, that loop already contains multiple conditional branches and is
+  // fairly complex, so separating this logic improves readability and
+  // maintainability. If the first loop is simplified later, we could consider
+  // merging these steps for efficiency.
+  const bool all_messages_are_invoke = std::all_of(
+      first_received_message, incoming_mpi_messages_.end(),
+      [](const std::tuple<MPI_Request, Message_t>& msg) {
+        const MessageHeader* header = Message_t::get_header(std::get<1>(msg));
+        return header->message_type() == MessageType::Invoke;
+      });
+
+  if (all_messages_are_invoke) {
+    thread_pool_->add_tasks(BulkEnqueueIterator{first_received_message},
+                            static_cast<size_t>(messages_to_emplace));
+  } else {
+    // Since we have some broadcast messages, we need to move the messages
+    // into a separate buffer before adding the tasks.
+    //
+    // Note: we may have fewer than the total number of messages because a
+    // process may have no collection elements on it and so the broadcast
+    // would not have any local tasks.
+    std::vector<Message_t> all_tasks{};
+    all_tasks.reserve(static_cast<size_t>(number_of_message_to_enqueue));
+    for (auto it = first_received_message; it != incoming_mpi_messages_.end();
+         ++it) {
+      Message_t& msg = std::get<1>(*it);
+      MessageHeader* header = Message_t::get_header(msg);
+
+      if (header->message_type() == MessageType::Invoke) {
+        all_tasks.push_back(std::move(msg));
+      } else if (header->message_type() == MessageType::Broadcast) {
+        add_local_broadcast_tasks(all_tasks, msg);
+      } else {
+        throw Exception{
+            "Unsupported message type in clean_incoming_mpi_messages(). "
+            "Received message type is " +
+            detail::get_output(header->message_type())};
+      }
+    }
+
+    thread_pool_->add_tasks(std::make_move_iterator(all_tasks.begin()),
+                            all_tasks.size());
+  }
   incoming_mpi_messages_.erase(first_received_message,
                                incoming_mpi_messages_.end());
+}
+
+void DistributedTaskDriver::add_local_broadcast_tasks(
+    std::vector<Message_t>& all_tasks, const Message_t& message) const {
+  const MessageHeader& message_header = *Message_t::get_header(message);
+  // Send to local collection elements.
+  if (message_header.distributed_object_index() >=
+      distributed_objects_.size()) {
+    throw Exception{"The distributed object index in the message, " +
+                    std::to_string(message_header.distributed_object_index()) +
+                    ", is out of range. Maximum index is " +
+                    std::to_string(distributed_objects_.size() - 1)};
+  }
+  const DistributedOjectClassHolder& distributed_object =
+      distributed_objects_[message_header.distributed_object_index()];
+  const DistributedOjectClassHolder::variant_t& objects_variant =
+      distributed_object.objects;
+  if (objects_variant.index() == detail::Collection) {
+    const DistributedOjectClassHolder::Map_t& objects =
+        std::get<1>(objects_variant);
+    // For each local collection element, create a copy and update header
+    int local_send_counter = 0;
+    for (const auto& [collection_index, collection_holder] : objects) {
+      if (local_send_counter >= distributed_object.number_of_local_objects) {
+        break;
+      }
+      if (collection_holder.node_id != current_node_id()) {
+        continue;
+      }
+
+      Message_t local_message = copy(message);
+      MessageHeader* local_header = Message_t::get_header(local_message);
+
+      // Change message type to Invoke and set collection index
+      local_header->convert_broadcast_to_invoke(collection_index);
+      local_header->change_destination_process_id(current_node_id());
+      all_tasks.push_back(std::move(local_message));
+      ++local_send_counter;
+    }
+  } else {
+    if (objects_variant.index() != detail::Regular) {
+      throw Exception{"Unsupported variant index " +
+                      std::to_string(objects_variant.index()) +
+                      ". We only support Collection and Regular components in "
+                      "broadcasts currently."};
+    }
+    Message_t local_message = copy(message);
+    MessageHeader* local_header = Message_t::get_header(local_message);
+
+    // Change message type to Invoke and set collection index
+    local_header->convert_broadcast_to_invoke(
+        MessageHeader::no_collection_index());
+    local_header->change_destination_process_id(current_node_id());
+    all_tasks.push_back(std::move(local_message));
+  }
 }
 
 thread_local std::uint32_t DistributedTaskDriver::thread_id_ =
