@@ -8,6 +8,7 @@ add_library(
   ${LIBRARY}
   ActionState.cpp
   Detail/DistributedObjectBase.cpp
+  Detail/MpiErrorMessage.cpp
   DistributedTaskDriver.cpp
   Exceptions/Exception.cpp
   Exceptions/Mpi.cpp
@@ -86,5 +87,11 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
     COMMAND
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test> --test-case=DistributedTaskDriver --rts-mpi-test
+  )
+  add_test(
+    NAME MpiErrorMessage
+    COMMAND
+    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1
+    $<TARGET_FILE:Test> --test-case=MpiErrorMessage --rts-mpi-test --no-skip
   )
 endif()
