@@ -8,6 +8,7 @@ add_library(
   ${LIBRARY}
   ActionState.cpp
   Detail/DistributedObjectBase.cpp
+  Detail/DistributedObjectIndex.cpp
   Detail/MpiErrorMessage.cpp
   DistributedTaskDriver.cpp
   Exceptions/Exception.cpp
