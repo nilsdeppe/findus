@@ -173,7 +173,8 @@ TEST_CASE("MessageType") {
 }
 
 TEST_CASE("MessageHeader") {
-  CHECK(alignof(TestClass) == 64);
+  static_assert(sizeof(MessageHeader) == 64);
+  static_assert(alignof(TestClass) == 64);
   const auto foo_ptr = detail::to_member_function_ptr(&TestClass::foo);
 
   const auto test_impl = [&foo_ptr](
