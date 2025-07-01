@@ -243,12 +243,18 @@ class DistributedTaskDriver {
    * because the `DistributedTaskDriver` keeps track of where different
    * elements are to make communication easier for users.
    *
+   * Collection parallel components must have a type alias
+   * `rts_collection_index` that is the user-facing index. This type must be
+   * exactly 64 bits in size and the user must explicitly set all bits. Any
+   * bits that are "unused" must be set to 0 otherwise the behavior is
+   * undefined.
+   *
    * See `insert_parallel_component()` for details about registration.
    */
-  template <class ParallelComponent, class IndexType, class... Args>
-  void insert_parallel_component_collection(const IndexType& user_index,
-                                            int node_to_insert_on,
-                                            Args&&... args);
+  template <class ParallelComponent, class... Args>
+  void insert_parallel_component_collection(
+      const typename ParallelComponent::rts_collection_index& user_index,
+      int node_to_insert_on, Args&&... args);
 
   /*!
    * \brief The MPI driver run on the main thread for a single phase of the
@@ -278,8 +284,8 @@ class DistributedTaskDriver {
    *
    * Allows invoking/calling `Actions` on local or remote parallel
    * components. If the parallel component is a collection then
-   * `user_index_or_target_node` must be a 64-byte user index with an
-   * overloaded `std::hash` implementation. If the parallel component is a
+   * `user_index_or_target_node` must be a 64-it user index of type
+   * `ParallelComponent::rts_collection_index`. If the parallel component is a
    * regular component, then `user_index_or_target_node` must be the node on
    * which the action should be invoked.
    *
@@ -640,13 +646,15 @@ void DistributedTaskDriver::insert_parallel_component(Args&&... args) {
   }
 }
 
-template <class ParallelComponent, class IndexType, class... Args>
+template <class ParallelComponent, class... Args>
 void DistributedTaskDriver::insert_parallel_component_collection(
-    const IndexType& user_index, const int node_to_insert_on, Args&&... args) {
+    const typename ParallelComponent::rts_collection_index& user_index,
+    const int node_to_insert_on, Args&&... args) {
   static_assert(
       rts::is_collection_v<ParallelComponent>,
       "To insert into a collection use insert_parallel_component_collection");
-  static_assert(sizeof(IndexType) == sizeof(std::uint64_t));
+  static_assert(sizeof(typename ParallelComponent::rts_collection_index) ==
+                sizeof(std::uint64_t));
   const auto index = rts::detail::distributed_object_index<ParallelComponent>();
   using Map =
       std::variant_alternative_t<1, DistributedOjectClassHolder::variant_t>;
@@ -666,7 +674,7 @@ void DistributedTaskDriver::insert_parallel_component_collection(
                     " on MPI rank " + std::to_string(my_node_id_));
   }
   Map& collection = std::get<1>(distributed_objects_[index].objects);
-  const auto collection_index = std::hash<IndexType>{}(user_index);
+  const std::uint64_t collection_index = detail::to_internal(user_index);
   if (collection.find(collection_index) != collection.end()) {
     std::stringstream ss;
     ss << user_index;
@@ -708,15 +716,16 @@ void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
                 "We cannot serialize raw pointers or C-style arrays in a "
                 "safe manner. Please wrap these in a container that can "
                 "safely handle the serialization.");
-  static_assert(sizeof(IndexType) == sizeof(std::uint64_t) or
-                std::is_same_v<IndexType, int>);
 
   int target_node = -1;
   std::uint64_t collection_index = MessageHeader::no_collection_index();
   if constexpr (rts::is_collection_v<ParallelComponent>) {
+    static_assert(
+        std::is_same_v<typename ParallelComponent::rts_collection_index,
+                       IndexType>);
     const auto object_index =
         rts::detail::distributed_object_index<ParallelComponent>();
-    collection_index = std::hash<IndexType>{}(user_index_or_target_node);
+    collection_index = detail::to_internal(user_index_or_target_node);
     try {
       DistributedOjectClassHolder::Map_t& collection =
           std::get<1>(distributed_objects_[object_index].objects);
@@ -739,6 +748,7 @@ void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
                       "Please file an issue with steps on how to reproduce."};
     }
   } else {
+    static_assert(std::is_same_v<IndexType, int>);
     target_node = user_index_or_target_node;
   }
 
@@ -913,7 +923,7 @@ ParallelComponent* local_parallel_component(
                          std::to_string(object_index) + " and name " +
                          ParallelComponent::name() + " was never inserted."};
   }
-  const uint64_t collection_index = std::hash<IndexType>{}(user_index);
+  const std::uint64_t collection_index = detail::to_internal(user_index);
   auto& object_collection =
       std::get<1>(distributed_task_driver.distributed_objects_[object_index]);
   auto& object_it = object_collection.find(collection_index);
