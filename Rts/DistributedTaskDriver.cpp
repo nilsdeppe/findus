@@ -457,10 +457,9 @@ void DistributedTaskDriver::initiate_sends(const int max_to_send) {
       break;
     }
     for (size_t to_send = 0; to_send < messages_retrieved; ++to_send) {
-      const bool is_broadcast = std::get<1>(bulk_outgoing_messages[to_send])
-                                    .get_header()
-                                    ->is_broadcast();
-      if (is_broadcast) {
+      if (const MessageHeader& msg_hdr =
+              *std::get<1>(bulk_outgoing_messages[to_send]).get_header();
+          msg_hdr.is_broadcast()) {
         Message_t& message = std::get<1>(bulk_outgoing_messages[to_send]);
         MessageHeader& message_header = *message.get_header();
         // If we are not on process 0 we send to process 0 which starts the
@@ -495,9 +494,18 @@ void DistributedTaskDriver::initiate_sends(const int max_to_send) {
         thread_pool_->add_tasks(
             std::make_move_iterator(all_local_messages.begin()),
             all_local_messages.size());
-      } else {
+      } else if (msg_hdr.is_broadcast_to()) {
         send_message_impl(
             std::move(std::get<1>(bulk_outgoing_messages[to_send])));
+      } else if (msg_hdr.message_type() == MessageType::Invoke) {
+        send_message_impl(
+            std::move(std::get<1>(bulk_outgoing_messages[to_send])));
+      } else {
+        throw Exception{
+            "Don't know how to handle message type in initiate_sends " +
+            detail::get_output(std::get<1>(bulk_outgoing_messages[to_send])
+                                   .get_header()
+                                   ->message_type())};
       }
     }
     i += messages_retrieved;
@@ -681,7 +689,14 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
       send_to_children(message);
     }
 
-    if (not message_header.is_broadcast_to()) {
+    // Count number of messages to enqueue.
+    // Invoke: 1
+    // Broadcast: total local collection objects
+    // BroadcastTo: number of collection elements in message
+    if (message_header.message_type() == MessageType::Invoke) {
+      ++number_of_message_to_enqueue;
+    } else if (message_header.is_broadcast() or
+               message_header.is_broadcast_to()) {
       // For all message types other than BroadcastTo we send
       // distributed_object.number_of_local_objects number of local messages.
       const auto dist_object_index = message_header.distributed_object_index();
@@ -703,8 +718,31 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
                         " is -1. This is an internal bug. The number of local "
                         "objects must be non-negative."};
       }
-      number_of_message_to_enqueue +=
-          distributed_object.number_of_local_objects;
+      if (message_header.is_broadcast()) {
+        number_of_message_to_enqueue +=
+            distributed_object.number_of_local_objects;
+      } else {
+        const std::uint64_t* start =
+            reinterpret_cast<const std::uint64_t*>(std::next(&message_header));
+        if (*start != static_cast<std::uint64_t>(current_node_id())) {
+          throw Exception{
+              "Received BroadcastTo message for process ID " +
+              std::to_string(*start) + " but on process " +
+              std::to_string(current_node_id()) +
+              ". This is an internal bug. Please file an issue with "
+              "a minimal reproducible example."};
+        }
+        if (*std::next(start) >
+            static_cast<std::uint64_t>(
+                distributed_object.number_of_local_objects)) {
+          throw Exception{
+              "Received BroadcastTo with " + std::to_string(*std::next(start)) +
+              " elements but we have " +
+              std::to_string(distributed_object.number_of_local_objects) +
+              " local objects."};
+        }
+        number_of_message_to_enqueue += *std::next(start);
+      }
     } else {
       throw Exception{
           "BroadcastTo messages not yet supported in "
@@ -750,7 +788,7 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
 
       if (header->message_type() == MessageType::Invoke) {
         all_tasks.push_back(std::move(msg));
-      } else if (header->message_type() == MessageType::Broadcast) {
+      } else if (header->is_broadcast() or header->is_broadcast_to()) {
         add_local_broadcast_tasks(all_tasks, msg);
       } else {
         throw Exception{
@@ -783,26 +821,82 @@ void DistributedTaskDriver::add_local_broadcast_tasks(
   const DistributedOjectClassHolder::variant_t& objects_variant =
       distributed_object.objects;
   if (objects_variant.index() == detail::Collection) {
-    const DistributedOjectClassHolder::Map_t& objects =
-        std::get<1>(objects_variant);
-    // For each local collection element, create a copy and update header
-    int local_send_counter = 0;
-    for (const auto& [collection_index, collection_holder] : objects) {
-      if (local_send_counter >= distributed_object.number_of_local_objects) {
-        break;
-      }
-      if (collection_holder.node_id != current_node_id()) {
-        continue;
-      }
+    if (message.get_header()->is_broadcast()) {
+      const DistributedOjectClassHolder::Map_t& objects =
+          std::get<1>(objects_variant);
+      // For each local collection element, create a copy and update header
+      int local_send_counter = 0;
+      for (const auto& [collection_index, collection_holder] : objects) {
+        if (local_send_counter >= distributed_object.number_of_local_objects) {
+          break;
+        }
+        if (collection_holder.node_id != current_node_id()) {
+          continue;
+        }
 
-      Message_t local_message = copy(message);
-      MessageHeader* local_header = local_message.get_header();
+        Message_t local_message = copy(message);
+        MessageHeader* local_header = local_message.get_header();
 
-      // Change message type to Invoke and set collection index
-      local_header->convert_broadcast_to_invoke(collection_index);
-      local_header->change_destination_process_id(current_node_id());
-      all_tasks.push_back(std::move(local_message));
-      ++local_send_counter;
+        // Change message type to Invoke and set collection index
+        local_header->convert_broadcast_to_invoke(collection_index);
+        local_header->change_destination_process_id(current_node_id());
+        all_tasks.push_back(std::move(local_message));
+        ++local_send_counter;
+      }
+    } else if (message.get_header()->is_broadcast_to()) {
+      const DistributedOjectClassHolder::Map_t& objects =
+          std::get<1>(objects_variant);
+
+      const std::uint64_t* start = reinterpret_cast<const std::uint64_t*>(
+          std::next(message.get_header()));
+      if (*start != static_cast<std::uint64_t>(current_node_id())) {
+        throw Exception{
+            "The target process ID read from the BroadcastTo buffer is " +
+            std::to_string(*start) + " but we are on process ID " +
+            std::to_string(current_node_id()) +
+            ". This is an internal bug. Please file an issue with a minimal "
+            "reproducible example."};
+      }
+      const MessageHeader& header = *message.get_header();
+      const int number_of_local_elements = static_cast<int>(*std::next(start));
+      const std::uint64_t data_alignment = header.data_alignment();
+      const std::uint64_t data_size =
+          header.number_of_bytes_in_message() - header.data_offset();
+      const std::uint32_t data_offset =
+          sizeof(MessageHeader) +
+          (data_alignment - sizeof(MessageHeader) % data_alignment);
+      const std::uint64_t buffer_size = data_offset + data_size;
+      for (int i = 0; i < number_of_local_elements; ++i) {
+        const std::uint64_t collection_index = *std::next(start, 2 + i);
+        if (const auto it = objects.find(collection_index);
+            it == objects.end()) {
+          throw Exception{"The collection index " +
+                          std::to_string(collection_index) +
+                          " does not exist for the collection. Current element "
+                          "iteration index " +
+                          std::to_string(i) + " and number of elements " +
+                          std::to_string(number_of_local_elements)};
+        }
+        Message_t local_message{
+            std::unique_ptr<char[]>{new (std::align_val_t(std::max(
+                alignof(MessageHeader), data_alignment))) char[buffer_size]}};
+        (new (local_message.message.get()) rts::MessageHeader(
+             header.member_function_ptr(), collection_index, buffer_size,
+             header.distributed_object_index(), data_offset,
+             header.source_process_id(), current_node_id(),
+             header.quiescence_detection_sweep_number(),
+             header.data_was_serialized(), MessageType::Invoke))
+            ->set_data_alignment(header.data_alignment());
+        memcpy(std::next(local_message.message.get(), data_offset),
+               header.data_location(), data_size);
+
+        all_tasks.push_back(std::move(local_message));
+      }
+    } else {
+      throw Exception{
+          "Only Broadcast and BroadcastTo messages are support in "
+          "add_local_broadcast_tasks but got message of type " +
+          detail::get_output(message.get_header()->message_type())};
     }
   } else {
     if (objects_variant.index() != detail::Regular) {
