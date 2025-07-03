@@ -72,15 +72,15 @@ class DistributedTaskDriver {
   struct Message_t {
     std::unique_ptr<char[]> message{nullptr};
 
+    /// @{
     /// \brief Returns the message header.
-    static MessageHeader* get_header(Message_t& message) {
-      return reinterpret_cast<MessageHeader*>(message.message.get());
+    MessageHeader* get_header() {
+      return reinterpret_cast<MessageHeader*>(message.get());
     }
-
-    /// \brief Returns the message header.
-    static const MessageHeader* get_header(const Message_t& message) {
-      return reinterpret_cast<const MessageHeader*>(message.message.get());
+    const MessageHeader* get_header() const {
+      return reinterpret_cast<MessageHeader*>(message.get());
     }
+    /// @}
 
     /// \brief Executes the message.
     static bool execute(
@@ -797,7 +797,7 @@ void DistributedTaskDriver::broadcast(Args&&... args) {
 
 template <class Action, class ParallelComponent, class... ArgIndexes>
 void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
-  MessageHeader* header = Message_t::get_header(message);
+  MessageHeader* header = message.get_header();
   if (header->distributed_object_index() >= distributed_objects_.size()) {
     throw rts::Exception{"Requested distributed object with index " +
                          std::to_string(header->distributed_object_index()) +
