@@ -96,6 +96,12 @@ DistributedTaskDriver::DistributedTaskDriver(bool finalize_mpi,
 
   // Set global quiescence detection bookkeeping.
   global_qd_ = qd::Global{current_node_id(), number_of_nodes(), 10};
+
+  per_process_broadcast_to_number_of_elements_.assign(
+      static_cast<size_t>(number_of_threads_) + 1,
+      std::vector<int>(static_cast<size_t>(number_of_nodes())));
+  // Set the thread_id_ of the communication thread to 0.
+  thread_id_ = 0;
 }
 
 DistributedTaskDriver::~DistributedTaskDriver() noexcept {

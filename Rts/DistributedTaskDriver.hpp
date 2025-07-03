@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "Rts/Detail/DistributedObjectBase.hpp"
+#include "Rts/Detail/DistributedObjectIndex.hpp"
 #include "Rts/Detail/GetOutput.hpp"
 #include "Rts/Detail/IndexConversion.hpp"
 #include "Rts/Exceptions/Exception.hpp"
@@ -510,6 +511,30 @@ class DistributedTaskDriver {
    */
   void add_local_broadcast_tasks(std::vector<Message_t>& all_tasks,
                                  const Message_t& message) const;
+
+  /*!
+   * \brief Updates the per-process element count for the current node.
+   *
+   * A per-process element count is stored in a `std::vector` for each
+   * thread. The member variable is
+   * `per_process_broadcast_to_number_of_elements_` which is a
+   * `vector<vector<int>>`. The outer vector is the size of the number of worker
+   * threads plus the number of communication threads (usually we have only 1
+   * communication thread). The inner `vector<int>` holds one in for each
+   * process and so is of size `number_of_nodes()`. The `int` is the number of
+   * collection elements on that process that will receive the broadcast.
+   *
+   * \tparam ParallelComponent The collection component type.
+   * \tparam UnaryPredicate The deduced predicate type.
+   * \param predicate Predicate to select elements.
+   * \param distributed_object_index Index of the distributed object.
+   * \throws Exception if the distributed object is not a collection or on
+   * error.
+   */
+  template <class ParallelComponent, class UnaryPredicate>
+  void compute_elements_per_pid(const UnaryPredicate& predicate,
+                                std::uint32_t distributed_object_index);
+
   /*!
    * \brief The type used to store each distributed object or collection.
    *
@@ -568,6 +593,7 @@ class DistributedTaskDriver {
   qd::Global global_qd_{};
   static constexpr int local_qd_counts_for_global_qd_ = 50;
 
+  std::vector<std::vector<int>> per_process_broadcast_to_number_of_elements_{};
   // Special values used for different types of messages.
   static constexpr int broadcast_process_id = -1;
 };
@@ -793,6 +819,65 @@ void DistributedTaskDriver::broadcast(Args&&... args) {
   } else {
     throw Exception{"Serialization in broadcast() is not yet implemented."};
     // send_data(broadcast_process_id, std::move(buffer));
+  }
+}
+
+template <class ParallelComponent, class UnaryPredicate>
+void DistributedTaskDriver::compute_elements_per_pid(
+    const UnaryPredicate& predicate,
+    const std::uint32_t distributed_object_index) {
+  static_assert(is_collection_v<ParallelComponent>,
+                "Can only perform a BroadcastTo over a collection.");
+  static_assert(
+      std::is_invocable_r_v<bool, UnaryPredicate,
+                            typename ParallelComponent::rts_collection_index>,
+      "Predicate must be callable with collection index and return bool.");
+
+  const DistributedOjectClassHolder& distributed_object =
+      distributed_objects_[distributed_object_index];
+  const DistributedOjectClassHolder::variant_t& objects_variant =
+      distributed_object.objects;
+  if (objects_variant.index() != detail::Collection) {
+    throw Exception{
+        "Can only perform a broadcast_to over collections, not " +
+        detail::get_output(static_cast<detail::DistributedObjectIndex>(
+            objects_variant.index())) +
+        ". Please check that the ParallelComponent is a collection."};
+  }
+  const DistributedOjectClassHolder::Map_t& objects =
+      std::get<1>(objects_variant);
+
+  if (per_process_broadcast_to_number_of_elements_.size() !=
+      static_cast<size_t>(number_of_threads_ + 1)) {
+    throw Exception{
+        "Size of per_process_broadcast_to_pid_offset_info_ must be " +
+        std::to_string(number_of_threads_ + 1) + " but is size " +
+        std::to_string(per_process_broadcast_to_number_of_elements_.size()) +
+        ". This is an internal bug. Please file an issue."};
+  }
+  // Get the thread-local vector for storing the number of elements on each
+  // process that we send to and zero it.
+  std::vector<int>& number_of_elements_per_process =
+      per_process_broadcast_to_number_of_elements_[thread_id()];
+  if (number_of_elements_per_process.size() !=
+      static_cast<size_t>(number_of_nodes())) {
+    throw Exception{"The size of number_of_elements_per_process (" +
+                    std::to_string(number_of_elements_per_process.size()) +
+                    ") should match the number of nodes, " +
+                    std::to_string(number_of_nodes())};
+  }
+  number_of_elements_per_process.assign(number_of_elements_per_process.size(),
+                                        0);
+  // Count the number of elements on each process.
+  for (const auto& [collection_index, collection_holder] : objects) {
+    if (predicate(detail::from_internal<ParallelComponent>(collection_index))) {
+      const auto node_id = static_cast<size_t>(collection_holder.node_id);
+      if (node_id >= number_of_elements_per_process.size()) {
+        throw Exception{"Node ID " + std::to_string(node_id) +
+                        " is out of bounds."};
+      }
+      ++number_of_elements_per_process[node_id];
+    }
   }
 }
 
