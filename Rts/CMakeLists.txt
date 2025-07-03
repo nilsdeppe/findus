@@ -9,6 +9,7 @@ add_library(
   ActionState.cpp
   Detail/DistributedObjectBase.cpp
   Detail/DistributedObjectIndex.cpp
+  Detail/IndexConversion.cpp
   Detail/MpiErrorMessage.cpp
   Detail/VectorStream.cpp
   DistributedTaskDriver.cpp
