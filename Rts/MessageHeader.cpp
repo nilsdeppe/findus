@@ -206,6 +206,11 @@ TEST_CASE("MessageHeader") {
           (expected_message_type == MessageType::Broadcast));
     CHECK(message_header.is_broadcast_to() ==
           (expected_message_type == MessageType::BroadcastTo));
+    CHECK(message_header.data_alignment() == alignof(T));
+    message_header.set_data_alignment(0);
+    CHECK(message_header.data_alignment() == 0);
+    message_header.set_data_alignment(alignof(T));
+    CHECK(message_header.data_alignment() == alignof(T));
 
     CHECK(reinterpret_cast<char*>(data_from_message<T>(message_header)) ==
           std::next(reinterpret_cast<char*>(&message_header), 128));

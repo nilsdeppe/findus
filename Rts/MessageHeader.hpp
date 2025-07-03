@@ -203,11 +203,15 @@ struct alignas(64) MessageHeader {
   static constexpr std::uint64_t number_of_bytes_in_message_mask =
       (std::uint64_t{1} << 40) - 1;
 
- private:
-  template <class DataTypeReturned>
-  friend auto create_data_in_message(MessageHeader& message_header)
-      -> DataTypeReturned*;
-
+  /*!
+   * \brief Sets the data alignment information in the message header.
+   *
+   * \param alignment The alignment (in bytes) to be stored in the message
+   * header.
+   *
+   * \note The alignment value must fit within the number of bits reserved for
+   * alignment (8 bits).
+   */
   void set_data_alignment(const std::uint64_t alignment) {
     // Zero out bits.
     number_of_bytes_in_message_ =
@@ -216,6 +220,11 @@ struct alignas(64) MessageHeader {
     number_of_bytes_in_message_ =
         (alignment << 52) bitor number_of_bytes_in_message_;
   }
+
+ private:
+  template <class DataTypeReturned>
+  friend auto create_data_in_message(MessageHeader& message_header)
+      -> DataTypeReturned*;
 
   detail::MemberFunctionPtr member_function_ptr_ = {};
   std::uint64_t target_collection_index_ = 0;
