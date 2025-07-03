@@ -8,9 +8,12 @@
 #include <cstdint>
 #include <exception>
 #include <initializer_list>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <mpi.h>
+#include <new>
+#include <numeric>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -296,6 +299,95 @@ class DistributedTaskDriver {
    */
   template <class Action, class ParallelComponent, class... Args>
   void broadcast(Args&&... args);
+
+  /*!
+   * \brief Broadcasts `args` to a filtered subset of elements in a collection
+   * parallel component and invokes the `Action`.
+   *
+   * This function allows invoking/calling `Actions` on a subset of elements of
+   * a collection parallel component, as selected by a user-provided predicate.
+   * The arguments `args...` are forwarded to the member function
+   * `threaded_action` on each receiving distributed object that matches the
+   * predicate.
+   *
+   * The predicate must be callable with a collection index of type
+   * `ParallelComponent::rts_collection_index` and return a `bool` indicating
+   * whether the element should receive the broadcast.
+   *
+   * An example of a threaded action member function of a parallel component is:
+   * ```cpp
+   * template <class Action, class... Args>
+   * void threaded_action(rts::DistributedTaskDriver& driver, Args... args);
+   * ```
+   * Specialization to specific actions is essentially providing remotely
+   * callable member functions. For example,
+   * ```cpp
+   * template <>
+   * void threaded_action<MyAction>(rts::DistributedTaskDriver& task_driver,
+   *                                const int t)
+   * ```
+   * provides a remotely callable member function labeled or tagged by the
+   * "action" struct/class/type, `MyAction` in this case.
+   *
+   * \tparam Action The action invoked on each distributed object.
+   * \tparam ParallelComponent The collection parallel component to broadcast
+   *         to.
+   * \tparam UnaryPredicate The predicate type used to filter collection
+   *         elements.
+   * \tparam Args The argument types to send to each distributed
+   *         object.
+   * \param predicate A callable that takes a collection index and
+   *        returns true if the element should receive the broadcast.
+   * \param args The arguments to send to each distributed object.
+   *
+   * \throws Exception If any argument is a raw pointer or C-style array, if the
+   *                  predicate is invalid, if the parallel component is not
+   *                  registered, or on internal errors.
+   *
+   * \note Only trivially copyable arguments are currently supported.
+   *       Serialization for non-trivially copyable types is not yet
+   *       implemented.
+   *
+   * Implementation details
+   *
+   * We first construct a single copy of the serialized data in a buffer. This
+   * serialized data will be copied into each message. Doing so once minimizes
+   * the overhead of the serialization process itself and requires us to only
+   * use a `std::memcpy()`.
+   *
+   * Next we compute how many collection IDs to send to each process. We do
+   * this without any memory allocations by having a member variable that is a
+   * `vector<vector<int>>`. The outer vector is of the size of the number of
+   * threads while the inner vector is the size of the number of processes. We
+   * use the function `compute_elements_per_pid()` to compute the number of
+   * elements on each process. Note that the vectors are allocated in the
+   * constructor and this implementation is to avoid any additional memory
+   * allocations.
+   *
+   * Next we create a `vector<Message_t>` that is of size
+   * `number_of_nodes()+number_of_local_elements` where
+   * `number_of_local_elements` is the number of collection elements owned by
+   * this process that are broadcast to. We fill this vector for all processes
+   * that isn't the process we are sending from. Each message has the memory
+   * layout: [MessageHeader, target_pid, num_elements, collection_ids, data]
+   * At this stage we do not fill in the collection IDs on the target
+   * process. We will do that separately.
+   *
+   * Next we loop over all collection elements and for each one whose ID
+   * satisfies the predicate we modify the message vector. For collection
+   * elements on remote processes we add the ID to the list of IDs to
+   * broadcast to on that remote process (part of the message). For local ones
+   * we create a local Invoke message and add it to the vector.
+   *
+   * Finally, we insert all the local messages into our local message pool and
+   * send the remote messages to the corresponding processes.
+   *
+   * Note that we do not send any messages to processes that have zero
+   * collection elements whose ID satisfies the predicate.
+   */
+  template <class Action, class ParallelComponent, class UnaryPredicate,
+            class... Args>
+  void broadcast_to(UnaryPredicate&& predicate, Args&&... args);
 
  private:
   // The DistributedTaskDriver can only be created using the
@@ -819,6 +911,231 @@ void DistributedTaskDriver::broadcast(Args&&... args) {
   } else {
     throw Exception{"Serialization in broadcast() is not yet implemented."};
     // send_data(broadcast_process_id, std::move(buffer));
+  }
+}
+
+template <class Action, class ParallelComponent, class UnaryPredicate,
+          class... Args>
+void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
+                                         Args&&... args) {
+  static_assert(
+      is_collection_v<ParallelComponent>,
+      "Can only call broadcast_to on a collection parallel component.");
+  static_assert(((not(std::is_pointer_v<std::decay_t<Args>> or
+                      std::is_array_v<std::decay_t<Args>>)) &&
+                 ...),
+                "We cannot serialize raw pointers or C-style arrays in a "
+                "safe manner. Please wrap these in a container that can "
+                "safely handle the serialization.");
+  static_assert(
+      std::is_invocable_r_v<bool, UnaryPredicate,
+                            typename ParallelComponent::rts_collection_index>,
+      "Predicate must be callable with collection index and return bool.");
+
+  const std::uint32_t distributed_object_index =
+      rts::detail::distributed_object_index<ParallelComponent>();
+  if (distributed_object_index >= distributed_objects_.size()) {
+    throw Exception{
+        "Trying to send broadcast_to over an unregistered ParallelComponent, " +
+        ParallelComponent::name() + ". Did you forget to insert it?"};
+  }
+
+  // Regardless of whether or not we are crossing an address space
+  // boundary we cannot store or forward references in the Data, we can
+  // only safely store values.
+  constexpr bool data_is_trivially_copyable =
+      (std::is_trivially_copyable_v<std::decay_t<Args>> && ...);
+  using Data_t = std::tuple<std::decay_t<Args>...>;
+
+  // Create one copy of the data that we can then copy into each message to
+  // each process.
+  std::unique_ptr<char[]> data{nullptr};
+  // Always align to the tuple. This may over align but reduces code
+  // duplication.
+  constexpr size_t data_alignment = alignof(Data_t);
+  constexpr size_t data_size = data_is_trivially_copyable
+                                   ? sizeof(Data_t)
+                                   : std::numeric_limits<size_t>::max();
+  if (data_is_trivially_copyable) {
+    data = std::unique_ptr<char[]>{
+        new (std::align_val_t{data_alignment}) char[data_size]};
+    new (data.get()) Data_t{std::forward<Args>(args)...};
+  } else {
+    throw Exception{"Serialization in broadcast_to() not yet implemented."};
+  }
+
+  // Fill the per_process_broadcast_to_number_of_elements_ vector for this
+  // thread.
+  compute_elements_per_pid<ParallelComponent>(predicate,
+                                              distributed_object_index);
+
+  const std::vector<int>& number_of_elements_per_process =
+      per_process_broadcast_to_number_of_elements_[thread_id()];
+  if (number_of_elements_per_process.size() !=
+      static_cast<size_t>(number_of_nodes())) {
+    throw Exception{"The size of number_of_elements_per_process should be " +
+                    std::to_string(number_of_nodes()) + " but is " +
+                    std::to_string(number_of_elements_per_process.size()) +
+                    ". This is an internal bug. Please file an issue with a "
+                    "minimal reproducible example."};
+  }
+  const size_t local_number_of_elements = static_cast<size_t>(
+      number_of_elements_per_process[static_cast<size_t>(current_node_id())]);
+  std::vector<Message_t> broadcast_to_messages{};
+  broadcast_to_messages.reserve(static_cast<size_t>(number_of_nodes()) +
+                                local_number_of_elements);
+
+  for (int pid = 0; pid < number_of_nodes(); ++pid) {
+    const int number_of_elements_on_pid =
+        number_of_elements_per_process[static_cast<size_t>(pid)];
+    // If there are no elements to broadcast to on the target process ID then
+    // skip.
+    if (number_of_elements_on_pid == 0 or pid == current_node_id()) {
+      broadcast_to_messages.emplace_back(Message_t{nullptr});
+      continue;
+    }
+    const std::uint32_t extra_bytes_for_elements =
+        sizeof(std::uint64_t) *
+        (2 + static_cast<std::uint32_t>(number_of_elements_on_pid));
+    const std::uint32_t data_offset =
+        sizeof(MessageHeader) +
+        extra_bytes_for_elements
+        // Add extra bytes to make sure we can align Data_t
+        // properly. We compute the remainder of the MessageHeader size and
+        // the alignment of the data. This would give us, e.g. 5 bytes, which
+        // means we have e.g. 37 bytes for MessageHeader. The amount we
+        // would need to align then is given by the C++:
+        + (data_alignment -
+           (extra_bytes_for_elements + sizeof(MessageHeader)) % data_alignment);
+    const std::uint64_t buffer_size = data_offset + data_size;
+    std::unique_ptr<char[]> buffer{new (std::align_val_t(
+        std::max(alignof(MessageHeader), data_alignment))) char[buffer_size]};
+
+    MessageHeader* message = new (buffer.get())
+        MessageHeader{threaded_action_relative_ptr<Action, ParallelComponent,
+                                                   std::decay_t<Args>...>(
+                          std::make_index_sequence<sizeof...(Args)>{}),
+                      MessageHeader::no_collection_index(),
+                      buffer_size,
+                      detail::distributed_object_index<ParallelComponent>(),
+                      data_offset,
+                      current_node_id(),
+                      pid,
+                      global_qd_.local_sweep_number(),
+                      false,
+                      MessageType::BroadcastTo};
+    std::uint64_t* start = reinterpret_cast<std::uint64_t*>(
+        std::next(reinterpret_cast<char*>(message), sizeof(MessageHeader)));
+    start[0] = static_cast<std::uint64_t>(pid);
+    // We use this int as a counter for the enqueued elements per PID.
+    start[1] = 0;
+    // Copy data into message.
+    memcpy(rts::create_data_in_message<Data_t>(*message), data.get(),
+           data_size);
+    broadcast_to_messages.emplace_back(Message_t{std::move(buffer)});
+  }
+  if (static_cast<size_t>(number_of_nodes()) != broadcast_to_messages.size()) {
+    throw Exception{"The number of BroadcastTo messages " +
+                    std::to_string(broadcast_to_messages.size()) +
+                    " must match the number of nodes " +
+                    std::to_string(number_of_nodes())};
+  }
+
+  // In order to keep this O(N) we loop over all the collection elements. For
+  // collection indices that satisfy the predicate, we add them to the PID
+  // that they are on. We use the number of elements tracked by the index
+  // stored next to the PID to track how many collection IDs we've added.
+  const DistributedOjectClassHolder& distributed_object =
+      distributed_objects_[distributed_object_index];
+  const DistributedOjectClassHolder::variant_t& objects_variant =
+      distributed_object.objects;
+  if (objects_variant.index() != detail::Collection) {
+    throw Exception{
+        "Can only perform a broadcast_to over collections, not " +
+        detail::get_output(static_cast<detail::DistributedObjectIndex>(
+            objects_variant.index()))};
+  }
+  const DistributedOjectClassHolder::Map_t& objects =
+      std::get<1>(objects_variant);
+  for (const auto& [collection_index, collection_holder] : objects) {
+    if (predicate(detail::from_internal<ParallelComponent>(collection_index))) {
+      if (collection_holder.node_id == current_node_id()) {
+        const std::uint32_t data_offset =
+            sizeof(MessageHeader)
+            // Add extra bytes to make sure we can align Data_t
+            // properly. We compute the remainder of the MessageHeader size
+            // and the alignment of the data. This would give us, e.g. 5
+            // bytes, which means we have e.g. 37 bytes for MessageHeader. The
+            // amount we would need to align then is given by the C++:
+            + (data_alignment - sizeof(MessageHeader) % data_alignment);
+        const std::uint64_t buffer_size = data_offset
+                                          // Add the size of the data type
+                                          + data_size;
+        std::unique_ptr<char[]> buffer{new (std::align_val_t(std::max(
+            alignof(MessageHeader), data_alignment))) char[buffer_size]};
+
+        MessageHeader* message = new (buffer.get()) MessageHeader{
+            threaded_action_relative_ptr<Action, ParallelComponent,
+                                         std::decay_t<Args>...>(
+                std::make_index_sequence<sizeof...(Args)>{}),
+            collection_index,
+            buffer_size,
+            detail::distributed_object_index<ParallelComponent>(),
+            data_offset,
+            current_node_id(),
+            current_node_id(),
+            global_qd_.local_sweep_number(),
+            false,
+            MessageType::Invoke};
+        memcpy(rts::create_data_in_message<Data_t>(*message), data.get(),
+               data_size);
+        broadcast_to_messages.emplace_back(Message_t{std::move(buffer)});
+      } else {
+        Message_t& this_message = broadcast_to_messages[static_cast<size_t>(
+            collection_holder.node_id)];
+        std::uint64_t* const start = reinterpret_cast<std::uint64_t*>(
+            std::next(this_message.message.get(), sizeof(MessageHeader)));
+        if (*start != static_cast<size_t>(collection_holder.node_id)) {
+          throw Exception{
+              "Process ID mismatch between the one found in the message: " +
+              std::to_string(*start) + " and the one being sent to: " +
+              std::to_string(collection_holder.node_id) +
+              ". This is an internal bug. Please file an issue with a "
+              "minimal reproducible example."};
+        }
+        const int offset = static_cast<int>(*std::next(start));
+        *std::next(start, offset + 2) = collection_index;
+        *std::next(start) += 1;
+      }
+    }
+  }
+
+  for (int pid = 0; pid < number_of_nodes(); ++pid) {
+    if (pid == current_node_id()) {
+      thread_pool_->add_tasks(
+          std::make_move_iterator(
+              std::next(broadcast_to_messages.begin(), number_of_nodes())),
+          local_number_of_elements);
+      continue;
+    }
+
+    if (broadcast_to_messages[static_cast<size_t>(pid)].message != nullptr) {
+      Message_t& this_message = broadcast_to_messages[static_cast<size_t>(pid)];
+      if (this_message.get_header()->data_alignment() == 0) {
+        throw Exception{"Alignment not set in BroadcastTo."};
+      }
+      if (this_message.get_header()->message_type() !=
+          MessageType::BroadcastTo) {
+        throw Exception{"MessageType set incorrectly in BroadcastTo"};
+      }
+      if (const auto dest_pid =
+              this_message.get_header()->destination_process_id();
+          dest_pid != pid) {
+        throw Exception{"Destination PID is " + std::to_string(dest_pid) +
+                        " but should be " + std::to_string(pid)};
+      }
+      send_data(pid, {std::move(this_message)});
+    }
   }
 }
 
