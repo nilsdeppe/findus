@@ -139,10 +139,15 @@ struct alignas(64) MessageHeader {
                              number_of_bytes_in_message_);
   }
 
+  /// @{
   /*!
    * \brief Returns the address of the data/byte stream in a message.
    */
   char* data_location() { return reinterpret_cast<char*>(this) + data_offset_; }
+  const char* data_location() const {
+    return reinterpret_cast<const char*>(this) + data_offset_;
+  }
+  /// @}
 
   /// \brief Get the process ID of the message sender/source.
   std::int32_t source_process_id() const { return source_process_id_; }

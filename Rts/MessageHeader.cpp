@@ -10,6 +10,7 @@
 #include <ostream>
 #include <string>
 #include <type_traits>
+#include <utility>
 
 #include "Rts/Detail/GetOutput.hpp"
 #include "Rts/Detail/MemberFunctionPtr.hpp"
@@ -194,6 +195,8 @@ TEST_CASE("MessageHeader") {
     CHECK(message_header.distributed_object_index() == 11);
     CHECK(message_header.data_location() ==
           std::next(reinterpret_cast<char*>(&message_header), 128));
+    CHECK(std::as_const(message_header).data_location() ==
+          std::next(reinterpret_cast<const char*>(&message_header), 128));
     CHECK(message_header.source_process_id() == 2);
     CHECK(message_header.destination_process_id() == 7);
     CHECK(message_header.quiescence_detection_sweep_number() == 8);
