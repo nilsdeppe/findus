@@ -118,7 +118,7 @@ DistributedTaskDriver::~DistributedTaskDriver() noexcept {
 
 DistributedTaskDriver::Message_t DistributedTaskDriver::copy(
     const DistributedTaskDriver::Message_t& message) const {
-  const MessageHeader& message_header = *Message_t::get_header(message);
+  const MessageHeader& message_header = *message.get_header();
   std::unique_ptr<char[]> buffer{
       new (std::align_val_t(
           std::max(alignof(MessageHeader),
@@ -357,7 +357,7 @@ void DistributedTaskDriver::attach_debugger() {
 void DistributedTaskDriver::invoke(Message_t& message,
                                    const uint32_t thread_id) {
   thread_id_ = thread_id_offset_ + thread_id;
-  MessageHeader* message_header = Message_t::get_header(message);
+  MessageHeader* message_header = message.get_header();
   (this->*threaded_action_absolute_ptr(message_header->member_function_ptr()))(
       message);
 }
@@ -378,7 +378,7 @@ void DistributedTaskDriver::send_message_impl(Message_t in_message) {
         "The message passed in is a nullptr. This is an internal error."};
   }
   const auto destination_process_id =
-      Message_t::get_header(in_message)->destination_process_id();
+      in_message.get_header()->destination_process_id();
   if (destination_process_id < 0 or
       destination_process_id >= number_of_nodes()) {
     throw Exception{"The destination process ID (" +
@@ -396,7 +396,7 @@ void DistributedTaskDriver::send_message_impl(Message_t in_message) {
   }
   MPI_Request& request = std::get<0>(outgoing_mpi_messages_.back()).value();
   Message_t& message = std::get<1>(outgoing_mpi_messages_.back());
-  MessageHeader& message_header = *Message_t::get_header(message);
+  MessageHeader& message_header = *message.get_header();
   const int num_bytes =
       static_cast<int>(message_header.number_of_bytes_in_message());
   if (num_bytes < 0) {
@@ -428,7 +428,7 @@ void DistributedTaskDriver::send_to_children(const Message_t& message) {
   for (const int child : {left, right}) {
     if (child != -1) {
       Message_t child_copy = copy(message);
-      Message_t::get_header(child_copy)->change_destination_process_id(child);
+      child_copy.get_header()->change_destination_process_id(child);
       send_message_impl(std::move(child_copy));
     }
   }
@@ -449,12 +449,12 @@ void DistributedTaskDriver::initiate_sends(const int max_to_send) {
       break;
     }
     for (size_t to_send = 0; to_send < messages_retrieved; ++to_send) {
-      const bool is_broadcast =
-          Message_t::get_header(std::get<1>(bulk_outgoing_messages[to_send]))
-              ->is_broadcast();
+      const bool is_broadcast = std::get<1>(bulk_outgoing_messages[to_send])
+                                    .get_header()
+                                    ->is_broadcast();
       if (is_broadcast) {
         Message_t& message = std::get<1>(bulk_outgoing_messages[to_send]);
-        MessageHeader& message_header = *Message_t::get_header(message);
+        MessageHeader& message_header = *message.get_header();
         // If we are not on process 0 we send to process 0 which starts the
         // tree-based broadcast to its children.
         if (message_header.destination_process_id() == current_node_id() and
@@ -609,8 +609,7 @@ struct BulkEnqueueIterator {
     }
     already_dereferenced = true;
     if (const MessageType message_type =
-            DistributedTaskDriver::Message_t::get_header(std::get<1>(*it))
-                ->message_type();
+            std::get<1>(*it).get_header()->message_type();
         message_type != MessageType::Invoke) {
       throw Exception{
           "The received message type must be Invoke. Other message types need "
@@ -666,7 +665,7 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
        ++it) {
     global_qd_.increment_processed();
     Message_t& message = std::get<1>(*it);
-    MessageHeader& message_header = *Message_t::get_header(message);
+    MessageHeader& message_header = *message.get_header();
     global_qd_.update_last_regular_message_sweep_number(
         message_header.quiescence_detection_sweep_number());
     MPI_Request_free(&std::get<0>(*it));
@@ -717,12 +716,12 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
   // fairly complex, so separating this logic improves readability and
   // maintainability. If the first loop is simplified later, we could consider
   // merging these steps for efficiency.
-  const bool all_messages_are_invoke = std::all_of(
-      first_received_message, incoming_mpi_messages_.end(),
-      [](const std::tuple<MPI_Request, Message_t>& msg) {
-        const MessageHeader* header = Message_t::get_header(std::get<1>(msg));
-        return header->message_type() == MessageType::Invoke;
-      });
+  const bool all_messages_are_invoke =
+      std::all_of(first_received_message, incoming_mpi_messages_.end(),
+                  [](const std::tuple<MPI_Request, Message_t>& msg) {
+                    const MessageHeader* header = std::get<1>(msg).get_header();
+                    return header->message_type() == MessageType::Invoke;
+                  });
 
   if (all_messages_are_invoke) {
     thread_pool_->add_tasks(BulkEnqueueIterator{first_received_message},
@@ -739,7 +738,7 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
     for (auto it = first_received_message; it != incoming_mpi_messages_.end();
          ++it) {
       Message_t& msg = std::get<1>(*it);
-      MessageHeader* header = Message_t::get_header(msg);
+      MessageHeader* header = msg.get_header();
 
       if (header->message_type() == MessageType::Invoke) {
         all_tasks.push_back(std::move(msg));
@@ -762,7 +761,7 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
 
 void DistributedTaskDriver::add_local_broadcast_tasks(
     std::vector<Message_t>& all_tasks, const Message_t& message) const {
-  const MessageHeader& message_header = *Message_t::get_header(message);
+  const MessageHeader& message_header = *message.get_header();
   // Send to local collection elements.
   if (message_header.distributed_object_index() >=
       distributed_objects_.size()) {
@@ -789,7 +788,7 @@ void DistributedTaskDriver::add_local_broadcast_tasks(
       }
 
       Message_t local_message = copy(message);
-      MessageHeader* local_header = Message_t::get_header(local_message);
+      MessageHeader* local_header = local_message.get_header();
 
       // Change message type to Invoke and set collection index
       local_header->convert_broadcast_to_invoke(collection_index);
@@ -805,7 +804,7 @@ void DistributedTaskDriver::add_local_broadcast_tasks(
                       "broadcasts currently."};
     }
     Message_t local_message = copy(message);
-    MessageHeader* local_header = Message_t::get_header(local_message);
+    MessageHeader* local_header = local_message.get_header();
 
     // Change message type to Invoke and set collection index
     local_header->convert_broadcast_to_invoke(
@@ -894,8 +893,7 @@ void test_copy_message(DistributedTaskDriver& driver) {
   DistributedTaskDriver::Message_t copied = driver.copy(message);
 
   // Check header fields
-  const MessageHeader* copied_header =
-      rts::DistributedTaskDriver::Message_t::get_header(copied);
+  const MessageHeader* copied_header = copied.get_header();
   CHECK((*copied_header) == (*header));
 
   // Check payload
