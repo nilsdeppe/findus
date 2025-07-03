@@ -10,6 +10,7 @@ add_library(
   Detail/DistributedObjectBase.cpp
   Detail/DistributedObjectIndex.cpp
   Detail/MpiErrorMessage.cpp
+  Detail/VectorStream.cpp
   DistributedTaskDriver.cpp
   Exceptions/Exception.cpp
   Exceptions/Mpi.cpp
