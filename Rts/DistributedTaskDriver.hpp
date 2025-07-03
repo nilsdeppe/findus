@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "Rts/Detail/DistributedObjectBase.hpp"
+#include "Rts/Detail/GetOutput.hpp"
 #include "Rts/Detail/IndexConversion.hpp"
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/IsCollection.hpp"
@@ -821,13 +822,25 @@ void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
     args = data_from_message<Data_t>(*header);
   }
   if constexpr (rts::is_collection_v<ParallelComponent>) {
-    dynamic_cast<ParallelComponent&>(
-        *std::get<1>(
-             distributed_objects_[header->distributed_object_index()].objects)
-             .at(header->target_collection_index())
-             .object)
-        .template threaded_action<Action>(
-            *this, std::move(std::get<ArgIndexes::index>(*args))...);
+    DistributedOjectClassHolder::Map_t& distributed_object_collection =
+        std::get<1>(
+            distributed_objects_[header->distributed_object_index()].objects);
+    if (const auto it = distributed_object_collection.find(
+            header->target_collection_index());
+        it != distributed_object_collection.end()) {
+      dynamic_cast<ParallelComponent&>(*it->second.object)
+          .template threaded_action<Action>(
+              *this, std::move(std::get<ArgIndexes::index>(*args))...);
+    } else {
+      throw Exception{
+          "Collection index " +
+          detail::get_output(detail::from_internal<ParallelComponent>(
+              header->target_collection_index())) +
+          " or as uint64_t " +
+          std::to_string(header->target_collection_index()) +
+          " is not in the collection parallel component " +
+          ParallelComponent::name()};
+    }
   } else {
     dynamic_cast<ParallelComponent&>(
         *std::get<0>(
