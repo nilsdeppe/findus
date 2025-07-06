@@ -11,6 +11,7 @@ add_library(
   Detail/DistributedObjectIndex.cpp
   Detail/IndexConversion.cpp
   Detail/MpiErrorMessage.cpp
+  Detail/ReductionCounter.cpp
   Detail/VectorStream.cpp
   DistributedTaskDriver.cpp
   Exceptions/Exception.cpp
