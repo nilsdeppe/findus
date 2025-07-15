@@ -161,6 +161,8 @@ inline ThreadPool<MessageType, ProcessLocalDataType>::ThreadPool(
 template <class MessageType, class ProcessLocalDataType>
 inline void ThreadPool<MessageType, ProcessLocalDataType>::launch_threads(
     const std::optional<uint32_t> thread_to_print_from) {
+  local_qd_.reset();
+  stop_threads_.store(false, std::memory_order_release);
   for (size_t i = 0; i < threads_.size(); i++) {
     threads_[i] = std::thread(&ThreadPool::pin_and_thread_loop, this, i,
                               thread_to_print_from);
