@@ -80,6 +80,7 @@ class ThreadPool {
         active_thread.join();
     }
     threads_.clear();
+    threads_are_active_ = false;
   }
 
   /// \brief Returns `true` if all threads are idle and quiescence can be
@@ -91,6 +92,9 @@ class ThreadPool {
   bool is_quiescent() {
     return local_qd_.is_quiescent(static_cast<std::int64_t>(threads_.size()));
   }
+
+  /// \brief Returns `true` if threads are currently running.
+  bool threads_are_active() const { return threads_are_active_; }
 
   /// \brief Log to `std::cout`
   void print_to(std::string to_print) {
@@ -115,6 +119,7 @@ class ThreadPool {
   //   is one (expensive) option.
   ProcessLocalDataType process_local_data_for_execution_;
   uint32_t thread_pin_offset_ = 0;
+  bool threads_are_active_{false};
   std::vector<std::thread> threads_{};
   alignas(hardware_destructive_interference_size)
       std::atomic<bool> stop_threads_{false};
@@ -167,6 +172,7 @@ inline void ThreadPool<MessageType, ProcessLocalDataType>::launch_threads(
     threads_[i] = std::thread(&ThreadPool::pin_and_thread_loop, this, i,
                               thread_to_print_from);
   }
+  threads_are_active_ = true;
 }
 
 template <class MessageType, class ProcessLocalDataType>
