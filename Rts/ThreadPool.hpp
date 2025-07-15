@@ -79,7 +79,6 @@ class ThreadPool {
     for (std::thread& active_thread : threads_) {
         active_thread.join();
     }
-    threads_.clear();
     threads_are_active_ = false;
   }
 
