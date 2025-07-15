@@ -93,6 +93,16 @@ class Local {
   /// `previous_count` and `phase`!
   bool is_quiescent(std::int64_t total_number_of_threads);
 
+  /*!
+   * \brief Resets all internal counters and state to their default values.
+   *
+   * This function sets the phase and all counters (idle threads, messages sent,
+   * messages processed, previous count) back to their initial state.
+   * Use this to reuse the Local quiescence detection object for a new detection
+   * cycle.
+   */
+  void reset();
+
  private:
   /// The phase of the SKR algorithm we are in.
   ///

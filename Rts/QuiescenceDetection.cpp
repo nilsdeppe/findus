@@ -64,6 +64,14 @@ bool Local::is_quiescent(const std::int64_t total_number_of_threads) {
       std::to_string(phase_)};
 }
 
+void Local::reset() {
+  phase_ = 1;
+  previous_count_ = 0;
+  number_of_idle_threads_.store(0, std::memory_order_relaxed);
+  number_of_messages_sent_.store(0, std::memory_order_relaxed);
+  number_of_messages_processed_.store(0, std::memory_order_release);
+}
+
 Global::Global() = default;
 Global::Global(const Global&) = default;
 Global& Global::operator=(const Global&) = default;
@@ -622,6 +630,18 @@ void test_local_qd() {
   local.increment_processed();
   CHECK(local.is_quiescent(number_of_threads) == false);
   CHECK(local.is_quiescent(number_of_threads) == true);
+
+  // Next test the reset() function
+  // Set all counters to non-default values
+  local.increment_idle_thread_count();
+  local.increment_sent();
+  local.increment_processed();
+
+  // Call reset
+  local.reset();
+
+  // After reset, all counters should be at their default values
+  CHECK(local.is_quiescent(number_of_threads) == false);
 }
 
 void test_safe_add() {
