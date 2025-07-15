@@ -137,6 +137,12 @@ DistributedTaskDriver::Message_t DistributedTaskDriver::copy(
 
 void DistributedTaskDriver::launch_threads(
     const std::optional<uint32_t> thread_for_logging) {
+  if (thread_pool_->threads_are_active()) {
+    throw Exception{
+        "Threads are already active. You cannot launch threads when they are "
+        "already running. Process ID: " +
+        std::to_string(current_node_id())};
+  }
   thread_pool_->launch_threads(thread_for_logging);
 }
 
