@@ -788,6 +788,13 @@ void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
                 "safe manner. Please wrap these in a container that can "
                 "safely handle the serialization.");
 
+  if (not thread_pool_->threads_are_active()) {
+    throw Exception{"Cannot call invoke() on process " +
+                    std::to_string(current_node_id()) +
+                    " because the threads have not been launched. You must "
+                    "first call driver.launch_threads()."};
+  }
+
   int target_node = -1;
   std::uint64_t collection_index = MessageHeader::no_collection_index();
   if constexpr (rts::is_collection_v<ParallelComponent>) {
@@ -874,6 +881,12 @@ void DistributedTaskDriver::broadcast(Args&&... args) {
                 "We cannot serialize raw pointers or C-style arrays in a "
                 "safe manner. Please wrap these in a container that can "
                 "safely handle the serialization.");
+  if (not thread_pool_->threads_are_active()) {
+    throw Exception{"Cannot call invoke() on process " +
+                    std::to_string(current_node_id()) +
+                    " because the threads have not been launched. You must "
+                    "first call driver.launch_threads()."};
+  }
   if ((std::is_trivially_copyable_v<std::decay_t<Args>> && ...)) {
     // Regardless of whether or not we are crossing an address space
     // boundary we cannot store or forward references in the Data, we can
@@ -931,6 +944,12 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
       std::is_invocable_r_v<bool, UnaryPredicate,
                             typename ParallelComponent::rts_collection_index>,
       "Predicate must be callable with collection index and return bool.");
+  if (not thread_pool_->threads_are_active()) {
+    throw Exception{"Cannot call invoke() on process " +
+                    std::to_string(current_node_id()) +
+                    " because the threads have not been launched. You must "
+                    "first call driver.launch_threads()."};
+  }
 
   const std::uint32_t distributed_object_index =
       rts::detail::distributed_object_index<ParallelComponent>();
