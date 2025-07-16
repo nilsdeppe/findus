@@ -100,6 +100,19 @@ void Global::reset() {
   terminate_ = 0;
   broadcast_left_child_request_ = std::nullopt;
   broadcast_right_child_request_ = std::nullopt;
+
+  local_sweep_number_ = 0;
+  last_regular_message_sweep_number_ = 0;
+  local_sends_ = 0;
+  local_processed_ = 0;
+
+  // Nate: max_simultaneous_qds_ is set in constructor and should not change!
+  root_down_sweep_ = 0;
+
+  // Note: the following must all be empty at QD time. Checked by safe_reset():
+  // - down_messages_
+  // - up_messages_
+  // - accum_data_
 }
 
 void Global::safe_reset() {
