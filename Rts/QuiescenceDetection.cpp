@@ -467,6 +467,7 @@ void Global::up_traversal(MPI_Comm& comm) {
     }
     local_sweep_number_ = sweep_number;
   } else {
+    local_sweep_number_ = sweep_number;
     if (global_count == 0) {
       terminate_ = 1;
       send_quiescence_broadcast_to(comm, broadcast_left_child_request_,
