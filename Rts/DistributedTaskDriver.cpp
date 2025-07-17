@@ -171,6 +171,12 @@ void DistributedTaskDriver::run_to_quiescence(const int max_to_receive,
         "Process ID: " +
         std::to_string(current_node_id())};
   }
+  if (not thread_pool_->threads_are_active()) {
+    throw Exception{
+      "Cannot call driver.run_to_quiescence() before "
+        "driver.launch_threads(). Process ID: " +
+        std::to_string(current_node_id())};
+  }
   int local_qd_counter = 0;
   while (true) {
     initiate_receives(max_to_receive);
