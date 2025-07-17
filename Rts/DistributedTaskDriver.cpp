@@ -158,8 +158,12 @@ bool DistributedTaskDriver::is_locally_quiescent() {
 }
 
 void DistributedTaskDriver::insert_barrier() const {
-  MPI_Barrier(rts_comm_);
+  barrier();
   const_cast<bool&>(in_insert_mode_) = false;
+}
+
+void DistributedTaskDriver::barrier() const {
+  MPI_Barrier(rts_comm_);
 }
 
 void DistributedTaskDriver::run_to_quiescence(const int max_to_receive,
@@ -1337,7 +1341,7 @@ void test_invoke(DistributedTaskDriver& driver) {
   }
 
   // Ensure we don't conflict with checks
-  driver.insert_barrier();
+  driver.barrier();
 
   auto test_broadcast = [&](const int from_process) {
     // Test broadcast from process 0
@@ -1374,7 +1378,7 @@ void test_invoke(DistributedTaskDriver& driver) {
     }
 
     // Ensure we don't conflict with checks
-    driver.insert_barrier();
+    driver.barrier();
   };
 
   for (int from_pid = 0; from_pid < number_of_processes; ++from_pid) {
@@ -1418,7 +1422,7 @@ void test_invoke(DistributedTaskDriver& driver) {
     }
 
     // Ensure we don't conflict with checks
-    driver.insert_barrier();
+    driver.barrier();
   };
 
   for (int from_pid = 0; from_pid < number_of_processes; ++from_pid) {

@@ -218,6 +218,12 @@ class DistributedTaskDriver {
   /// Should be used after
   void insert_barrier() const;
 
+  /// \brief Synchronize all processes at this function call.
+  ///
+  /// When `barrier()` returns, all processes are guaranteed to have completed
+  /// to this point.
+  void barrier() const;
+
   /*!
    * \brief Insert a parallel component into the `DistributedTaskDriver`.
    *
