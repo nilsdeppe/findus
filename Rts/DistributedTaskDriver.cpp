@@ -137,6 +137,11 @@ DistributedTaskDriver::Message_t DistributedTaskDriver::copy(
 
 void DistributedTaskDriver::launch_threads(
     const std::optional<uint32_t> thread_for_logging) {
+  if (in_insert_mode_) {
+    throw Exception{
+        "Cannot call driver.launch_threads() while still in Insert mode. You "
+        "must first call driver.insert_barrier() on all processes."};
+  }
   if (thread_pool_->threads_are_active()) {
     throw Exception{
         "Threads are already active. You cannot launch threads when they are "
@@ -152,10 +157,20 @@ bool DistributedTaskDriver::is_locally_quiescent() {
   return thread_pool_->is_quiescent();
 }
 
-void DistributedTaskDriver::insert_barrier() const { MPI_Barrier(rts_comm_); }
+void DistributedTaskDriver::insert_barrier() const {
+  MPI_Barrier(rts_comm_);
+  const_cast<bool&>(in_insert_mode_) = false;
+}
 
 void DistributedTaskDriver::run_to_quiescence(const int max_to_receive,
                                               const int max_to_send) {
+  if (in_insert_mode_) {
+    throw Exception{
+      "Cannot call driver.run_to_quiescence() while still in Insert mode. "
+        "You must first call driver.insert_barrier() on all processes.  "
+        "Process ID: " +
+        std::to_string(current_node_id())};
+  }
   int local_qd_counter = 0;
   while (true) {
     initiate_receives(max_to_receive);
