@@ -663,6 +663,7 @@ class DistributedTaskDriver {
   MPI_Comm rts_comm_{};
   bool finalize_mpi_{false};
   bool mpi_supports_multithreading_{false};
+  bool in_insert_mode_{false};
   int number_of_nodes_{0};
   int my_node_id_{std::numeric_limits<int>::max()};
   int number_of_threads_{0};
@@ -692,6 +693,7 @@ class DistributedTaskDriver {
 
 template <class ParallelComponent, class... Args>
 void DistributedTaskDriver::insert_parallel_component(Args&&... args) {
+  in_insert_mode_ = true;
   static_assert(
       not rts::is_collection_v<ParallelComponent>,
       "To insert into a collection use insert_parallel_component_collection");
@@ -721,6 +723,7 @@ template <class ParallelComponent, class... Args>
 void DistributedTaskDriver::insert_parallel_component_collection(
     const typename ParallelComponent::rts_collection_index& user_index,
     const int node_to_insert_on, Args&&... args) {
+  in_insert_mode_ = true;
   static_assert(
       rts::is_collection_v<ParallelComponent>,
       "To insert into a collection use insert_parallel_component_collection");
@@ -788,6 +791,11 @@ void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
                 "safe manner. Please wrap these in a container that can "
                 "safely handle the serialization.");
 
+  if (in_insert_mode_) {
+    throw Exception{
+        "Cannot invoke actions while still in Insert mode. You must first call "
+        "driver.insert_barrier() on all processes."};
+  }
   if (not thread_pool_->threads_are_active()) {
     throw Exception{"Cannot call invoke() on process " +
                     std::to_string(current_node_id()) +
@@ -881,6 +889,11 @@ void DistributedTaskDriver::broadcast(Args&&... args) {
                 "We cannot serialize raw pointers or C-style arrays in a "
                 "safe manner. Please wrap these in a container that can "
                 "safely handle the serialization.");
+  if (in_insert_mode_) {
+    throw Exception{
+        "Cannot perform broadcasts while still in Insert mode. You must first "
+        "call driver.insert_barrier() on all processes."};
+  }
   if (not thread_pool_->threads_are_active()) {
     throw Exception{"Cannot call invoke() on process " +
                     std::to_string(current_node_id()) +
@@ -944,6 +957,11 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
       std::is_invocable_r_v<bool, UnaryPredicate,
                             typename ParallelComponent::rts_collection_index>,
       "Predicate must be callable with collection index and return bool.");
+  if (in_insert_mode_) {
+    throw Exception{
+        "Cannot perform broadcast_to while still in Insert mode. You must "
+        "first call driver.insert_barrier() on all processes."};
+  }
   if (not thread_pool_->threads_are_active()) {
     throw Exception{"Cannot call invoke() on process " +
                     std::to_string(current_node_id()) +
