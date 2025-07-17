@@ -66,6 +66,47 @@ struct ArgIndex {
 }  // namespace detail
 
 class DistributedTaskDriver {
+ private:
+  struct DistributedOjectClassHolder;
+
+  /*!
+   * \brief Holds a single element of a distributed object collection.
+   *
+   * The CollectionHolder struct is used internally by DistributedTaskDriver
+   * to represent an element of a collection parallel component. It stores
+   * the process where the collection element resides, as well
+   * as a unique pointer to the actual distributed object instance.
+   *
+   * CollectionHolder is primarily used as the value type in the map that
+   * tracks all elements of a collection parallel component, allowing the
+   * runtime to efficiently locate and manage distributed objects across
+   * processes.
+   *
+   * \note The object pointer may be nullptr for elements that are not local
+   *       to the current node.
+   */
+  struct CollectionHolder {
+   public:
+    /*!
+     * \brief The ID of the process on which this collection element is located.
+     */
+    int process_id = -1;
+
+   private:
+    friend DistributedTaskDriver;
+    friend DistributedOjectClassHolder;
+    template <class ParallelComponent, class IndexType>
+    friend ParallelComponent* local_parallel_component(
+        DistributedTaskDriver& distributed_task_driver,
+        const IndexType& user_index);
+
+    CollectionHolder(const int in_process_id,
+                     std::unique_ptr<detail::DistributedObjectBase> in_object)
+        : process_id(in_process_id), object(std::move(in_object)) {}
+
+    std::unique_ptr<detail::DistributedObjectBase> object = nullptr;
+  };
+
  public:
   /*!
    * \brief The type of the messages sent by the runtime system.
@@ -212,6 +253,34 @@ class DistributedTaskDriver {
   void insert_parallel_component_collection(
       const typename ParallelComponent::rts_collection_index& user_index,
       int node_to_insert_on, Args&&... args);
+
+  /*!
+   * \brief Returns a map of collection indices to their location and object
+   * holder.
+   *
+   * This function provides access to the internal mapping from collection
+   * indices to their corresponding CollectionHolder for a given collection
+   * parallel component. Each entry in the returned map associates a collection
+   * index (as a uint64_t) with a CollectionHolder, which contains the
+   * process ID (`.process_id`) where the element resides.
+   *
+   * The `.process_id` field of each CollectionHolder indicates the process ID
+   * that owns the collection element. This allows users and internal code to
+   * determine the location of each collection element across the distributed
+   * system.
+   *
+   * Usage example:
+   * \snippet Rts/DistributedTaskDriver.cpp collection_ids_and_locations_usage
+   *
+   * \tparam ParallelComponent The collection parallel component type.
+   * \return A const reference to the map from collection indices to
+   *         CollectionHolder.
+   * \throws Exception if the parallel component is not registered or is not a
+   * collection.
+   */
+  template <class ParallelComponent>
+  const std::unordered_map<std::uint64_t, CollectionHolder>&
+  collection_ids_and_locations() const;
 
   /*!
    * \brief The MPI driver run on the main thread for a single phase of the
@@ -636,11 +705,6 @@ class DistributedTaskDriver {
    * in the map is not guaranteed to be safe.
    */
   struct DistributedOjectClassHolder {
-    struct CollectionHolder {
-      int node_id = -1;
-      std::unique_ptr<detail::DistributedObjectBase> object = nullptr;
-    };
-
     using Map_t = std::unordered_map<uint64_t, CollectionHolder>;
 
     DistributedOjectClassHolder(
@@ -761,10 +825,10 @@ void DistributedTaskDriver::insert_parallel_component_collection(
   if (node_to_insert_on == my_node_id_) {
     collection.emplace(std::pair{
         collection_index,
-        DistributedOjectClassHolder::CollectionHolder{
-            node_to_insert_on, std::unique_ptr<detail::DistributedObjectBase>{
-                                   std::make_unique<ParallelComponent>(
-                                       std::forward<Args>(args)...)}}});
+        CollectionHolder{node_to_insert_on,
+                         std::unique_ptr<detail::DistributedObjectBase>{
+                             std::make_unique<ParallelComponent>(
+                                 std::forward<Args>(args)...)}}});
     ++distributed_objects_[index].number_of_local_objects;
   } else if (node_to_insert_on >= number_of_nodes_) {
     throw Exception("Cannot insert collection " + ParallelComponent::name() +
@@ -775,10 +839,35 @@ void DistributedTaskDriver::insert_parallel_component_collection(
     // Insert for tracking which node this collection element is on.
     collection.emplace(std::pair{
         collection_index,
-        DistributedOjectClassHolder::CollectionHolder{
+        CollectionHolder{
             node_to_insert_on,
             std::unique_ptr<detail::DistributedObjectBase>{nullptr}}});
   }
+}
+
+template <class ParallelComponent>
+auto DistributedTaskDriver::collection_ids_and_locations() const
+    -> const std::unordered_map<std::uint64_t,
+                                DistributedTaskDriver::CollectionHolder>& {
+  const auto object_index =
+      detail::distributed_object_index<ParallelComponent>();
+  if (object_index >= distributed_objects_.size()) {
+    throw rts::Exception{"Requested distributed object with index " +
+                         std::to_string(object_index) + " and name " +
+                         ParallelComponent::name() + " was never inserted."};
+  }
+  if (distributed_objects_[object_index].objects.index() !=
+      detail::Collection) {
+    // We should never hit this exception since the static_assert should
+    // prevent it. However, an insertion bug could allow it to happen.
+    throw Exception{
+        "Cannot retrieve the local index from the parallel component " +
+        ParallelComponent::name() + " because it is of type " +
+        detail::get_output(static_cast<detail::DistributedObjectIndex>(
+            distributed_objects_[object_index].objects.index())) +
+        " but it should be a collection."};
+  }
+  return std::get<1>(distributed_objects_[object_index].objects);
 }
 
 template <class Action, class ParallelComponent, class IndexType, class... Args>
@@ -821,7 +910,7 @@ void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
       DistributedOjectClassHolder::Map_t& collection =
           std::get<1>(distributed_objects_[object_index].objects);
       try {
-        target_node = collection.at(collection_index).node_id;
+        target_node = collection.at(collection_index).process_id;
       } catch (const std::exception& e) {
         std::stringstream ss;
         ss << user_index_or_target_node;
@@ -1101,7 +1190,7 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
       std::get<1>(objects_variant);
   for (const auto& [collection_index, collection_holder] : objects) {
     if (predicate(detail::from_internal<ParallelComponent>(collection_index))) {
-      if (collection_holder.node_id == current_node_id()) {
+      if (collection_holder.process_id == current_node_id()) {
         const std::uint32_t data_offset =
             sizeof(MessageHeader)
             // Add extra bytes to make sure we can align Data_t
@@ -1134,14 +1223,14 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
         broadcast_to_messages.emplace_back(Message_t{std::move(buffer)});
       } else {
         Message_t& this_message = broadcast_to_messages[static_cast<size_t>(
-            collection_holder.node_id)];
+            collection_holder.process_id)];
         std::uint64_t* const start = reinterpret_cast<std::uint64_t*>(
             std::next(this_message.message.get(), sizeof(MessageHeader)));
-        if (*start != static_cast<size_t>(collection_holder.node_id)) {
+        if (*start != static_cast<size_t>(collection_holder.process_id)) {
           throw Exception{
               "Process ID mismatch between the one found in the message: " +
               std::to_string(*start) + " and the one being sent to: " +
-              std::to_string(collection_holder.node_id) +
+              std::to_string(collection_holder.process_id) +
               ". This is an internal bug. Please file an issue with a "
               "minimal reproducible example."};
         }
@@ -1230,7 +1319,7 @@ void DistributedTaskDriver::compute_elements_per_pid(
   // Count the number of elements on each process.
   for (const auto& [collection_index, collection_holder] : objects) {
     if (predicate(detail::from_internal<ParallelComponent>(collection_index))) {
-      const auto node_id = static_cast<size_t>(collection_holder.node_id);
+      const auto node_id = static_cast<size_t>(collection_holder.process_id);
       if (node_id >= number_of_elements_per_process.size()) {
         throw Exception{"Node ID " + std::to_string(node_id) +
                         " is out of bounds."};
