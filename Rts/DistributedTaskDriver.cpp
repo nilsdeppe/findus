@@ -25,6 +25,7 @@
 #include <utility>
 #include <vector>
 
+#include "Rts/Callback.hpp"
 #include "Rts/Detail/DistributedObjectIndex.hpp"
 #include "Rts/Detail/GetOutput.hpp"
 #include "Rts/Detail/MpiErrorMessage.hpp"
@@ -981,6 +982,26 @@ uint32_t distributed_object_index_counter = 0;
 }  // namespace detail
 }  // namespace rts
 
+// Callback.cpp equivalent
+//
+// We define the functions here since we need access to the global
+// DistributedTaskDriver object, and also because MPI-based tests have
+// significant 0.5 second or more startup overhead, so combining them helps
+// keep test runtime down.
+namespace rts {
+CallbackBase::CallbackBase() = default;
+CallbackBase::~CallbackBase() = default;
+
+DistributedTaskDriver& CallbackBase::get_task_driver() const {
+  if (task_driver == nullptr) {
+    throw Exception{
+        "The task_driver has not been set yet. You must first call "
+        "create_distributed_task_driver()"};
+  }
+  return *task_driver;
+}
+}  // namespace rts
+
 #if defined(RTS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
@@ -990,6 +1011,7 @@ uint32_t distributed_object_index_counter = 0;
 
 namespace rts {
 namespace {
+namespace testing {
 void test_copy_message(DistributedTaskDriver& driver) {
   INFO("Test Copy Message_t");
   // Setup a dummy MessageHeader
@@ -1077,7 +1099,6 @@ void test_bulk_enequeue_iterator_exceptions() {
   }
 }
 
-namespace testing {
 // Action tags for clarity
 struct TestAction {};
 struct TestBroadcastAction {};
@@ -1159,6 +1180,297 @@ struct CollectionComponent
     last_result = static_cast<int>(a + d);
   }
 };
+
+void reset_args_on_all(DistributedTaskDriver& driver) {
+  driver.insert_barrier();
+  RegularComponent* const reg =
+      rts::local_parallel_component<RegularComponent>(driver);
+  reg->last_result = 0;
+  reg->last_args = std::tuple<int, int>{0, 0};
+  reg->last_broadcast_args = std::tuple<int, int, double>{0, 0, 0.0};
+
+  for (const auto& [idx, holder] :
+       driver.collection_ids_and_locations<CollectionComponent>()) {
+    auto* const elem =
+        rts::local_parallel_component<CollectionComponent>(driver, idx);
+    if (elem != nullptr) {
+      CHECK(holder.process_id == driver.current_node_id());
+      elem->last_result = 0;
+      elem->last_args = std::make_tuple(0, 0.0);
+      elem->last_broadcast_args = std::make_tuple(0, 0, 0.0);
+      elem->last_broadcast_to_args = std::make_tuple(0, 0.0);
+    } else {
+      CHECK(holder.process_id != driver.current_node_id());
+    }
+  }
+
+  driver.insert_barrier();
+}
+
+void test_callbacks(DistributedTaskDriver& driver) {
+  const int number_of_processes = driver.number_of_nodes();
+
+  reset_args_on_all(driver);
+
+  driver.insert_barrier();
+  driver.launch_threads();
+
+  auto test_invoke = [&](const int from_process) {
+    std::unique_ptr<CallbackBase> cb{nullptr};
+    std::unique_ptr<CallbackBase> cb_clone{nullptr};
+    if (driver.current_node_id() == from_process) {
+      // Element 42ul was inserted in test_invoke.
+      cb = rts::make_unique_invoke_callback<TestAction, CollectionComponent>(
+          42ul, 7 + from_process, 13);
+
+      CHECK_FALSE(cb->was_invoked());
+      CHECK(cb->name().find("CallbackInvoke") != std::string::npos);
+      CHECK(cb->name().find("CollectionComponent") != std::string::npos);
+
+      cb_clone = cb->get_clone();
+      CHECK(cb->is_equal_to(*cb_clone));
+
+      cb->invoke();
+      CHECK(cb->was_invoked());
+    }
+
+    driver.run_to_quiescence();
+
+    if (driver.current_node_id() == 0) {
+      auto* const elem =
+          rts::local_parallel_component<CollectionComponent>(driver, 42ul);
+      CHECK(elem->last_args == std::tuple{7 + from_process, 13});
+      CHECK(elem->last_broadcast_args == std::make_tuple(0, 0, 0.0));
+      CHECK(elem->last_broadcast_to_args == std::make_tuple(0, 0.0));
+      elem->last_args = std::tuple{0, 0};
+    }
+
+    if (driver.current_node_id() == from_process) {
+      CHECK_THROWS_WITH_AS(
+          cb->invoke(),
+          "Already invoked the Callback. Cannot invoke() it a second time. You "
+          "must first make a copy of the callback, for example using "
+          "get_clone(), and then call invoke() on the clone the second time.",
+          rts::Exception);
+
+      // Note: because the types being sent (ints) are trivially copyable, the
+      // move semantics decay to copy and so are clone is equal to the
+      CHECK(cb->is_equal_to(*cb_clone));
+      CHECK(cb_clone->name() == cb->name());
+      CHECK_FALSE(cb_clone->was_invoked());
+    }
+    driver.insert_barrier();
+
+    if (driver.current_node_id() == from_process) {
+      cb_clone->invoke();
+    }
+
+    driver.run_to_quiescence();
+
+    if (driver.current_node_id() == from_process) {
+      CHECK(cb_clone->was_invoked());
+    }
+
+    if (driver.current_node_id() == 0) {
+      auto* const elem =
+          rts::local_parallel_component<CollectionComponent>(driver, 42ul);
+      CHECK(elem->last_args == std::tuple{7 + from_process, 13});
+      CHECK(elem->last_broadcast_args == std::make_tuple(0, 0, 0.0));
+      CHECK(elem->last_broadcast_to_args == std::make_tuple(0, 0.0));
+      elem->last_args = std::tuple{0, 0};
+    }
+    driver.barrier();
+  };
+
+  for (int from_pid = 0; from_pid < number_of_processes; ++from_pid) {
+    test_invoke(from_pid);
+    reset_args_on_all(driver);
+  }
+
+  auto test_broadcast = [&](const int from_process) {
+    std::unique_ptr<CallbackBase> cb{nullptr};
+    std::unique_ptr<CallbackBase> cb_clone{nullptr};
+    if (driver.current_node_id() == from_process) {
+      // Element 42ul was inserted in test_invoke.
+      cb = rts::make_unique_broadcast_callback<TestBroadcastAction,
+                                               CollectionComponent>(
+          9 + from_process, 23, 2.3);
+
+      CHECK_FALSE(cb->was_invoked());
+      CHECK(cb->name().find("CallbackBroadcast") != std::string::npos);
+      CHECK(cb->name().find("CollectionComponent") != std::string::npos);
+
+      cb_clone = cb->get_clone();
+      CHECK(cb->is_equal_to(*cb_clone));
+
+      cb->invoke();
+      CHECK(cb->was_invoked());
+    }
+
+    driver.run_to_quiescence();
+
+    for (const auto& [idx, holder] :
+         driver.collection_ids_and_locations<CollectionComponent>()) {
+      auto* const elem =
+          rts::local_parallel_component<CollectionComponent>(driver, idx);
+      if (elem != nullptr) {
+        CHECK(holder.process_id == driver.current_node_id());
+        CHECK(elem->last_args == std::make_tuple(0, 0.0));
+        CHECK(elem->last_broadcast_args ==
+              std::tuple{9 + from_process, 23, 2.3});
+        CHECK(elem->last_broadcast_to_args == std::make_tuple(0, 0.0));
+      } else {
+        CHECK(holder.process_id != driver.current_node_id());
+      }
+    }
+
+    if (driver.current_node_id() == from_process) {
+      CHECK_THROWS_WITH_AS(
+          cb->invoke(),
+          "Already invoked the Callback. Cannot invoke() it a second time. You "
+          "must first make a copy of the callback, for example using "
+          "get_clone(), and then call invoke() on the clone the second time.",
+          rts::Exception);
+
+      // Note: because the types being sent (ints) are trivially copyable, the
+      // move semantics decay to copy and so are clone is equal to the
+      CHECK(cb->is_equal_to(*cb_clone));
+      CHECK(cb_clone->name() == cb->name());
+      CHECK_FALSE(cb_clone->was_invoked());
+    }
+    driver.insert_barrier();
+
+    if (driver.current_node_id() == from_process) {
+      cb_clone->invoke();
+    }
+
+    driver.run_to_quiescence();
+
+    if (driver.current_node_id() == from_process) {
+      CHECK(cb_clone->was_invoked());
+    }
+
+    for (const auto& [idx, holder] :
+         driver.collection_ids_and_locations<CollectionComponent>()) {
+      auto* const elem =
+          rts::local_parallel_component<CollectionComponent>(driver, idx);
+      if (elem != nullptr) {
+        CHECK(holder.process_id == driver.current_node_id());
+        CHECK(elem->last_args == std::make_tuple(0, 0.0));
+        CHECK(elem->last_broadcast_args ==
+              std::tuple{9 + from_process, 23, 2.3});
+        CHECK(elem->last_broadcast_to_args == std::make_tuple(0, 0.0));
+      } else {
+        CHECK(holder.process_id != driver.current_node_id());
+      }
+    }
+    driver.barrier();
+  };
+
+  for (int from_pid = 0; from_pid < number_of_processes; ++from_pid) {
+    test_broadcast(from_pid);
+    reset_args_on_all(driver);
+  }
+
+  auto test_broadcast_to = [&](const int from_process, const bool check_even) {
+    const auto predicate = [&check_even](const uint64_t index) {
+      return index % 2 == (check_even ? 0 : 1);
+    };
+    std::unique_ptr<CallbackBase> cb{nullptr};
+    std::unique_ptr<CallbackBase> cb_clone{nullptr};
+    if (driver.current_node_id() == from_process) {
+      cb = rts::make_unique_broadcast_to_callback<TestBroadcastToAction,
+                                                  CollectionComponent>(
+          predicate, 11 + from_process, 7.5);
+
+      CHECK_FALSE(cb->was_invoked());
+      CHECK(cb->name().find("CallbackBroadcast") != std::string::npos);
+      CHECK(cb->name().find("CollectionComponent") != std::string::npos);
+
+      cb_clone = cb->get_clone();
+      CHECK(cb->is_equal_to(*cb_clone));
+
+      cb->invoke();
+      CHECK(cb->was_invoked());
+    }
+
+    driver.run_to_quiescence();
+
+    for (const auto& [idx, holder] :
+         driver.collection_ids_and_locations<CollectionComponent>()) {
+      auto* const elem =
+          rts::local_parallel_component<CollectionComponent>(driver, idx);
+      if (elem != nullptr) {
+        CHECK(holder.process_id == driver.current_node_id());
+        CHECK(elem->last_args == std::make_tuple(0, 0.0));
+        CHECK(elem->last_broadcast_args == std::make_tuple(0, 0, 0.0));
+        if (predicate(idx)) {
+          CHECK(elem->last_broadcast_to_args ==
+                std::tuple{11 + from_process, 7.5});
+        } else {
+          CHECK(elem->last_broadcast_to_args == std::tuple{0, 0.0});
+        }
+      } else {
+        CHECK(holder.process_id != driver.current_node_id());
+      }
+    }
+
+    if (driver.current_node_id() == from_process) {
+      CHECK_THROWS_WITH_AS(
+          cb->invoke(),
+          "Already invoked the Callback. Cannot invoke() it a second time. You "
+          "must first make a copy of the callback, for example using "
+          "get_clone(), and then call invoke() on the clone the second time.",
+          rts::Exception);
+
+      // Note: because the types being sent (ints) are trivially copyable, the
+      // move semantics decay to copy and so are clone is equal to the
+      CHECK(cb->is_equal_to(*cb_clone));
+      CHECK(cb_clone->name() == cb->name());
+      CHECK_FALSE(cb_clone->was_invoked());
+    }
+    driver.insert_barrier();
+
+    if (driver.current_node_id() == from_process) {
+      cb_clone->invoke();
+    }
+
+    driver.run_to_quiescence();
+
+    if (driver.current_node_id() == from_process) {
+      CHECK(cb_clone->was_invoked());
+    }
+
+    for (const auto& [idx, holder] :
+         driver.collection_ids_and_locations<CollectionComponent>()) {
+      auto* const elem =
+          rts::local_parallel_component<CollectionComponent>(driver, idx);
+      if (elem != nullptr) {
+        CHECK(holder.process_id == driver.current_node_id());
+        CHECK(elem->last_args == std::make_tuple(0, 0.0));
+        CHECK(elem->last_broadcast_args == std::make_tuple(0, 0, 0.0));
+        if (predicate(idx)) {
+          CHECK(elem->last_broadcast_to_args ==
+                std::tuple{11 + from_process, 7.5});
+        } else {
+          CHECK(elem->last_broadcast_to_args == std::tuple{0, 0.0});
+        }
+      } else {
+        CHECK(holder.process_id != driver.current_node_id());
+      }
+    }
+    driver.barrier();
+  };
+
+  for (int from_pid = 0; from_pid < number_of_processes; ++from_pid) {
+    for (const bool check_even : {true, false}) {
+      test_broadcast_to(from_pid, check_even);
+      reset_args_on_all(driver);
+    }
+  }
+
+  driver.force_threads_to_stop();
+}
 
 void test_invoke(DistributedTaskDriver& driver) {
   const int number_of_processes = driver.number_of_nodes();
@@ -1428,6 +1740,8 @@ void test_invoke(DistributedTaskDriver& driver) {
   }
 
   driver.force_threads_to_stop();
+
+  test_callbacks(driver);
 }
 }  // namespace testing
 }  // namespace
@@ -1435,8 +1749,8 @@ void test_invoke(DistributedTaskDriver& driver) {
 MPI_TEST_CASE("DistributedTaskDriver", 2) {
   rts::DistributedTaskDriver& driver =
       rts::create_distributed_task_driver(nullptr, nullptr, false);
-  test_copy_message(driver);
-  test_bulk_enequeue_iterator_exceptions();
+  testing::test_copy_message(driver);
+  testing::test_bulk_enequeue_iterator_exceptions();
   testing::test_invoke(driver);
 }
 }  // namespace rts
