@@ -853,7 +853,7 @@ void DistributedTaskDriver::add_local_broadcast_tasks(
         if (local_send_counter >= distributed_object.number_of_local_objects) {
           break;
         }
-        if (collection_holder.node_id != current_node_id()) {
+        if (collection_holder.process_id != current_node_id()) {
           continue;
         }
 
@@ -1167,6 +1167,19 @@ void test_invoke(DistributedTaskDriver& driver) {
   for (const auto [id, pid] : all_indices) {
     driver.insert_parallel_component_collection<CollectionComponent>(id, pid);
   }
+
+  REQUIRE(driver.collection_ids_and_locations<CollectionComponent>().size() ==
+          all_indices.size());
+
+  //! [collection_ids_and_locations_usage]
+  for (const auto [id, pid] : all_indices) {
+    const auto it =
+        driver.collection_ids_and_locations<CollectionComponent>().find(id);
+    REQUIRE(it !=
+            driver.collection_ids_and_locations<CollectionComponent>().end());
+    CHECK(it->second.process_id == pid);
+  }
+  //! [collection_ids_and_locations_usage]
 
   // Check exceptions that should be thrown before we call insert_barrier()
   CHECK_THROWS_WITH_AS(
