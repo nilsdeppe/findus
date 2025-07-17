@@ -33,7 +33,8 @@ set(_RTS_CXX_FLAGS
 -Wstack-protector;\
 -Wswitch-default;\
 -Wunreachable-code;\
--Wwrite-strings")
+-Wwrite-strings;\
+-Werror=undefined-internal")
 
 add_library(RtsFlags INTERFACE)
 
