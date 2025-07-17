@@ -982,7 +982,10 @@ uint32_t distributed_object_index_counter = 0;
 #include <doctest/doctest.h>
 #include <doctest/extensions/doctest_mpi.h>
 
+#include "Rts/DistributedObjectCollection.hpp"
+
 namespace rts {
+namespace {
 void test_copy_message(DistributedTaskDriver& driver) {
   INFO("Test Copy Message_t");
   // Setup a dummy MessageHeader
@@ -1070,11 +1073,354 @@ void test_bulk_enequeue_iterator_exceptions() {
   }
 }
 
+namespace testing {
+// Action tags for clarity
+struct TestAction {};
+struct TestBroadcastAction {};
+struct TestBroadcastToAction {};
+
+// Regular parallel component
+struct RegularComponent : public rts::detail::DistributedObjectBase {
+  int last_result = 0;
+  std::tuple<int, int> last_args{0, 0};
+  std::tuple<int, int, double> last_broadcast_args{0, 0, 0.0};
+
+  static std::string name() { return "RegularComponent"; }
+
+  template <class Action, class... Args>
+  void threaded_action(rts::DistributedTaskDriver&, Args... args);
+
+  template <>
+  void threaded_action<TestAction>(rts::DistributedTaskDriver&,
+                                   const int a, const int b) {
+    last_args = std::make_tuple(a, b);
+    last_result += static_cast<int>(a + b);
+  }
+
+  // Specialization for broadcast (int, int, double)
+  template <>
+  void threaded_action<TestBroadcastAction>(rts::DistributedTaskDriver&,
+                                            const int a, const int b,
+                                            const double d) {
+    last_broadcast_args = std::make_tuple(a, b, d);
+    last_result = static_cast<int>(a + b + d);
+  }
+};
+
+// Collection parallel component
+struct CollectionComponent
+    : public rts::DistributedObjectCollection<CollectionComponent> {
+  using rts_collection_index = uint64_t;
+  int last_result{0};
+  std::tuple<int, int> last_args{};
+  std::tuple<int, int, double> last_broadcast_args{0, 0, 0.0};
+  std::tuple<int, double> last_broadcast_to_args{0, 0.0};
+
+  static std::string name() { return "CollectionComponent"; }
+
+  template <class Action, class... Args>
+  void threaded_action(rts::DistributedTaskDriver&,
+                       rts_collection_index my_index, Args... args);
+
+  template <>
+  void threaded_action<TestAction>(rts::DistributedTaskDriver&,
+                                   const rts_collection_index my_index,
+                                   const int a, const int b) {
+    CHECK(my_index != 0);
+    CHECK(my_index != MessageHeader::no_collection_index());
+    last_args = std::make_tuple(a, b);
+    last_result += static_cast<int>(a + b);
+  }
+
+  // Specialization for broadcast (int, int, double)
+  template <>
+  void threaded_action<TestBroadcastAction>(rts::DistributedTaskDriver&,
+                                            const rts_collection_index my_index,
+                                            const int a, const int b,
+                                            const double d) {
+    CHECK(my_index != 0);
+    CHECK(my_index != MessageHeader::no_collection_index());
+    last_broadcast_args = std::make_tuple(a, b, d);
+    last_result = static_cast<int>(a + b + d);
+  }
+
+  // Specialization for broadcast_to (int, double)
+  template <>
+  void threaded_action<TestBroadcastToAction>(
+      rts::DistributedTaskDriver&, const rts_collection_index my_index,
+      const int a, const double d) {
+    CHECK(my_index != 0);
+    CHECK(my_index != MessageHeader::no_collection_index());
+    last_broadcast_to_args = std::make_tuple(a, d);
+    last_result = static_cast<int>(a + d);
+  }
+};
+
+void test_invoke(DistributedTaskDriver& driver) {
+  const int number_of_processes = driver.number_of_nodes();
+  // Insert regular and collection components
+  driver.insert_parallel_component<RegularComponent>();
+  const std::unordered_map<uint64_t, int> all_indices{
+      {42ul, 0}, {43ul, 1}, {44ul, 1}, {45ul, 1},
+      {46ul, 0}, {47ul, 0}, {48ul, 0}};
+
+  for (const auto [id, pid] : all_indices) {
+    driver.insert_parallel_component_collection<CollectionComponent>(id, pid);
+  }
+
+  // Check exceptions that should be thrown before we call insert_barrier()
+  CHECK_THROWS_WITH_AS(
+      driver.launch_threads(),
+      "Cannot call driver.launch_threads() while still in Insert mode. You "
+      "must first call driver.insert_barrier() on all processes.",
+      rts::Exception);
+  {
+    const std::string expected_message_rtq{
+        "Cannot call driver.run_to_quiescence() while still in Insert mode. "
+        "You must first call driver.insert_barrier() on all processes.  "
+        "Process ID: " +
+        std::to_string(driver.current_node_id())};
+    CHECK_THROWS_WITH_AS(driver.run_to_quiescence(),
+                         expected_message_rtq.c_str(), rts::Exception);
+    const std::string expected_message_invoke{
+        "Cannot invoke actions while still in Insert mode. You must first call "
+        "driver.insert_barrier() on all processes."};
+    CHECK_THROWS_WITH_AS((driver.invoke<TestAction, RegularComponent>(
+                             driver.current_node_id(), 5, 7)),
+                         expected_message_invoke.c_str(), rts::Exception);
+    const std::string expected_message_broadcast{
+        "Cannot perform broadcasts while still in Insert mode. You must first "
+        "call driver.insert_barrier() on all processes."};
+    CHECK_THROWS_WITH_AS(
+        (driver.broadcast<TestBroadcastAction, RegularComponent>(10, 20, 1.5)),
+        expected_message_broadcast.c_str(), rts::Exception);
+    const std::string expected_message_broadcast_to{
+        "Cannot perform broadcast_to while still in Insert mode. You must "
+        "first call driver.insert_barrier() on all processes."};
+    CHECK_THROWS_WITH_AS(
+        (driver.broadcast_to<TestBroadcastToAction, CollectionComponent>(
+            [](const std::uint64_t index) { return index > 10; }, 6, 2.5)),
+        expected_message_broadcast_to.c_str(), rts::Exception);
+  }
+
+  driver.insert_barrier();
+
+  // Check exceptions that should be thrown before we call launch_threads()
+  // but after insert_barrier()
+  {
+    const std::string expected_message_rtq{
+        "Cannot call driver.run_to_quiescence() before "
+        "driver.launch_threads(). Process ID: " +
+        std::to_string(driver.current_node_id())};
+    CHECK_THROWS_WITH_AS(driver.run_to_quiescence(),
+                         expected_message_rtq.c_str(), rts::Exception);
+    const std::string expected_message_invoke{
+        "Cannot call invoke() on process " +
+        std::to_string(driver.current_node_id()) +
+        " because the threads have not been launched. You must "
+        "first call driver.launch_threads()."};
+    CHECK_THROWS_WITH_AS((driver.invoke<TestAction, RegularComponent>(
+                             driver.current_node_id(), 5, 7)),
+                         expected_message_invoke.c_str(), rts::Exception);
+    const std::string expected_message_broadcast{
+        "Cannot call broadcast() on process " +
+        std::to_string(driver.current_node_id()) +
+        " because the threads have not been launched. You must "
+        "first call driver.launch_threads()."};
+    CHECK_THROWS_WITH_AS(
+        (driver.broadcast<TestBroadcastAction, RegularComponent>(10, 20, 1.5)),
+        expected_message_broadcast.c_str(), rts::Exception);
+    const std::string expected_message_broadcast_to{
+        "Cannot call broadcast_to() on process " +
+        std::to_string(driver.current_node_id()) +
+        " because the threads have not been launched. You must "
+        "first call driver.launch_threads()."};
+    CHECK_THROWS_WITH_AS(
+        (driver.broadcast_to<TestBroadcastToAction, CollectionComponent>(
+            [](const std::uint64_t index) { return index > 10; }, 6, 2.5)),
+        expected_message_broadcast_to.c_str(), rts::Exception);
+  }
+
+  driver.launch_threads();
+  // Test that we can safely stop and start threads:
+  driver.run_to_quiescence();
+  driver.force_threads_to_stop();
+  driver.insert_barrier();
+  driver.launch_threads();
+
+  {
+    const std::string expected_message_lt{
+        "Threads are already active. You cannot launch threads when they are "
+        "already running. Process ID: " +
+        std::to_string(driver.current_node_id())};
+    CHECK_THROWS_WITH_AS(driver.launch_threads(), expected_message_lt.c_str(),
+                         rts::Exception);
+  }
+
+  // Test invoke for regular component
+  driver.invoke<TestAction, RegularComponent>(driver.current_node_id(), 5, 7);
+  // Test invoke for collection component
+  if (driver.current_node_id() == 1) {
+    driver.invoke<TestAction, CollectionComponent>(42ul, 3, 4);
+    driver.invoke<TestAction, CollectionComponent>(43ul, 7, 9);
+  }
+  if (driver.current_node_id() == 0) {
+    driver.invoke<TestAction, CollectionComponent>(44ul, 7, 9);
+    driver.invoke<TestAction, CollectionComponent>(46ul, 2, 5);
+  }
+
+  driver.run_to_quiescence();
+
+  // Check results for invoke
+  auto* reg = rts::local_parallel_component<RegularComponent>(driver);
+  CHECK(reg->last_result == 12);
+  CHECK(std::get<0>(reg->last_args) == 5);
+  CHECK(std::get<1>(reg->last_args) == 7);
+
+  // Check we invoked and got correct answer.
+  for (const auto& [idx, expected_a, expected_b] :
+       {std::tuple{42ul, 3, 4}, {43ul, 7, 9}, {44ul, 7, 9}, {46ul, 2, 5}}) {
+    const int expected_node = all_indices.at(idx);
+    auto* const elem =
+        rts::local_parallel_component<CollectionComponent>(driver, idx);
+    if (driver.current_node_id() == expected_node) {
+      REQUIRE(elem != nullptr);
+      CHECK(elem->last_result == expected_a + expected_b);
+      CHECK(elem->last_args == std::tuple{expected_a, expected_b});
+      elem->last_result = 0;
+    } else {
+      CHECK(elem == nullptr);
+    }
+  }
+
+  // Make sure we didn't send to other indices
+  for (const uint64_t idx : {45ul, 47ul, 48ul}) {
+    const auto* const elem =
+        rts::local_parallel_component<CollectionComponent>(driver, idx);
+    if (driver.current_node_id() == all_indices.at(idx)) {
+      REQUIRE(elem != nullptr);
+      CHECK(elem->last_result == 0);
+      CHECK(elem->last_args == std::tuple{0, 0.0});
+    } else {
+      CHECK(elem == nullptr);
+    }
+  }
+  // verify no broadcast or broadcast_to was recorded.
+  for (const auto& [idx, node] : all_indices) {
+    auto* const elem =
+        rts::local_parallel_component<CollectionComponent>(driver, idx);
+    if (driver.current_node_id() == node) {
+      REQUIRE(elem != nullptr);
+      CHECK(elem->last_result == 0); // If this fails, we missed a check and
+                                     // reset above.
+      CHECK(elem->last_broadcast_args == std::tuple{0, 0, 0.0});
+      CHECK(elem->last_broadcast_to_args == std::tuple{0, 0.0});
+      elem->last_result = 0;
+    } else {
+      CHECK(elem == nullptr);
+    }
+  }
+
+  // Ensure we don't conflict with checks
+  driver.insert_barrier();
+
+  auto test_broadcast = [&](const int from_process) {
+    // Test broadcast from process 0
+    if (driver.current_node_id() == from_process) {
+      driver.broadcast<TestBroadcastAction, RegularComponent>(10 + from_process,
+                                                              20, 1.5);
+      driver.broadcast<TestBroadcastAction, CollectionComponent>(
+          2 + from_process, 8, 3.5);
+    }
+
+    driver.run_to_quiescence();
+
+    // 10 + 20 + 1.5 = 31.5 -> 31
+    CHECK(reg->last_result == (31 + from_process));
+    CHECK(std::get<0>(reg->last_broadcast_args) == (10 + from_process));
+    CHECK(std::get<1>(reg->last_broadcast_args) == 20);
+    CHECK(std::get<2>(reg->last_broadcast_args) == 1.5);
+
+    for (const auto& [idx, node] : all_indices) {
+      auto* const elem =
+          rts::local_parallel_component<CollectionComponent>(driver, idx);
+      if (driver.current_node_id() == node) {
+        REQUIRE(elem != nullptr);
+        CHECK(elem->last_result == (13 + from_process));
+        CHECK(elem->last_broadcast_args ==
+              std::make_tuple((2 + from_process), 8, 3.5));
+        CHECK(elem->last_broadcast_to_args == std::tuple{0, 0.0});
+        // Reset for next round.
+        elem->last_result = 0;
+        elem->last_broadcast_args = std::make_tuple(0, 0, 0.0);
+      } else {
+        CHECK(elem == nullptr);
+      }
+    }
+
+    // Ensure we don't conflict with checks
+    driver.insert_barrier();
+  };
+
+  for (int from_pid = 0; from_pid < number_of_processes; ++from_pid) {
+    test_broadcast(from_pid);
+  }
+
+  auto test_broadcast_to = [&](const int from_process) {
+    // Test broadcast_to for collection component (only even indices)
+    struct EvenPredicate {
+      bool operator()(const uint64_t idx) const { return idx % 2 == 0; }
+    };
+
+    if (driver.current_node_id() == from_process) {
+      driver.broadcast_to<TestBroadcastToAction, CollectionComponent>(
+          EvenPredicate{}, 6 + from_process, 2.5);
+    }
+
+    driver.run_to_quiescence();
+
+    // Check results for broadcast_to
+    for (const auto& [idx, node] : all_indices) {
+      auto* const elem =
+          rts::local_parallel_component<CollectionComponent>(driver, idx);
+      if (driver.current_node_id() == node) {
+        REQUIRE(elem != nullptr);
+        if (EvenPredicate{}(idx)) {
+          CHECK(elem->last_result == (8 + from_process));
+          CHECK(elem->last_broadcast_args == std::tuple{0, 0, 0.0});
+          CHECK(elem->last_broadcast_to_args ==
+                std::tuple{(6 + from_process), 2.5});
+          elem->last_result = 0;
+          elem->last_broadcast_to_args = std::tuple{0, 0.0};
+        } else {
+          CHECK(elem->last_result == 0);
+          CHECK(elem->last_broadcast_args == std::tuple{0, 0, 0.0});
+          CHECK(elem->last_broadcast_to_args == std::tuple{0, 0.0});
+        }
+      } else {
+        CHECK(elem == nullptr);
+      }
+    }
+
+    // Ensure we don't conflict with checks
+    driver.insert_barrier();
+  };
+
+  for (int from_pid = 0; from_pid < number_of_processes; ++from_pid) {
+    test_broadcast_to(from_pid);
+  }
+
+  driver.force_threads_to_stop();
+}
+}  // namespace testing
+}  // namespace
+
 MPI_TEST_CASE("DistributedTaskDriver", 2) {
   rts::DistributedTaskDriver& driver =
       rts::create_distributed_task_driver(nullptr, nullptr, false);
   test_copy_message(driver);
   test_bulk_enequeue_iterator_exceptions();
+  testing::test_invoke(driver);
 }
 }  // namespace rts
 #endif
