@@ -96,26 +96,9 @@ bool Global::leaf() const {
 
 bool Global::root() const { return parent_process_ == -1; }
 
-void Global::reset() {
-  terminate_ = 0;
-  broadcast_left_child_request_ = std::nullopt;
-  broadcast_right_child_request_ = std::nullopt;
+void Global::safe_reset(MPI_Comm& comm) {
+  wait_for_broadcast();
 
-  local_sweep_number_ = 0;
-  last_regular_message_sweep_number_ = 0;
-  local_sends_ = 0;
-  local_processed_ = 0;
-
-  // Nate: max_simultaneous_qds_ is set in constructor and should not change!
-  root_down_sweep_ = 0;
-
-  // Note: the following must all be empty at QD time. Checked by safe_reset():
-  // - down_messages_
-  // - up_messages_
-  // - accum_data_
-}
-
-void Global::safe_reset() {
   if (terminate_ != 1) {
     throw QdException{"Expected terminate to be set to 1 but is set to " +
                       std::to_string(terminate_) + " on process " +
@@ -149,10 +132,28 @@ void Global::safe_reset() {
                       std::to_string(child_left_process_) + " on process " +
                       std::to_string(self_process_)};
   }
-  reset();
+
+  terminate_ = 0;
+  broadcast_left_child_request_ = std::nullopt;
+  broadcast_right_child_request_ = std::nullopt;
+
+  local_sweep_number_ = 0;
+  last_regular_message_sweep_number_ = 0;
+  local_sends_ = 0;
+  local_processed_ = 0;
+
+  // Nate: max_simultaneous_qds_ is set in constructor and should not change!
+  root_down_sweep_ = 0;
+
+  // Note: the following must all be empty at QD time. Checked by safe_reset():
+  // - down_messages_
+  // - up_messages_
+  // - accum_data_
+
+  MPI_Barrier(comm);
 }
 
-bool Global::check(MPI_Comm& comm) {
+bool Global::check_impl(MPI_Comm& comm) {
   // First check for edge case of only 1 process.
   int number_of_nodes = 0;
   if (MPI_Comm_size(comm, &number_of_nodes) != MPI_SUCCESS) {
@@ -214,6 +215,14 @@ bool Global::check(MPI_Comm& comm) {
   up_traversal(comm);
 
   return terminate_ == 1 ? true : false;
+}
+
+bool Global::check(MPI_Comm& comm) {
+  if (check_impl(comm)) {
+    safe_reset(comm);
+    return true;
+  }
+  return false;
 }
 
 void Global::wait_for_broadcast() {

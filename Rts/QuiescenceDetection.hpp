@@ -279,21 +279,13 @@ class Global {
   /// \brief Returns `true` if this global QD state is for the root process.
   bool root() const;
 
-  /// \brief Resets the state to start another quiescence detection.
-  void reset();
-
-  /// \brief Resets the state to start another quiescence detection, first
-  /// verifying we completed a QD first.
-  void safe_reset();
-
   /// \brief Returns `true` if quiescence is detected and `false` if not.
   ///
   /// This runs the global QD algorithm, including the MPI communication.
   ///
-  /// After this function completes, you should call `wait_for_broadcast()` to
-  /// ensure the termination broadcast for QD has completed. This separation is
-  /// so that a separate thread can be used as a timeout for the broadcast
-  /// completion.
+  /// After this function completes, the system has reached global quiescence
+  /// and has synchronized (i.e. there's a global barrier at the end if
+  /// quiescence is detected).
   bool check(MPI_Comm& comm);
 
   /// \brief Blocks until the children have received the termination broadcast.
@@ -371,6 +363,22 @@ class Global {
   void send_quiescence_broadcast_to(
       MPI_Comm& comm, std::optional<MPI_Request>& broadcast_child_request,
       int child_process);
+
+  /// \brief Resets the state to start another quiescence detection, first
+  /// verifying we completed a QD first.
+  ///
+  /// The communicator passed it must be the same communicator passed to
+  /// `check()`.
+  void safe_reset(MPI_Comm& comm);
+
+  /// \brief Returns `true` if quiescence is detected and `false` if not.
+  ///
+  /// This runs the global QD algorithm, including the MPI communication.
+  ///
+  /// After this function completes, the system has reached global quiescence
+  /// but without synchronization. The `check()` function does additional
+  /// synchronized to ensure that a global quiescent state is fully agreed upon.
+  bool check_impl(MPI_Comm& comm);
 
   std::uint64_t local_sweep_number_{0};
   std::uint64_t last_regular_message_sweep_number_{0};
