@@ -812,6 +812,11 @@ void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
     const auto object_index =
         rts::detail::distributed_object_index<ParallelComponent>();
     collection_index = detail::to_internal(user_index_or_target_node);
+    if (object_index >= distributed_objects_.size()) {
+      throw Exception{
+          "The parallel component '" + ParallelComponent::name() +
+          "' is not known, which means it likely was never inserted."};
+    }
     try {
       DistributedOjectClassHolder::Map_t& collection =
           std::get<1>(distributed_objects_[object_index].objects);
@@ -895,7 +900,7 @@ void DistributedTaskDriver::broadcast(Args&&... args) {
         "call driver.insert_barrier() on all processes."};
   }
   if (not thread_pool_->threads_are_active()) {
-    throw Exception{"Cannot call invoke() on process " +
+    throw Exception{"Cannot call broadcast() on process " +
                     std::to_string(current_node_id()) +
                     " because the threads have not been launched. You must "
                     "first call driver.launch_threads()."};
@@ -963,7 +968,7 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
         "first call driver.insert_barrier() on all processes."};
   }
   if (not thread_pool_->threads_are_active()) {
-    throw Exception{"Cannot call invoke() on process " +
+    throw Exception{"Cannot call broadcast_to() on process " +
                     std::to_string(current_node_id()) +
                     " because the threads have not been launched. You must "
                     "first call driver.launch_threads()."};
@@ -1269,7 +1274,10 @@ void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
         it != distributed_object_collection.end()) {
       dynamic_cast<ParallelComponent&>(*it->second.object)
           .template threaded_action<Action>(
-              *this, std::move(std::get<ArgIndexes::index>(*args))...);
+              *this,
+              detail::from_internal<ParallelComponent>(
+                  header->target_collection_index()),
+              std::move(std::get<ArgIndexes::index>(*args))...);
     } else {
       throw Exception{
           "Collection index " +
@@ -1304,9 +1312,17 @@ ParallelComponent* local_parallel_component(
                          std::to_string(object_index) + " and name " +
                          ParallelComponent::name() + " was never inserted."};
   }
-  return dynamic_cast<ParallelComponent*>(
-      std::get<0>(distributed_task_driver.distributed_objects_[object_index])
-          .get());
+  auto& objects =
+      distributed_task_driver.distributed_objects_[object_index].objects;
+  if (objects.index() != detail::DistributedObjectIndex::Regular) {
+    // We should never hit this exception since the static_assert should prevent
+    // it. However, an insertion bug could allow it to happen.
+    throw Exception{
+        "Local parallel component expected a Regular component but got " +
+        detail::get_output(
+            static_cast<detail::DistributedObjectIndex>(objects.index()))};
+  }
+  return dynamic_cast<ParallelComponent*>(std::get<0>(objects).get());
 }
 
 /// \brief Retrieve a pointer to the local parallel component of a specific
@@ -1328,13 +1344,25 @@ ParallelComponent* local_parallel_component(
                          ParallelComponent::name() + " was never inserted."};
   }
   const std::uint64_t collection_index = detail::to_internal(user_index);
-  auto& object_collection =
-      std::get<1>(distributed_task_driver.distributed_objects_[object_index]);
-  auto& object_it = object_collection.find(collection_index);
+  if (distributed_task_driver.distributed_objects_[object_index]
+          .objects.index() != detail::Collection) {
+    // We should never hit this exception since the static_assert should prevent
+    // it. However, an insertion bug could allow it to happen.
+    throw Exception{
+        "Cannot retrieve the local index from the parallel component " +
+        ParallelComponent::name() + " because it is of type " +
+        detail::get_output(static_cast<detail::DistributedObjectIndex>(
+            distributed_task_driver.distributed_objects_[object_index]
+                .objects.index())) +
+        " but it should be a collection."};
+  }
+  auto& object_collection = std::get<1>(
+      distributed_task_driver.distributed_objects_[object_index].objects);
+  auto object_it = object_collection.find(collection_index);
   if (object_it == object_collection.end()) {
     return nullptr;
   }
-  return dynamic_cast<ParallelComponent*>(object_it->second.get());
+  return dynamic_cast<ParallelComponent*>(object_it->second.object.get());
 }
 
 /// \brief Create the DistributedTaskDriver::the_driver object that can be
