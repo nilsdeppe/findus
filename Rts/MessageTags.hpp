@@ -34,7 +34,10 @@ enum message_tags : int {
   /// \brief The tag for the quiescence detection broadcast for termination.
   quiescence_broadcast,
   /// \brief The tag for logging and printing messages.
-  logging
+  logging,
+  /// \brief The tag used for checking that insert, remove, and move of
+  /// components was consistent across the runtime.
+  insert_consistency_check
 };
 
 /// \brief Stream operator for `message_tags`.
