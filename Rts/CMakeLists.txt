@@ -97,4 +97,88 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1
     $<TARGET_FILE:Test> --test-case=MpiErrorMessage --rts-mpi-test --no-skip
   )
+
+  add_test(
+    NAME DistributedTaskDriver.InsertErrorRegular0
+    COMMAND
+    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.InsertErrorRegular0
+    --rts-mpi-test
+  )
+  add_test(
+    NAME DistributedTaskDriver.InsertErrorRegular1
+    COMMAND
+    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.InsertErrorRegular1
+    --rts-mpi-test
+  )
+  add_test(
+    NAME DistributedTaskDriver.InsertErrorCollection0
+    COMMAND
+    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.InsertErrorCollection0
+    --rts-mpi-test
+  )
+  add_test(
+    NAME DistributedTaskDriver.InsertErrorCollection1
+    COMMAND
+    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.InsertErrorCollection1
+    --rts-mpi-test
+  )
+  add_test(
+    NAME DistributedTaskDriver.InsertErrorRegularName
+    COMMAND
+    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.InsertErrorRegularName
+    --rts-mpi-test
+  )
+  add_test(
+    NAME DistributedTaskDriver.InsertError_CollectionName0
+    COMMAND
+    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    $<TARGET_FILE:Test>
+    --test-case=DistributedTaskDriver.InsertError_CollectionName0
+    --rts-mpi-test
+  )
+  add_test(
+    NAME DistributedTaskDriver.InsertError_CollectionName1
+    COMMAND
+    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    $<TARGET_FILE:Test>
+    --test-case=DistributedTaskDriver.InsertError_CollectionName1
+    --rts-mpi-test
+  )
+  add_test(
+    NAME DistributedTaskDriver.InsertError_CollectionNumElements0
+    COMMAND
+    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    $<TARGET_FILE:Test>
+    --test-case=DistributedTaskDriver.InsertError_CollectionNumElements0
+    --rts-mpi-test
+  )
+  add_test(
+    NAME DistributedTaskDriver.InsertError_CollectionNumElements1
+    COMMAND
+    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    $<TARGET_FILE:Test>
+    --test-case=DistributedTaskDriver.InsertError_CollectionNumElements1
+    --rts-mpi-test
+  )
+  add_test(
+    NAME DistributedTaskDriver.InsertError_CollectionElementId0
+    COMMAND
+    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    $<TARGET_FILE:Test>
+    --test-case=DistributedTaskDriver.InsertError_CollectionElementId0
+    --rts-mpi-test
+  )
+  add_test(
+    NAME DistributedTaskDriver.InsertError_CollectionElementPid0
+    COMMAND
+    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    $<TARGET_FILE:Test>
+    --test-case=DistributedTaskDriver.InsertError_CollectionElementPid0
+    --rts-mpi-test
+  )
 endif()

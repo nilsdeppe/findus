@@ -213,10 +213,28 @@ class DistributedTaskDriver {
   /// \brief The MPI minor/subversion being used.
   int mpi_subversion() const { return mpi_subversion_; }
 
-  /// \brief Wait for the all MPI ranks in the RTS communicator
-  ///
-  /// Should be used after
-  void insert_barrier() const;
+  /*!
+   * \brief Exit insert mode and synchronize component registration across
+   * ranks.
+   *
+   * After all processes have called insert_parallel_component() or
+   * insert_parallel_component_collection(), this function leaves insert mode
+   * and ensures that all ranks registered the same set of parallel components
+   * and collection elements in the same order.
+   *
+   * If `check_consistency_across_processes` is true, each process serializes
+   * its component accounting data and exchanges it with all other processes to
+   * check for mismatches. Then a barrier on the RTS communicator ensures
+   * that all ranks reach the same execution point.
+   *
+   * \param check_consistency_across_processes If true, perform a cross-rank
+   *        consistency check before the barrier.
+   *
+   * \throws rts::MpiException If any MPI call (probe, recv, barrier) fails
+   *         during the consistency check or barrier.
+   * \throws rts::Exception If component accounting differs across ranks.
+   */
+  void insert_barrier(bool check_consistency_across_processes = true) const;
 
   /// \brief Synchronize all processes at this function call.
   ///
@@ -510,6 +528,38 @@ class DistributedTaskDriver {
    * allow attaching from a debugger.
    */
   void attach_debugger();
+
+  /*!
+   * \brief Serializes the component accounting information for this process.
+   *
+   * Gathers information about all registered regular and collection
+   * components, including their names and, for collections, the indices
+   * and process IDs of all elements. The data is serialized into a
+   * byte buffer suitable for transmission or comparison between processes.
+   *
+   * \return A vector of bytes containing the serialized component
+   *         accounting data for this process.
+   */
+  std::vector<char> serialize_component_accounting() const;
+
+  /*!
+   * \brief Check that component registration is consistent across all
+   * processes.
+   *
+   * This function serializes the local component accounting information and
+   * exchanges it with other processes in the process tree. It compares the
+   * registered regular and collection components, as well as collection
+   * element indices and their process IDs, to ensure that all processes have
+   * registered the same components in the same order.
+   *
+   * If any inconsistency is found, such as a mismatch in the number, names,
+   * or indices of components or collection elements, an exception is thrown.
+   *
+   * \throws rts::MpiException If any MPI call fails during the consistency
+   *         check.
+   * \throws rts::Exception If component registration differs across processes.
+   */
+  void check_component_accounting_consistency() const;
 
   /*!
    * \brief Invokes the action encoded in `message` on the thread with ID

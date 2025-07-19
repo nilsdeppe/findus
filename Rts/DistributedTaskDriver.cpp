@@ -158,13 +158,22 @@ bool DistributedTaskDriver::is_locally_quiescent() {
   return thread_pool_->is_quiescent();
 }
 
-void DistributedTaskDriver::insert_barrier() const {
+void DistributedTaskDriver::insert_barrier(
+    const bool check_consistency_across_processes) const {
+  if (check_consistency_across_processes) {
+    barrier();
+    check_component_accounting_consistency();
+  }
   barrier();
   const_cast<bool&>(in_insert_mode_) = false;
 }
 
 void DistributedTaskDriver::barrier() const {
-  MPI_Barrier(rts_comm_);
+  if (const auto mpi_result = MPI_Barrier(rts_comm_);
+      mpi_result != MPI_SUCCESS) {
+    throw MpiException{"Failed to call barrier on process " +
+                       std::to_string(current_node_id())};
+  }
 }
 
 void DistributedTaskDriver::run_to_quiescence(const int max_to_receive,
@@ -390,6 +399,367 @@ void DistributedTaskDriver::attach_debugger() {
       }
     }
   }
+}
+
+namespace {
+/*!
+ * \brief Reads a value of type T from the buffer and advances the pointer.
+ *
+ * Copies sizeof(T) bytes from the memory at ptr into a T, then advances
+ * ptr by sizeof(T).
+ *
+ * \tparam T The type to read from the buffer.
+ * \param[in,out] ptr Reference to a pointer to the buffer position.
+ *                   Advanced by sizeof(T) after reading.
+ * \return The value of type T read from the buffer.
+ */
+template <typename T>
+T read_and_advance(const char*& ptr) {
+  T value;
+  std::memcpy(&value, ptr, sizeof(T));
+  ptr += sizeof(T);
+  return value;
+}
+
+/*!
+ * \brief Reads a string of given length from the buffer and advances ptr.
+ *
+ * Constructs a std::string from the next \a length bytes at ptr, then
+ * advances ptr by \a length.
+ *
+ * \param[in,out] ptr Reference to a pointer to the buffer position.
+ *                   Advanced by \a length after reading.
+ * \param length The number of bytes to read as the string.
+ * \return The string read from the buffer.
+ */
+std::string read_string_and_advance(const char*& ptr,
+                                    const std::uint32_t length) {
+  std::string str(ptr, ptr + length);
+  ptr += length;
+  return str;
+}
+
+/*!
+ * \brief Compares two component accounting buffers for consistency.
+ *
+ * Compares two serialized component accounting buffers, usually from
+ * serialize_component_accounting(), to ensure distributed object
+ * registration is consistent between two processes. Checks the number
+ * and names of regular and collection components, as well as collection
+ * elements and their process IDs. Throws if any inconsistency is found.
+ *
+ * \param buffer_a The first buffer (from process_a).
+ * \param process_a The process ID for buffer_a.
+ * \param buffer_b The second buffer (from process_b).
+ * \param process_b The process ID for buffer_b.
+ *
+ * \throws rts::Exception if any inconsistency is detected.
+ */
+void compare_component_accounting_buffers(const std::vector<char>& buffer_a,
+                                          const int process_a,
+                                          const std::vector<char>& buffer_b,
+                                          const int process_b) {
+  if (buffer_a.empty() and not buffer_b.empty()) {
+    throw Exception{"Insertion error: Process " + std::to_string(process_a) +
+                    " has none while process " + std::to_string(process_b) +
+                    " has non-zero."};
+  }
+  if (buffer_b.empty() and not buffer_a.empty()) {
+    throw Exception{"Insertion error: Process " + std::to_string(process_b) +
+                    " has none while process " + std::to_string(process_a) +
+                    " has non-zero."};
+  }
+
+  const char* ptr_a = buffer_a.data();
+  const char* ptr_b = buffer_b.data();
+
+  // Compare number of regular and collection components
+  const std::uint32_t number_of_regular_components_a =
+      read_and_advance<std::uint32_t>(ptr_a);
+  const std::uint32_t number_of_regular_components_b =
+      read_and_advance<std::uint32_t>(ptr_b);
+  if (number_of_regular_components_a != number_of_regular_components_b) {
+    throw Exception(
+        "Insertion error: The number of regular components is different on "
+        "different processes. This means you have different "
+        "rts::insert_parallel_component calls on different processes. "
+        "Process " +
+        std::to_string(process_a) + " has " +
+        std::to_string(number_of_regular_components_a) + ", process " +
+        std::to_string(process_b) + " has " +
+        std::to_string(number_of_regular_components_b));
+  }
+
+  const std::uint32_t number_of_collection_components_a =
+      read_and_advance<std::uint32_t>(ptr_a);
+  const std::uint32_t number_of_collection_components_b =
+      read_and_advance<std::uint32_t>(ptr_b);
+  if (number_of_collection_components_a != number_of_collection_components_b) {
+    throw Exception(
+        "Insertion error: The number of collection components is different on "
+        "different processes. This means you have different "
+        "rts::insert_parallel_component_collection calls on different "
+        "processes. Process " +
+        std::to_string(process_a) + " has " +
+        std::to_string(number_of_collection_components_a) + ", process " +
+        std::to_string(process_b) + " has " +
+        std::to_string(number_of_collection_components_b));
+  }
+
+  // Compare regular component names
+  for (std::uint32_t i = 0; i < number_of_regular_components_a; ++i) {
+    const std::uint32_t name_length_a = read_and_advance<std::uint32_t>(ptr_a);
+    const std::uint32_t name_length_b = read_and_advance<std::uint32_t>(ptr_b);
+    const std::string name_a = read_string_and_advance(ptr_a, name_length_a);
+    const std::string name_b = read_string_and_advance(ptr_b, name_length_b);
+    if (name_a != name_b) {
+      throw Exception("Insertion error: Regular component " +
+                      std::to_string(i) + " name differs: process " +
+                      std::to_string(process_a) + " has '" + name_a +
+                      "', process " + std::to_string(process_b) + " has '" +
+                      name_b +
+                      "'. You must have inserted the components in a different "
+                      "order on different processes.");
+    }
+  }
+
+  // Compare collection component names and their elements
+  for (std::uint32_t i = 0; i < number_of_collection_components_a; ++i) {
+    const std::uint32_t name_length_a = read_and_advance<std::uint32_t>(ptr_a);
+    const std::uint32_t name_length_b = read_and_advance<std::uint32_t>(ptr_b);
+    const std::string name_a = read_string_and_advance(ptr_a, name_length_a);
+    const std::string name_b = read_string_and_advance(ptr_b, name_length_b);
+    if (name_a != name_b) {
+      throw Exception("Insertion error: Collection component " +
+                      std::to_string(i) + " name differs: process " +
+                      std::to_string(process_a) + " has '" + name_a +
+                      "', process " + std::to_string(process_b) + " has '" +
+                      name_b + "'");
+    }
+
+    // Compare collection elements
+    const std::uint64_t number_of_elements_a =
+        read_and_advance<std::uint64_t>(ptr_a);
+    const std::uint64_t number_of_elements_b =
+        read_and_advance<std::uint64_t>(ptr_b);
+    if (number_of_elements_a != number_of_elements_b) {
+      throw Exception("Insertion error: Collection component '" + name_a +
+                      "' number of elements differs: process " +
+                      std::to_string(process_a) + " has " +
+                      std::to_string(number_of_elements_a) + ", process " +
+                      std::to_string(process_b) + " has " +
+                      std::to_string(number_of_elements_b));
+    }
+    for (std::uint32_t j = 0; j < number_of_elements_a; ++j) {
+      const std::uint64_t element_id_a = read_and_advance<std::uint64_t>(ptr_a);
+      const std::uint64_t element_id_b = read_and_advance<std::uint64_t>(ptr_b);
+      if (element_id_a != element_id_b) {
+        throw Exception("Insertion error: Collection component '" + name_a +
+                        "', element " + std::to_string(j) +
+                        " ID differs: process " + std::to_string(process_a) +
+                        " has " + std::to_string(element_id_a) + ", process " +
+                        std::to_string(process_b) + " has " +
+                        std::to_string(element_id_b));
+      }
+      const int process_id_a = read_and_advance<int>(ptr_a);
+      const int process_id_b = read_and_advance<int>(ptr_b);
+      if (process_id_a != process_id_b) {
+        throw Exception("Insertion error: Collection component '" + name_a +
+                        "', element " + std::to_string(j) + " (ID " +
+                        std::to_string(element_id_a) + ") is on process " +
+                        std::to_string(process_id_a) + " for process " +
+                        std::to_string(process_a) + " but on process " +
+                        std::to_string(process_id_b) + " for process " +
+                        std::to_string(process_b));
+      }
+    }
+  }
+  // If we reach here, the buffers are identical.
+}
+}  // namespace
+
+std::vector<char> DistributedTaskDriver::serialize_component_accounting()
+    const {
+  // Count regular and collection components
+  size_t number_of_regular_components = 0;
+  size_t number_of_collection_components = 0;
+  size_t number_of_collection_elements = 0;
+  for (const auto& object : distributed_objects_) {
+    if (object.objects.index() == rts::detail::Regular) {
+      ++number_of_regular_components;
+    } else if (object.objects.index() == rts::detail::Collection) {
+      ++number_of_collection_components;
+      number_of_collection_elements +=
+          std::get<rts::detail::Collection>(object.objects).size();
+    }
+  }
+
+  // Estimate: 2 ints for counts, plus some space for names and elements.
+  // - We estimate 100 character names at most.
+  // - We add 8 bytes for the uint64_t for each collection element plus 4
+  //   bytes for the process ID.
+  const size_t estimated_size = 2 * sizeof(int) +
+                                number_of_regular_components * 100 +
+                                number_of_collection_components * 100 +
+                                number_of_collection_elements * (8 + 4);
+  std::vector<char> buffer;
+  buffer.reserve(estimated_size);
+
+  // Write counts
+  buffer.insert(buffer.end(),
+                reinterpret_cast<const char*>(&number_of_regular_components),
+                reinterpret_cast<const char*>(&number_of_regular_components) +
+                    sizeof(int));
+  buffer.insert(
+      buffer.end(),
+      reinterpret_cast<const char*>(&number_of_collection_components),
+      reinterpret_cast<const char*>(&number_of_collection_components) +
+          sizeof(int));
+
+  // Serialize regular component names
+  for (const auto& object : distributed_objects_) {
+    if (object.objects.index() == rts::detail::Regular) {
+      const uint32_t name_length = static_cast<uint32_t>(object.name.size());
+      buffer.insert(
+          buffer.end(), reinterpret_cast<const char*>(&name_length),
+          reinterpret_cast<const char*>(&name_length) + sizeof(uint32_t));
+      buffer.insert(buffer.end(), object.name.begin(), object.name.end());
+    }
+  }
+
+  // Serialize collection component names and their elements
+  for (const auto& object : distributed_objects_) {
+    if (object.objects.index() == rts::detail::Collection) {
+      // First add name of collection
+      const uint32_t name_length = static_cast<uint32_t>(object.name.size());
+      buffer.insert(
+          buffer.end(), reinterpret_cast<const char*>(&name_length),
+          reinterpret_cast<const char*>(&name_length) + sizeof(uint32_t));
+      buffer.insert(buffer.end(), object.name.begin(), object.name.end());
+
+      // Get and sort collection elements. We only sort based on the
+      // collection index since we should have the same number of those across
+      // all process and the same ones. That makes it easier to check if the
+      // PIDs are different.
+      const auto& collection_map = std::get<1>(object.objects);
+      std::vector<std::pair<uint64_t, int>> elements;
+      elements.reserve(collection_map.size());
+      for (const auto& [collection_index, holder] : collection_map) {
+        elements.emplace_back(collection_index, holder.process_id);
+      }
+      std::sort(elements.begin(), elements.end(),
+                [](const std::pair<uint64_t, int>& lhs,
+                   const std::pair<uint64_t, int>& rhs) {
+                  return lhs.first < rhs.first;
+                });
+
+      // Now add the element data to the buffer.
+      const std::uint64_t number_of_elements = elements.size();
+      buffer.insert(buffer.end(),
+                    reinterpret_cast<const char*>(&number_of_elements),
+                    reinterpret_cast<const char*>(&number_of_elements) +
+                        sizeof(std::uint64_t));
+      // Note: reserve() only increases if necessary and never shrinks.
+      buffer.reserve(buffer.size() +
+                     elements.size() * (sizeof(uint64_t) + sizeof(int)));
+      for (const auto& [collection_index, process_id] : elements) {
+        buffer.insert(buffer.end(),
+                      reinterpret_cast<const char*>(&collection_index),
+                      reinterpret_cast<const char*>(&collection_index) +
+                          sizeof(uint64_t));
+        buffer.insert(buffer.end(), reinterpret_cast<const char*>(&process_id),
+                      reinterpret_cast<const char*>(&process_id) + sizeof(int));
+      }
+    }
+  }
+  return buffer;
+}
+
+void DistributedTaskDriver::check_component_accounting_consistency() const {
+  // Serialize local component accounting.
+  const std::vector<char> local_buffer = serialize_component_accounting();
+  const int local_buffer_size = static_cast<int>(local_buffer.size());
+
+  // Helper lambda to receive and compare data from a child using MPI_Probe.
+  auto receive_and_compare = [&](const int child_id) {
+    if (child_id == -1) {
+      return;
+    }
+    // Probe for the incoming message to get its size.
+    MPI_Status status;
+    if (const auto mpi_result =
+            MPI_Probe(child_id, message_tags::insert_consistency_check,
+                      rts_comm_, &status);
+        mpi_result != MPI_SUCCESS) {
+      throw MpiException{
+          "Failed to call MPI_Probe during insert_barrier()'s consistency "
+          "check on process " +
+          std::to_string(current_node_id())};
+    }
+    int child_buffer_size = 0;
+    if (const auto mpi_result =
+            MPI_Get_count(&status, MPI_CHAR, &child_buffer_size);
+        mpi_result != MPI_SUCCESS) {
+      throw MpiException{
+          "Failed to call MPI_Get_count during insert_barrier()'s consistency "
+          "check on process " +
+          std::to_string(current_node_id())};
+    }
+
+    // Receive the buffer itself.
+    std::vector<char> child_buffer(static_cast<size_t>(child_buffer_size));
+    if (child_buffer_size > 0) {
+      if (const auto mpi_result =
+              MPI_Recv(child_buffer.data(), child_buffer_size, MPI_CHAR,
+                       child_id, message_tags::insert_consistency_check,
+                       rts_comm_, MPI_STATUS_IGNORE);
+          mpi_result != MPI_SUCCESS) {
+        throw MpiException{
+            "Failed to call MPI_Recv during insert_barrier()'s consistency "
+            "check on process " +
+            std::to_string(current_node_id())};
+      }
+    }
+
+    // Compare contents.
+    compare_component_accounting_buffers(local_buffer, current_node_id(),
+                                         child_buffer, child_id);
+  };
+
+  // If this is not the root, send our data to our parent as a single message.
+  //
+  // We send non-blocking but receive blocking. The code is a lot simpler this
+  // way and this asymmetry is an optimal balance since we need to wait for
+  // both receives to complete before we can continue anyway. The non-blocking
+  // sends allow all processes to proceed at whatever rate they can.
+  MPI_Request request;
+  const int parent_id = parent_and_children_.parent_process_id;
+  if (parent_id != -1) {
+    if (local_buffer_size > 0) {
+      if (const auto mpi_result = MPI_Isend(
+              local_buffer.data(), local_buffer_size, MPI_CHAR, parent_id,
+              message_tags::insert_consistency_check, rts_comm_, &request);
+          mpi_result != MPI_SUCCESS) {
+        throw MpiException{
+            "Failed to call MPI_Send during insert_barrier()'s consistency "
+            "check on process " +
+            std::to_string(current_node_id())};
+      }
+    }
+  }
+
+  // Receive and compare from left and right children, if they exist.
+  const int left_child_id = parent_and_children_.left_process_id;
+  const int right_child_id = parent_and_children_.right_process_id;
+  receive_and_compare(left_child_id);
+  receive_and_compare(right_child_id);
+
+  // now wait for our Isend to complete
+  if (parent_id != -1 and local_buffer_size > 0) {
+    MPI_Wait(&request, MPI_STATUS_IGNORE);
+  }
+
+  // If this is the root, and we reach here, all data matched.
 }
 
 void DistributedTaskDriver::invoke(Message_t& message,
@@ -1754,6 +2124,277 @@ MPI_TEST_CASE("DistributedTaskDriver", 2) {
   testing::test_copy_message(driver);
   testing::test_bulk_enequeue_iterator_exceptions();
   testing::test_invoke(driver);
+}
+
+MPI_TEST_CASE("DistributedTaskDriver.InsertErrorRegular0", 2) {
+  rts::DistributedTaskDriver& driver =
+      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  if (driver.current_node_id() == 0) {
+    driver.insert_parallel_component<testing::RegularComponent>();
+    CHECK_THROWS_WITH_AS(
+        driver.insert_barrier(),
+        "Insertion error: The number of regular components is different on "
+        "different processes. This means you have different "
+        "rts::insert_parallel_component calls on different processes. Process "
+        "0 has 1, process 1 has 0",
+        rts::Exception);
+    driver.barrier();
+  } else {
+    driver.insert_barrier();
+  }
+}
+
+MPI_TEST_CASE("DistributedTaskDriver.InsertErrorRegular1", 2) {
+  rts::DistributedTaskDriver& driver =
+      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  if (driver.current_node_id() != 0) {
+    driver.insert_parallel_component<testing::RegularComponent>();
+    driver.insert_barrier();
+  } else {
+    CHECK_THROWS_WITH_AS(
+        driver.insert_barrier(),
+        "Insertion error: The number of regular components is different on "
+        "different processes. This means you have different "
+        "rts::insert_parallel_component calls on different processes. Process "
+        "0 has 0, process 1 has 1",
+        rts::Exception);
+    driver.barrier();
+  }
+}
+
+MPI_TEST_CASE("DistributedTaskDriver.InsertErrorCollection0", 2) {
+  rts::DistributedTaskDriver& driver =
+      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  if (driver.current_node_id() == 0) {
+    driver.insert_parallel_component_collection<testing::CollectionComponent>(
+        42ul, 0);
+    CHECK_THROWS_WITH_AS(
+        driver.insert_barrier(),
+        "Insertion error: The number of collection components is different on "
+        "different processes. This means you have different "
+        "rts::insert_parallel_component_collection calls on different "
+        "processes. Process 0 has 1, process 1 has 0",
+        rts::Exception);
+    driver.barrier();
+  } else {
+    driver.insert_barrier();
+  }
+}
+
+MPI_TEST_CASE("DistributedTaskDriver.InsertErrorCollection1", 2) {
+  rts::DistributedTaskDriver& driver =
+      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  if (driver.current_node_id() != 0) {
+    driver.insert_parallel_component_collection<testing::CollectionComponent>(
+        42ul, 0);
+    driver.insert_barrier();
+  } else {
+    CHECK_THROWS_WITH_AS(
+        driver.insert_barrier(),
+        "Insertion error: The number of collection components is different on "
+        "different processes. This means you have different "
+        "rts::insert_parallel_component_collection calls on different "
+        "processes. Process 0 has 0, process 1 has 1",
+        rts::Exception);
+    driver.barrier();
+  }
+}
+
+namespace {
+struct RegularComponentLong : public rts::detail::DistributedObjectBase {
+  static std::string name() { return "RegularComponentLong"; }
+};
+}  // namespace
+
+MPI_TEST_CASE("DistributedTaskDriver.InsertErrorRegularName", 2) {
+  rts::DistributedTaskDriver& driver =
+      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  if (driver.current_node_id() == 0) {
+    driver.insert_parallel_component<testing::RegularComponent>();
+  } else {
+    driver.insert_parallel_component<RegularComponentLong>();
+  }
+
+  if (driver.current_node_id() == 0) {
+    CHECK_THROWS_WITH_AS(
+        driver.insert_barrier(),
+        "Insertion error: Regular component 0 name differs: process 0 has "
+        "'RegularComponent', process 1 has 'RegularComponentLong'. You must "
+        "have inserted the components in a different order on different "
+        "processes.",
+        rts::Exception);
+    driver.barrier();
+  } else {
+    driver.insert_barrier();
+  }
+}
+
+TEST_CASE("CompareComponentAccountingBuffers") {
+  // Case A empty, B non-empty
+  CHECK_THROWS_WITH_AS(
+      compare_component_accounting_buffers(
+          std::vector<char>{}, 100, std::vector<char>{'a', 'b', 'c'}, 200),
+      "Insertion error: Process 100 has none while process 200 has non-zero.",
+      Exception);
+
+  // Case A non-empty, B empty
+  CHECK_THROWS_WITH_AS(
+      compare_component_accounting_buffers(std::vector<char>{'x', 'y'}, 42,
+                                           std::vector<char>{}, 7),
+      "Insertion error: Process 7 has none while process 42 has non-zero.",
+      Exception);
+}
+
+// Test: Collection component name differs
+namespace {
+struct CollectionComponentLong
+    : public rts::DistributedObjectCollection<CollectionComponentLong> {
+  using rts_collection_index = uint64_t;
+  static std::string name() { return "CollectionComponentLong"; }
+};
+}  // namespace
+
+MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionName0", 2) {
+  rts::DistributedTaskDriver& driver =
+      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  if (driver.current_node_id() == 0) {
+    driver.insert_parallel_component_collection<testing::CollectionComponent>(
+        42ul, 0);
+  } else {
+    driver.insert_parallel_component_collection<CollectionComponentLong>(42ul,
+                                                                         1);
+  }
+  if (driver.current_node_id() == 0) {
+    CHECK_THROWS_WITH_AS(
+        driver.insert_barrier(),
+        "Insertion error: Collection component 0 name differs: process 0 has "
+        "'CollectionComponent', process 1 has 'CollectionComponentLong'",
+        rts::Exception);
+    driver.barrier();
+  } else {
+    driver.insert_barrier();
+  }
+}
+
+MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionName1", 2) {
+  rts::DistributedTaskDriver& driver =
+      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  if (driver.current_node_id() == 1) {
+    driver.insert_parallel_component_collection<testing::CollectionComponent>(
+        42ul, 1);
+  } else {
+    driver.insert_parallel_component_collection<CollectionComponentLong>(42ul,
+                                                                         0);
+  }
+  if (driver.current_node_id() == 0) {
+    CHECK_THROWS_WITH_AS(
+        driver.insert_barrier(),
+        "Insertion error: Collection component 0 name differs: process 0 has "
+        "'CollectionComponentLong', process 1 has 'CollectionComponent'",
+        rts::Exception);
+    driver.barrier();
+  } else {
+    driver.insert_barrier();
+  }
+}
+
+MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionNumElements0", 2) {
+  // Test: Collection number of elements differs
+  rts::DistributedTaskDriver& driver =
+      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  if (driver.current_node_id() == 0) {
+    driver.insert_parallel_component_collection<testing::CollectionComponent>(
+        42ul, 0);
+    driver.insert_parallel_component_collection<testing::CollectionComponent>(
+        43ul, 0);
+  } else {
+    driver.insert_parallel_component_collection<testing::CollectionComponent>(
+        42ul, 1);
+  }
+  if (driver.current_node_id() == 0) {
+    CHECK_THROWS_WITH_AS(
+        driver.insert_barrier(),
+        "Insertion error: Collection component 'CollectionComponent' number of "
+        "elements differs: process 0 has 2, process 1 has 1",
+        rts::Exception);
+    driver.barrier();
+  } else {
+    driver.insert_barrier();
+  }
+}
+
+MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionNumElements1", 2) {
+  // Test: Collection number of elements differs
+  rts::DistributedTaskDriver& driver =
+      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  if (driver.current_node_id() == 1) {
+    driver.insert_parallel_component_collection<testing::CollectionComponent>(
+        42ul, 1);
+    driver.insert_parallel_component_collection<testing::CollectionComponent>(
+        43ul, 1);
+  } else {
+    driver.insert_parallel_component_collection<testing::CollectionComponent>(
+        42ul, 0);
+  }
+  if (driver.current_node_id() == 0) {
+    CHECK_THROWS_WITH_AS(
+        driver.insert_barrier(),
+        "Insertion error: Collection component 'CollectionComponent' number of "
+        "elements differs: process 0 has 1, process 1 has 2",
+        rts::Exception);
+    driver.barrier();
+  } else {
+    driver.insert_barrier();
+  }
+}
+
+MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionElementId0", 2) {
+  // Test: Collection element ID differs
+  rts::DistributedTaskDriver& driver =
+      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  if (driver.current_node_id() == 0) {
+    driver.insert_parallel_component_collection<testing::CollectionComponent>(
+        43ul, 0);
+    driver.insert_parallel_component_collection<testing::CollectionComponent>(
+        44ul, 0);
+  } else {
+    driver.insert_parallel_component_collection<testing::CollectionComponent>(
+        42ul, 1);
+    driver.insert_parallel_component_collection<testing::CollectionComponent>(
+        44ul, 1);
+  }
+  if (driver.current_node_id() == 0) {
+    CHECK_THROWS_WITH_AS(
+        driver.insert_barrier(),
+        "Insertion error: Collection component 'CollectionComponent', element "
+        "0 ID differs: process 0 has 43, process 1 has 42",
+        rts::Exception);
+    driver.barrier();
+  } else {
+    driver.insert_barrier();
+  }
+}
+
+MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionElementPid0", 2) {
+  // Test: Collection element process ID differs
+  rts::DistributedTaskDriver& driver =
+      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  // Both insert the same indices, but on different processes
+  driver.insert_parallel_component_collection<testing::CollectionComponent>(
+      42ul, 0);
+  driver.insert_parallel_component_collection<testing::CollectionComponent>(
+      43ul, driver.current_node_id());
+  if (driver.current_node_id() == 0) {
+    CHECK_THROWS_WITH_AS(
+        driver.insert_barrier(),
+        "Insertion error: Collection component 'CollectionComponent', element "
+        "1 (ID 43) is on "
+        "process 0 for process 0 but on process 1 for process 1",
+        rts::Exception);
+    driver.barrier();
+  } else {
+    driver.insert_barrier();
+  }
 }
 }  // namespace rts
 #endif
