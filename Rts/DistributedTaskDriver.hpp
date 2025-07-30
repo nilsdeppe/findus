@@ -31,6 +31,7 @@
 #include "Rts/Detail/IndexConversion.hpp"
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/IsCollection.hpp"
+#include "Rts/Message.hpp"
 #include "Rts/MessageHeader.hpp"
 #include "Rts/ParentAndChildren.hpp"
 #include "Rts/QuiescenceDetection.hpp"
@@ -68,6 +69,7 @@ struct ArgIndex {
 
 class DistributedTaskDriver {
  private:
+  friend struct Message_t;
   struct DistributedOjectClassHolder;
 
   /*!
@@ -109,38 +111,8 @@ class DistributedTaskDriver {
   };
 
  public:
-  /*!
-   * \brief The type of the messages sent by the runtime system.
-   *
-   * The underlying data is essentially just a byte stream, which is stored in a
-   * `std::unique_ptr<char[]>`. There is currently no small message
-   * optimization.
-   */
-  struct Message_t {
-    std::unique_ptr<std::byte[]> message{nullptr};
-
-    /// @{
-    /// \brief Returns the message header.
-    MessageHeader* get_header() {
-      return reinterpret_cast<MessageHeader*>(message.get());
-    }
-    const MessageHeader* get_header() const {
-      return reinterpret_cast<MessageHeader*>(message.get());
-    }
-    /// @}
-
-    /// \brief Executes the message.
-    static bool execute(
-        rts::ThreadPool<Message_t, rts::DistributedTaskDriver*>& /*pool*/,
-        const uint32_t thread_id, Message_t& message,
-        DistributedTaskDriver* distributed_task_driver) {
-      distributed_task_driver->invoke(message, thread_id);
-      return true;
-    }
-  };
-
   /// \brief Make a copy of Message_t.
-  Message_t copy(const DistributedTaskDriver::Message_t& message) const;
+  Message_t copy(const Message_t& message) const;
 
   /// \brief The type of the underlying thread pool and dynamic tasking.
   using ThreadPool_t = rts::ThreadPool<Message_t, DistributedTaskDriver*>;

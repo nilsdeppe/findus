@@ -17,6 +17,7 @@ add_library(
   Exceptions/Mpi.cpp
   Exceptions/Qd.cpp
   HardwareInfo.cpp
+  Message.cpp
   MessageHeader.cpp
   MessageTags.cpp
   ParentAndChildren.cpp
