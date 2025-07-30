@@ -5,6 +5,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <exception>
 #include <initializer_list>
@@ -116,7 +117,7 @@ class DistributedTaskDriver {
    * optimization.
    */
   struct Message_t {
-    std::unique_ptr<char[]> message{nullptr};
+    std::unique_ptr<std::byte[]> message{nullptr};
 
     /// @{
     /// \brief Returns the message header.
@@ -1005,8 +1006,8 @@ void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
     const std::uint64_t buffer_size = data_offset
                                       // Add the size of the data type (tuple)
                                       + sizeof(Data_t);
-    std::unique_ptr<char[]> buffer{new (std::align_val_t(
-        std::max(alignof(MessageHeader), alignof(Data_t)))) char[buffer_size]};
+    std::unique_ptr<std::byte[]> buffer{new (std::align_val_t(std::max(
+        alignof(MessageHeader), alignof(Data_t)))) std::byte[buffer_size]};
 
     MessageHeader* message = new (buffer.get())
         MessageHeader{threaded_action_relative_ptr<Action, ParallelComponent,
@@ -1066,8 +1067,8 @@ void DistributedTaskDriver::broadcast(Args&&... args) {
     const std::uint64_t buffer_size = data_offset
                                       // Add the size of the data type
                                       + sizeof(Data_t);
-    std::unique_ptr<char[]> buffer{new (std::align_val_t(
-        std::max(alignof(MessageHeader), alignof(Data_t)))) char[buffer_size]};
+    std::unique_ptr<std::byte[]> buffer{new (std::align_val_t(std::max(
+        alignof(MessageHeader), alignof(Data_t)))) std::byte[buffer_size]};
 
     MessageHeader* message = new (buffer.get())
         MessageHeader{threaded_action_relative_ptr<Action, ParallelComponent,
@@ -1136,7 +1137,7 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
 
   // Create one copy of the data that we can then copy into each message to
   // each process.
-  std::unique_ptr<char[]> data{nullptr};
+  std::unique_ptr<std::byte[]> data{nullptr};
   // Always align to the tuple. This may over align but reduces code
   // duplication.
   constexpr size_t data_alignment = alignof(Data_t);
@@ -1144,8 +1145,8 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
                                    ? sizeof(Data_t)
                                    : std::numeric_limits<size_t>::max();
   if (data_is_trivially_copyable) {
-    data = std::unique_ptr<char[]>{
-        new (std::align_val_t{data_alignment}) char[data_size]};
+    data = std::unique_ptr<std::byte[]>{new (std::align_val_t{data_alignment})
+                                            std::byte[data_size]};
     new (data.get()) Data_t{std::forward<Args>(args)...};
   } else {
     throw Exception{"Serialization in broadcast_to() not yet implemented."};
@@ -1195,8 +1196,8 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
         + (data_alignment -
            (extra_bytes_for_elements + sizeof(MessageHeader)) % data_alignment);
     const std::uint64_t buffer_size = data_offset + data_size;
-    std::unique_ptr<char[]> buffer{new (std::align_val_t(
-        std::max(alignof(MessageHeader), data_alignment))) char[buffer_size]};
+    std::unique_ptr<std::byte[]> buffer{new (std::align_val_t(std::max(
+        alignof(MessageHeader), data_alignment))) std::byte[buffer_size]};
 
     MessageHeader* message = new (buffer.get())
         MessageHeader{threaded_action_relative_ptr<Action, ParallelComponent,
@@ -1258,8 +1259,8 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
         const std::uint64_t buffer_size = data_offset
                                           // Add the size of the data type
                                           + data_size;
-        std::unique_ptr<char[]> buffer{new (std::align_val_t(std::max(
-            alignof(MessageHeader), data_alignment))) char[buffer_size]};
+        std::unique_ptr<std::byte[]> buffer{new (std::align_val_t(std::max(
+            alignof(MessageHeader), data_alignment))) std::byte[buffer_size]};
 
         MessageHeader* message = new (buffer.get()) MessageHeader{
             threaded_action_relative_ptr<Action, ParallelComponent,
