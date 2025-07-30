@@ -42,4 +42,7 @@ struct Message_t {
       const std::uint32_t thread_id, Message_t& message,
       DistributedTaskDriver* distributed_task_driver);
 };
+
+/// \brief Make a copy of Message_t.
+Message_t copy(const Message_t& message);
 }  // namespace rts
