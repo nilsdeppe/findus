@@ -960,41 +960,17 @@ void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
 
   if (target_node == my_node_id_ or
       ((std::is_trivially_copyable_v<std::decay_t<Args>> && ...))) {
-    // Regardless of whether or not we are crossing an address space
-    // boundary we cannot store or forward references in the Data, we can
-    // only safely store values.
-    using Data_t = std::tuple<std::decay_t<Args>...>;
-    const std::uint32_t data_offset =
-        sizeof(MessageHeader)
-        // Add extra bytes to make sure we can align Data_t
-        // properly. We compute the remainder of the MessageHeader size and
-        // the alignment of the data. This would give us, e.g. 5 bytes, which
-        // means we have e.g. 37 bytes for MessageHeader. The amount we
-        // would need to align then is given by the C++:
-        + (alignof(Data_t) - sizeof(MessageHeader) % alignof(Data_t));
-    const std::uint64_t buffer_size = data_offset
-                                      // Add the size of the data type (tuple)
-                                      + sizeof(Data_t);
-    std::unique_ptr<std::byte[]> buffer{new (std::align_val_t(std::max(
-        alignof(MessageHeader), alignof(Data_t)))) std::byte[buffer_size]};
-
-    MessageHeader* message = new (buffer.get())
-        MessageHeader{threaded_action_relative_ptr<Action, ParallelComponent,
-                                                   std::decay_t<Args>...>(
-                          std::make_index_sequence<sizeof...(Args)>{}),
-                      collection_index,
-                      buffer_size,
-                      detail::distributed_object_index<ParallelComponent>(),
-                      data_offset,
-                      current_node_id(),
-                      target_node,
-                      global_qd_.local_sweep_number(),
-                      false,
-                      MessageType::Invoke};
-    Data_t* data_location = rts::create_data_in_message<Data_t>(*message);
-
-    *data_location = Data_t{std::forward<Args>(args)...};
-    send_data(target_node, {std::move(buffer)});
+    send_data(
+        target_node,
+        rts::create_message(
+            threaded_action_relative_ptr<Action, ParallelComponent,
+                                         std::decay_t<Args>...>(
+                std::make_index_sequence<sizeof...(Args)>{}),
+            collection_index,
+            detail::distributed_object_index<ParallelComponent>(),
+            current_node_id(), target_node, global_qd_.local_sweep_number(),
+            false, MessageType::Invoke,
+            std::tuple<std::decay_t<Args>...>{std::forward<Args>(args)...}));
   } else {
     throw Exception{"Serialization in invoke() is not yet implemented."};
     // send_data(target_node, std::move(buffer));
@@ -1021,39 +997,20 @@ void DistributedTaskDriver::broadcast(Args&&... args) {
                     "first call driver.launch_threads()."};
   }
   if ((std::is_trivially_copyable_v<std::decay_t<Args>> && ...)) {
-    // Regardless of whether or not we are crossing an address space
-    // boundary we cannot store or forward references in the Data, we can
-    // only safely store values.
-    using Data_t = std::tuple<std::decay_t<Args>...>;
-    const std::uint32_t data_offset =
-        sizeof(MessageHeader)
-        // Add extra bytes to make sure we can align Data_t
-        // properly. We compute the remainder of the MessageHeader size and
-        // the alignment of the data. This would give us, e.g. 5 bytes, which
-        // means we have e.g. 37 bytes for MessageHeader. The amount we
-        // would need to align then is given by the C++:
-        + (alignof(Data_t) - sizeof(MessageHeader) % alignof(Data_t));
-    const std::uint64_t buffer_size = data_offset
-                                      // Add the size of the data type
-                                      + sizeof(Data_t);
-    std::unique_ptr<std::byte[]> buffer{new (std::align_val_t(std::max(
-        alignof(MessageHeader), alignof(Data_t)))) std::byte[buffer_size]};
-
-    MessageHeader* message = new (buffer.get())
-        MessageHeader{threaded_action_relative_ptr<Action, ParallelComponent,
-                                                   std::decay_t<Args>...>(
-                          std::make_index_sequence<sizeof...(Args)>{}),
-                      MessageHeader::no_collection_index(), buffer_size,
-                      detail::distributed_object_index<ParallelComponent>(),
-                      data_offset, current_node_id(),
-                      // For broadcasts we first set the target process ID to
-                      // self, then update it as we send to different processes.
-                      current_node_id(), global_qd_.local_sweep_number(), false,
-                      MessageType::Broadcast};
-    Data_t* data_location = rts::create_data_in_message<Data_t>(*message);
-
-    *data_location = Data_t{std::forward<Args>(args)...};
-    send_data(broadcast_process_id, {std::move(buffer)});
+    send_data(
+        broadcast_process_id,
+        rts::create_message(
+            threaded_action_relative_ptr<Action, ParallelComponent,
+                                         std::decay_t<Args>...>(
+                std::make_index_sequence<sizeof...(Args)>{}),
+            MessageHeader::no_collection_index(),
+            detail::distributed_object_index<ParallelComponent>(),
+            current_node_id(),
+            // For broadcasts we first set the target process ID to
+            // self, then update it as we send to different processes.
+            current_node_id(), global_qd_.local_sweep_number(), false,
+            MessageType::Broadcast,
+            std::tuple<std::decay_t<Args>...>{std::forward<Args>(args)...}));
   } else {
     throw Exception{"Serialization in broadcast() is not yet implemented."};
     // send_data(broadcast_process_id, std::move(buffer));
