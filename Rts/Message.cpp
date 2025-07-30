@@ -42,6 +42,86 @@ Message_t copy(const Message_t& message) {
 
 namespace rts {
 namespace {
+struct alignas(rts::hardware_info::hardware_destructive_interference_size)
+    AlignedStruct {
+  int a;
+  double b;
+  std::size_t c;
+  char d;
+};
+
+void test_create_message_alignment_and_values() {
+  INFO("Test create_message with various types and alignment");
+
+  // Edge case: struct with large alignment and only fundamental types
+  AlignedStruct struct_value{42, 3.14, 123456, 'x'};
+  int int_value = -7;
+  double double_value = 2.718;
+  std::size_t size_t_value = 9999;
+
+  // Prepare message arguments as a tuple
+  std::tuple args_tuple{int_value, double_value, size_t_value, struct_value};
+
+  // Dummy member function pointer and header fields
+  const rts::detail::MemberFunctionPtr dummy_ptr{};
+  const std::uint64_t target_collection_index = 0;
+  const std::uint32_t distributed_object_index = 1;
+  const std::int32_t source_process_id = 2;
+  const std::int32_t destination_process_id = 3;
+  const std::uint64_t sweep_number = 4;
+  const bool was_serialized = false;
+  const rts::MessageType message_type = rts::MessageType::Invoke;
+
+  // Create the message
+  Message_t message = create_message(
+      dummy_ptr, target_collection_index, distributed_object_index,
+      source_process_id, destination_process_id, sweep_number, was_serialized,
+      message_type, args_tuple);
+
+  // Check header fields
+  const MessageHeader* header = message.get_header();
+  CHECK(header->member_function_ptr() == dummy_ptr);
+  CHECK(header->target_collection_index() == target_collection_index);
+  CHECK(header->distributed_object_index() == distributed_object_index);
+  CHECK(header->source_process_id() == source_process_id);
+  CHECK(header->destination_process_id() == destination_process_id);
+  CHECK(header->quiescence_detection_sweep_number() == sweep_number);
+  CHECK(header->data_was_serialized() == was_serialized);
+  CHECK(header->message_type() == message_type);
+
+  // Edge case: check alignment of the data
+  const void* data_ptr = header->data_location();
+  CHECK(reinterpret_cast<std::uintptr_t>(data_ptr) %
+            alignof(std::tuple<int, double, std::size_t, AlignedStruct>) ==
+        0);
+
+  // Edge case: check buffer size is sufficient for alignment and data
+  const std::size_t expected_data_offset =
+      sizeof(MessageHeader) +
+      (alignof(std::tuple<int, double, std::size_t, AlignedStruct>) -
+       sizeof(MessageHeader) %
+           alignof(std::tuple<int, double, std::size_t, AlignedStruct>));
+  const std::size_t expected_buffer_size =
+      expected_data_offset +
+      sizeof(std::tuple<int, double, std::size_t, AlignedStruct>);
+  CHECK(header->number_of_bytes_in_message() == expected_buffer_size);
+
+  // Check that the data is correctly stored and retrievable
+  using DataTuple = std::tuple<int, double, std::size_t, AlignedStruct>;
+  const DataTuple* data =
+      reinterpret_cast<const DataTuple*>(header->data_location());
+  CHECK(std::get<0>(*data) == int_value);
+  CHECK(std::get<1>(*data) == double_value);
+  CHECK(std::get<2>(*data) == size_t_value);
+
+  // Check struct values
+  const AlignedStruct& struct_from_msg = std::get<3>(*data);
+  CHECK(struct_from_msg.a == struct_value.a);
+  CHECK(struct_from_msg.b == struct_value.b);
+  CHECK(struct_from_msg.c == struct_value.c);
+  CHECK(struct_from_msg.d == struct_value.d);
+}
+
 void test_copy_message() {
   INFO("Test Copy Message_t");
   // Setup a dummy MessageHeader
@@ -89,6 +169,9 @@ void test_copy_message() {
 }  // namespace
 }  // namespace rts
 
-TEST_CASE("Message") { rts::test_copy_message(); }
+TEST_CASE("Message") {
+  rts::test_create_message_alignment_and_values();
+  rts::test_copy_message();
+}
 
 #endif
