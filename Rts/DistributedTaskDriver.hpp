@@ -111,9 +111,6 @@ class DistributedTaskDriver {
   };
 
  public:
-  /// \brief Make a copy of Message_t.
-  Message_t copy(const Message_t& message) const;
-
   /// \brief The type of the underlying thread pool and dynamic tasking.
   using ThreadPool_t = rts::ThreadPool<Message_t, DistributedTaskDriver*>;
 
