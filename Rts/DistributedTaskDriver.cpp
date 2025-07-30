@@ -123,8 +123,7 @@ DistributedTaskDriver::~DistributedTaskDriver() noexcept {
   }
 }
 
-DistributedTaskDriver::Message_t DistributedTaskDriver::copy(
-    const DistributedTaskDriver::Message_t& message) const {
+Message_t DistributedTaskDriver::copy(const Message_t& message) const {
   const MessageHeader& message_header = *message.get_header();
   std::unique_ptr<std::byte[]> buffer{
       new (std::align_val_t(
@@ -1017,7 +1016,7 @@ struct BulkEnqueueIterator {
   BulkEnqueueIterator& operator=(BulkEnqueueIterator&&) = default;
   ~BulkEnqueueIterator() = default;
 
-  typename DistributedTaskDriver::Message_t operator*() {
+  Message_t operator*() {
     if (already_dereferenced) {
       throw Exception{
           "Already dereferenced the iterator and we can only dereference it "
@@ -1413,11 +1412,11 @@ void test_copy_message(DistributedTaskDriver& driver) {
   }
 
   // Create the message
-  rts::DistributedTaskDriver::Message_t message;
+  Message_t message;
   message.message = std::move(buffer);
 
   // Copy the message
-  DistributedTaskDriver::Message_t copied = driver.copy(message);
+  Message_t copied = driver.copy(message);
 
   // Check header fields
   const MessageHeader* copied_header = copied.get_header();
@@ -1431,7 +1430,6 @@ void test_copy_message(DistributedTaskDriver& driver) {
 }
 
 void test_bulk_enequeue_iterator_exceptions() {
-  using Message_t = DistributedTaskDriver::Message_t;
   using IncomingMpiMessages_t = DistributedTaskDriver::IncomingMpiMessages_t;
 
   // Helper to create a Message_t with a given MessageType
