@@ -168,6 +168,11 @@ struct alignas(64) MessageHeader {
 
   std::uint32_t data_offset() const { return data_offset_; }
 
+  /// \brief Update the `data_offset`.
+  void data_offset(const std::uint32_t data_offset) {
+    data_offset_ = data_offset;
+  }
+
   /// \brief Changes the destination to process ID.
   ///
   /// This is used in broadcast operations where a broadcast is sent to each
