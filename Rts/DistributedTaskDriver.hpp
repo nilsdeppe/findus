@@ -1108,45 +1108,14 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
       broadcast_to_messages.emplace_back(Message_t{nullptr});
       continue;
     }
-    const std::uint32_t extra_bytes_for_elements =
-        sizeof(std::uint64_t) *
-        (2 + static_cast<std::uint32_t>(number_of_elements_on_pid));
-    const std::uint32_t data_offset =
-        sizeof(MessageHeader) +
-        extra_bytes_for_elements
-        // Add extra bytes to make sure we can align Data_t
-        // properly. We compute the remainder of the MessageHeader size and
-        // the alignment of the data. This would give us, e.g. 5 bytes, which
-        // means we have e.g. 37 bytes for MessageHeader. The amount we
-        // would need to align then is given by the C++:
-        + (data_alignment -
-           (extra_bytes_for_elements + sizeof(MessageHeader)) % data_alignment);
-    const std::uint64_t buffer_size = data_offset + data_size;
-    std::unique_ptr<std::byte[]> buffer{new (std::align_val_t(std::max(
-        alignof(MessageHeader), data_alignment))) std::byte[buffer_size]};
-
-    MessageHeader* message = new (buffer.get())
-        MessageHeader{threaded_action_relative_ptr<Action, ParallelComponent,
-                                                   std::decay_t<Args>...>(
-                          std::make_index_sequence<sizeof...(Args)>{}),
-                      MessageHeader::no_collection_index(),
-                      buffer_size,
-                      detail::distributed_object_index<ParallelComponent>(),
-                      data_offset,
-                      current_node_id(),
-                      pid,
-                      global_qd_.local_sweep_number(),
-                      false,
-                      MessageType::BroadcastTo};
-    std::uint64_t* start = reinterpret_cast<std::uint64_t*>(
-        std::next(reinterpret_cast<char*>(message), sizeof(MessageHeader)));
-    start[0] = static_cast<std::uint64_t>(pid);
-    // We use this int as a counter for the enqueued elements per PID.
-    start[1] = 0;
-    // Copy data into message.
-    memcpy(rts::create_data_in_message<Data_t>(*message), data.get(),
-           data_size);
-    broadcast_to_messages.emplace_back(Message_t{std::move(buffer)});
+    broadcast_to_messages.emplace_back(create_broadcast_to_message(
+        threaded_action_relative_ptr<Action, ParallelComponent,
+                                     std::decay_t<Args>...>(
+            std::make_index_sequence<sizeof...(Args)>{}),
+        detail::distributed_object_index<ParallelComponent>(),
+        current_node_id(), pid, global_qd_.local_sweep_number(), false,
+        number_of_elements_on_pid, data_alignment, data_size,
+        reinterpret_cast<Data_t*>(data.get())));
   }
   if (static_cast<size_t>(number_of_nodes()) != broadcast_to_messages.size()) {
     throw Exception{"The number of BroadcastTo messages " +
