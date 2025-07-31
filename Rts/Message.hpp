@@ -132,4 +132,32 @@ Message_t create_message(const detail::MemberFunctionPtr member_function_ptr,
 
   return {std::move(buffer)};
 }
+
+/*!
+ * \brief Allocates and constructs a BroadcastTo Message_t.
+ *
+ * Allocates a buffer using the provided allocator, placement-news the given
+ * MessageHeader at the start, writes extra metadata (target pid, number of
+ * elements, collection indices), and then copies the data tuple from a
+ * provided buffer into the correct location.
+ *
+ * \param member_function_ptr The member function pointer for the header.
+ * \param distributed_object_index The distributed object index for the header.
+ * \param source_process_id The source process ID for the header.
+ * \param destination_process_id The destination process ID for the header.
+ * \param quiescence_detection_sweep_number The sweep number for the header.
+ * \param was_serialized Whether the data was serialized.
+ * \param data_alignment The alignment of the underlying data.
+ * \param data_size The size of the underlying data.
+ * \param data_ptr Pointer to the data tuple to copy into the message.
+ * \return Message_t containing the allocated buffer with header, metadata, and
+ * data.
+ */
+Message_t create_broadcast_to_message(
+    const rts::detail::MemberFunctionPtr& member_function_ptr,
+    std::uint32_t distributed_object_index, std::int32_t source_process_id,
+    std::int32_t destination_process_id,
+    std::uint64_t quiescence_detection_sweep_number, bool was_serialized,
+    int number_of_elements_on_pid, std::uint64_t data_alignment,
+    std::uint64_t data_size, const void* data_ptr);
 }  // namespace rts
