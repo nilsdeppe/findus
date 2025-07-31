@@ -1244,13 +1244,8 @@ void DistributedTaskDriver::add_local_broadcast_tasks(
       }
       const MessageHeader& header = *message.get_header();
       const int number_of_local_elements = static_cast<int>(*std::next(start));
-      const std::uint64_t data_alignment = header.data_alignment();
       const std::uint64_t data_size =
           header.number_of_bytes_in_message() - header.data_offset();
-      const std::uint32_t data_offset =
-          sizeof(MessageHeader) +
-          (data_alignment - sizeof(MessageHeader) % data_alignment);
-      const std::uint64_t buffer_size = data_offset + data_size;
       for (int i = 0; i < number_of_local_elements; ++i) {
         const std::uint64_t collection_index = *std::next(start, 2 + i);
         if (const auto it = objects.find(collection_index);
@@ -1262,21 +1257,14 @@ void DistributedTaskDriver::add_local_broadcast_tasks(
                           std::to_string(i) + " and number of elements " +
                           std::to_string(number_of_local_elements)};
         }
-        Message_t local_message{
-            std::unique_ptr<std::byte[]>{new (std::align_val_t(
-                std::max(alignof(MessageHeader), data_alignment)))
-                                             std::byte[buffer_size]}};
-        (new (local_message.message.get()) rts::MessageHeader(
-             header.member_function_ptr(), collection_index, buffer_size,
-             header.distributed_object_index(), data_offset,
-             header.source_process_id(), current_node_id(),
-             header.quiescence_detection_sweep_number(),
-             header.data_was_serialized(), MessageType::Invoke))
-            ->set_data_alignment(header.data_alignment());
-        memcpy(std::next(local_message.message.get(), data_offset),
-               header.data_location(), data_size);
-
-        all_tasks.push_back(std::move(local_message));
+        all_tasks.push_back(create_local_invoke_message(
+            message_header.member_function_ptr(), collection_index,
+            message_header.distributed_object_index(),
+            message_header.source_process_id(), current_node_id(),
+            message_header.quiescence_detection_sweep_number(),
+            message_header.data_was_serialized(),
+            message_header.data_alignment(), data_size,
+            header.data_location()));
       }
     } else {
       throw Exception{
