@@ -160,4 +160,32 @@ Message_t create_broadcast_to_message(
     std::uint64_t quiescence_detection_sweep_number, bool was_serialized,
     int number_of_elements_on_pid, std::uint64_t data_alignment,
     std::uint64_t data_size, const void* data_ptr);
+
+/*!
+ * \brief Allocates and constructs a Message_t for a local collection element.
+ *
+ * Allocates a buffer, constructs a MessageHeader at the start, and copies
+ * the provided data into the buffer at the correct offset and alignment.
+ * Used to create a message that will invoke an action on a specific element
+ * of a collection parallel component on the local process.
+ *
+ * \param member_function_ptr The member function pointer for the action.
+ * \param collection_index The collection index for the target element.
+ * \param distributed_object_index The distributed object index for the header.
+ * \param source_process_id The process ID of the sender.
+ * \param destination_process_id The process ID of the receiver.
+ * \param quiescence_detection_sweep_number The sweep number for QD.
+ * \param was_serialized True if the data was serialized, false if in-place.
+ * \param data_alignment The alignment of the data to be copied.
+ * \param data_size The size of the data to be copied.
+ * \param data_ptr Pointer to the data to copy into the message.
+ * \return Message_t containing the allocated buffer with header and data.
+ */
+Message_t create_local_invoke_message(
+    const rts::detail::MemberFunctionPtr& member_function_ptr,
+    std::uint64_t collection_index, std::uint32_t distributed_object_index,
+    std::int32_t source_process_id, std::int32_t destination_process_id,
+    std::uint64_t quiescence_detection_sweep_number, bool was_serialized,
+    std::uint64_t data_alignment, std::uint64_t data_size,
+    const void* data_ptr);
 }  // namespace rts

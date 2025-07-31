@@ -88,6 +88,39 @@ Message_t create_broadcast_to_message(
 
   return {std::move(buffer)};
 }
+
+Message_t create_local_invoke_message(
+    const rts::detail::MemberFunctionPtr& member_function_ptr,
+    const std::uint64_t collection_index,
+    const std::uint32_t distributed_object_index,
+    const std::int32_t source_process_id,
+    const std::int32_t destination_process_id,
+    const std::uint64_t quiescence_detection_sweep_number,
+    const bool was_serialized, const std::uint64_t data_alignment,
+    const std::uint64_t data_size, const void* const data_ptr) {
+  const std::uint32_t header_size = sizeof(rts::MessageHeader);
+  const std::uint32_t data_offset =
+      header_size + (data_alignment - (header_size % data_alignment));
+  const std::uint64_t buffer_size = data_offset + data_size;
+
+  std::unique_ptr<std::byte[]> buffer(new (std::align_val_t(std::max(
+      alignof(rts::MessageHeader), data_alignment))) std::byte[buffer_size]);
+
+  // Placement-new construct the header at the start of the buffer
+  rts::MessageHeader* const header_ptr = new (buffer.get()) rts::MessageHeader(
+      member_function_ptr, collection_index, buffer_size,
+      distributed_object_index, data_offset, source_process_id,
+      destination_process_id, quiescence_detection_sweep_number, was_serialized,
+      rts::MessageType::Invoke);
+
+  // Copy the data tuple into the correct location using memcpy
+  std::memcpy(header_ptr->data_location(), data_ptr, data_size);
+
+  // Set the data alignment in the header
+  header_ptr->set_data_alignment(data_alignment);
+
+  return {std::move(buffer)};
+}
 }  // namespace rts
 
 
@@ -243,6 +276,60 @@ void test_create_broadcast_to_message() {
   CHECK(header->number_of_bytes_in_message() == expected_buffer_size);
 }
 
+void test_create_local_invoke_message() {
+  INFO(
+      "Test create_local_invoke_message for correct header, alignment, and "
+      "data");
+
+  // Define a data tuple type and value
+  using DataTuple = std::tuple<int, double, char>;
+  const DataTuple data_value{123, 4.56, 'a'};
+
+  // Prepare dummy member function pointer and header fields
+  const rts::detail::MemberFunctionPtr dummy_ptr{};
+  const std::uint64_t collection_index = 99;
+  const std::uint32_t distributed_object_index = 7;
+  const std::int32_t source_process_id = 1;
+  const std::int32_t destination_process_id = 2;
+  const std::uint64_t sweep_number = 321;
+  const bool was_serialized = false;
+  const std::uint64_t data_alignment = alignof(DataTuple);
+  const std::uint64_t data_size = sizeof(DataTuple);
+
+  // Create the message
+  Message_t message = create_local_invoke_message(
+      dummy_ptr, collection_index, distributed_object_index, source_process_id,
+      destination_process_id, sweep_number, was_serialized, data_alignment,
+      data_size, &data_value);
+
+  // Check header fields
+  const MessageHeader* header = message.get_header();
+  CHECK(header->member_function_ptr() == dummy_ptr);
+  CHECK(header->target_collection_index() == collection_index);
+  CHECK(header->distributed_object_index() == distributed_object_index);
+  CHECK(header->source_process_id() == source_process_id);
+  CHECK(header->destination_process_id() == destination_process_id);
+  CHECK(header->quiescence_detection_sweep_number() == sweep_number);
+  CHECK(header->data_was_serialized() == was_serialized);
+  CHECK(header->message_type() == MessageType::Invoke);
+  CHECK(header->data_alignment() == data_alignment);
+
+  // Check alignment of the data
+  const void* data_ptr = header->data_location();
+  CHECK(reinterpret_cast<std::uintptr_t>(data_ptr) % alignof(DataTuple) == 0);
+
+  // Check that the data is correctly copied
+  const DataTuple* data_from_msg = reinterpret_cast<const DataTuple*>(data_ptr);
+  CHECK(*data_from_msg == data_value);
+
+  // Check buffer size is sufficient for alignment and data
+  const std::uint32_t header_size = sizeof(MessageHeader);
+  const std::size_t expected_data_offset =
+      header_size + (data_alignment - (header_size % data_alignment));
+  const std::size_t expected_buffer_size = expected_data_offset + data_size;
+  CHECK(header->number_of_bytes_in_message() == expected_buffer_size);
+}
+
 void test_copy_message() {
   INFO("Test Copy Message_t");
   // Setup a dummy MessageHeader
@@ -293,6 +380,7 @@ void test_copy_message() {
 TEST_CASE("Message") {
   rts::test_create_message_alignment_and_values();
   rts::test_create_broadcast_to_message();
+  rts::test_create_local_invoke_message();
   rts::test_copy_message();
 }
 
