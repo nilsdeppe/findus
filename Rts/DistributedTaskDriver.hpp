@@ -1143,36 +1143,15 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
   for (const auto& [collection_index, collection_holder] : objects) {
     if (predicate(detail::from_internal<ParallelComponent>(collection_index))) {
       if (collection_holder.process_id == current_node_id()) {
-        const std::uint32_t data_offset =
-            sizeof(MessageHeader)
-            // Add extra bytes to make sure we can align Data_t
-            // properly. We compute the remainder of the MessageHeader size
-            // and the alignment of the data. This would give us, e.g. 5
-            // bytes, which means we have e.g. 37 bytes for MessageHeader. The
-            // amount we would need to align then is given by the C++:
-            + (data_alignment - sizeof(MessageHeader) % data_alignment);
-        const std::uint64_t buffer_size = data_offset
-                                          // Add the size of the data type
-                                          + data_size;
-        std::unique_ptr<std::byte[]> buffer{new (std::align_val_t(std::max(
-            alignof(MessageHeader), data_alignment))) std::byte[buffer_size]};
-
-        MessageHeader* message = new (buffer.get()) MessageHeader{
+        broadcast_to_messages.emplace_back(create_local_invoke_message(
             threaded_action_relative_ptr<Action, ParallelComponent,
                                          std::decay_t<Args>...>(
                 std::make_index_sequence<sizeof...(Args)>{}),
             collection_index,
-            buffer_size,
             detail::distributed_object_index<ParallelComponent>(),
-            data_offset,
-            current_node_id(),
-            current_node_id(),
-            global_qd_.local_sweep_number(),
-            false,
-            MessageType::Invoke};
-        memcpy(rts::create_data_in_message<Data_t>(*message), data.get(),
-               data_size);
-        broadcast_to_messages.emplace_back(Message_t{std::move(buffer)});
+            current_node_id(), current_node_id(),
+            global_qd_.local_sweep_number(), false, data_alignment, data_size,
+            data.get()));
       } else {
         Message_t& this_message = broadcast_to_messages[static_cast<size_t>(
             collection_holder.process_id)];
