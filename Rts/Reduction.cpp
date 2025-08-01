@@ -44,12 +44,26 @@ std::uint32_t get_callback_offset(const Message_t& message) {
   return *reinterpret_cast<const std::uint32_t*>(std::next(
       message.get_header()->data_location(), callback_offset_jump_in_bytes));
 }
+
+std::ostream& operator<<(std::ostream& os, const InsertAction action) {
+  switch (action) {
+    case InsertAction::Insert:
+      return os << "Insert";
+    case InsertAction::Combine:
+      return os << "Combine";
+    case InsertAction::Complete:
+      return os << "Complete";
+    default:
+      return os << "Unknown";
+  }
+}
 }  // namespace rts::reduction
 
 // #if defined(RTS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 
+#include "Rts/Detail/GetOutput.hpp"
 #include "Rts/Message.hpp"
 #include "Rts/Reduction.hpp"
 
@@ -86,6 +100,14 @@ void test_set_and_get_callback_offset() {
   CHECK(get_callback_offset(message) == dummy_offset);
 }
 
+void test_insert_action_stream_operator() {
+  using rts::detail::get_output;
+
+  CHECK(get_output(InsertAction::Insert) == "Insert");
+  CHECK(get_output(InsertAction::Combine) == "Combine");
+  CHECK(get_output(InsertAction::Complete) == "Complete");
+}
+
 }  // namespace
 }  // namespace rts::reduction
 
@@ -93,6 +115,10 @@ TEST_CASE("ReductionSetGet") {
   rts::reduction::test_set_and_get_id();
   rts::reduction::test_set_and_get_data_offset();
   rts::reduction::test_set_and_get_callback_offset();
+}
+
+TEST_CASE("InsertAction") {
+  rts::reduction::test_insert_action_stream_operator();
 }
 
 // #endif
