@@ -23,6 +23,7 @@ add_library(
   MessageTags.cpp
   ParentAndChildren.cpp
   QuiescenceDetection.cpp
+  Reduction.cpp
 )
 
 target_include_directories(
