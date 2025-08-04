@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "Rts/DistributedTaskDriver.hpp"
+#include "Rts/MessageHeader.hpp"
 
 namespace rts {
 bool Message_t::execute(
@@ -123,41 +124,54 @@ Message_t create_local_invoke_message(
 }
 
 namespace reduction {
-static constexpr std::ptrdiff_t data_offset_jump_in_bytes = 8;
+static constexpr std::ptrdiff_t reduction_id_offset_in_bytes =
+    sizeof(MessageHeader);
+static constexpr std::ptrdiff_t data_offset_jump_in_bytes =
+    8 + reduction_id_offset_in_bytes;
 static constexpr std::ptrdiff_t callback_offset_jump_in_bytes =
     data_offset_jump_in_bytes + 4;
 
 void set_id(Message_t& message, const std::uint64_t reduction_id) {
-  *reinterpret_cast<std::uint64_t*>(message.get_header()->data_location()) =
-      reduction_id;
+  static_assert(reduction_id_offset_in_bytes + alignof(MessageHeader) >=
+                alignof(std::uint64_t));
+  *reinterpret_cast<std::uint64_t*>(
+      std::next(reinterpret_cast<std::byte*>(message.get_header()),
+                reduction_id_offset_in_bytes)) = reduction_id;
 }
 
 std::uint64_t get_id(const Message_t& message) {
   return *reinterpret_cast<const std::uint64_t*>(
-      message.get_header()->data_location());
+      std::next(reinterpret_cast<const std::byte*>(message.get_header()),
+                reduction_id_offset_in_bytes));
 }
 
 void set_data_offset(Message_t& message, const std::uint32_t data_offset) {
-  *reinterpret_cast<std::uint32_t*>(std::next(
-      message.get_header()->data_location(), data_offset_jump_in_bytes)) =
-      data_offset;
+  static_assert(data_offset_jump_in_bytes + alignof(MessageHeader) >=
+                alignof(std::uint32_t));
+  *reinterpret_cast<std::uint32_t*>(
+      std::next(reinterpret_cast<std::byte*>(message.get_header()),
+                data_offset_jump_in_bytes)) = data_offset;
 }
 
 std::uint32_t get_data_offset(const Message_t& message) {
-  return *reinterpret_cast<const std::uint32_t*>(std::next(
-      message.get_header()->data_location(), data_offset_jump_in_bytes));
+  return *reinterpret_cast<const std::uint32_t*>(
+      std::next(reinterpret_cast<const std::byte*>(message.get_header()),
+                data_offset_jump_in_bytes));
 }
 
 void set_callback_offset(Message_t& message,
                          const std::uint32_t callback_offset) {
-  *reinterpret_cast<std::uint32_t*>(std::next(
-      message.get_header()->data_location(), callback_offset_jump_in_bytes)) =
-      callback_offset;
+  static_assert(callback_offset_jump_in_bytes + alignof(MessageHeader) >=
+                alignof(std::uint32_t));
+  *reinterpret_cast<std::uint32_t*>(
+      std::next(reinterpret_cast<std::byte*>(message.get_header()),
+                callback_offset_jump_in_bytes)) = callback_offset;
 }
 
 std::uint32_t get_callback_offset(const Message_t& message) {
-  return *reinterpret_cast<const std::uint32_t*>(std::next(
-      message.get_header()->data_location(), callback_offset_jump_in_bytes));
+  return *reinterpret_cast<const std::uint32_t*>(
+      std::next(reinterpret_cast<const std::byte*>(message.get_header()),
+                callback_offset_jump_in_bytes));
 }
 }  // namespace reduction
 }  // namespace rts
