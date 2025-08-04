@@ -173,6 +173,17 @@ std::uint32_t get_callback_offset(const Message_t& message) {
       std::next(reinterpret_cast<const std::byte*>(message.get_header()),
                 callback_offset_jump_in_bytes));
 }
+
+std::byte* get_callback_address(Message_t& message) {
+  return std::next(reinterpret_cast<std::byte*>(message.get_header()),
+                   get_callback_offset(message));
+}
+
+const std::byte* get_callback_address(const Message_t& message) {
+  return std::next(reinterpret_cast<const std::byte*>(message.get_header()),
+                   get_callback_offset(message));
+}
+
 }  // namespace reduction
 }  // namespace rts
 
@@ -540,6 +551,54 @@ void test_create_message() {
   CHECK(reinterpret_cast<std::uintptr_t>(callback_ptr) % callback_alignment ==
         0);
 }
+
+void test_get_callback_address_and_get_callback() {
+  using DataTuple = std::tuple<int, double>;
+  using CallbackType = DummyCallback<DummyAction, DummyComponent, int, double>;
+
+  const std::uint32_t distributed_object_index = 7;
+  const std::uint64_t reduction_id = 12345;
+  DataTuple data_tuple{42, 3.14};
+  CallbackType callback{99};
+
+  // Create the reduction message
+  Message_t message = create_message<DummyAction, DummyComponent>(
+      distributed_object_index, reduction_id, data_tuple, callback,
+      MessageType::Reduction);
+
+  // Get callback address (non-const)
+  std::byte* callback_addr = get_callback_address(message);
+  CHECK(callback_addr != nullptr);
+
+  // Get callback address (const)
+  const std::byte* const_callback_addr =
+      get_callback_address(static_cast<const Message_t&>(message));
+  CHECK(const_callback_addr != nullptr);
+
+  // Check that the addresses match
+  CHECK(callback_addr == const_callback_addr);
+
+  // Get callback object (non-const)
+  CallbackType* callback_ptr = get_callback<CallbackType>(message);
+  CHECK(callback_ptr != nullptr);
+  CHECK(*callback_ptr == callback);
+
+  // Get callback object (const)
+  const CallbackType* const_callback_ptr =
+      get_callback<CallbackType>(static_cast<const Message_t&>(message));
+  CHECK(const_callback_ptr != nullptr);
+  CHECK(*const_callback_ptr == callback);
+
+  // Check addresses match.
+  CHECK(callback_ptr == reinterpret_cast<CallbackType*>(callback_addr));
+
+  // Check alignment
+  CHECK(reinterpret_cast<std::uintptr_t>(callback_addr) % callback_alignment ==
+        0);
+  CHECK(reinterpret_cast<std::uintptr_t>(const_callback_addr) %
+            callback_alignment ==
+        0);
+}
 }  // namespace
 }  // namespace reduction
 }  // namespace rts
@@ -554,6 +613,7 @@ TEST_CASE("Message") {
   rts::reduction::test_set_and_get_data_offset();
   rts::reduction::test_set_and_get_callback_offset();
   rts::reduction::test_create_message();
+  rts::reduction::test_get_callback_address_and_get_callback();
 }
 
 #endif

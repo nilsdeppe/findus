@@ -279,6 +279,40 @@ void set_callback_offset(Message_t& message, std::uint32_t callback_offset);
  */
 std::uint32_t get_callback_offset(const Message_t& message);
 
+/// @{
+/*!
+ * \brief Returns a pointer to the callback object in a reduction message.
+ *
+ * This function computes the address of the callback object within the message
+ * buffer using the callback offset stored in the reduction message metadata.
+ *
+ * \param message The reduction message.
+ * \return Pointer to the start of the callback object.
+ */
+std::byte* get_callback_address(Message_t& message);
+const std::byte* get_callback_address(const Message_t& message);
+/// @}
+
+/// @{
+/*!
+ * \brief Returns a typed pointer to the callback object in a reduction message.
+ *
+ * This function casts the callback address to the specified callback type.
+ *
+ * \tparam CallbackType The type of the callback object.
+ * \param message The reduction message.
+ * \return Pointer to the callback object of type CallbackType.
+ */
+template <class CallbackType>
+CallbackType* get_callback(Message_t& message) {
+  return reinterpret_cast<CallbackType*>(get_callback_address(message));
+}
+template <class CallbackType>
+const CallbackType* get_callback(const Message_t& message) {
+  return reinterpret_cast<const CallbackType*>(get_callback_address(message));
+}
+/// @}
+
 /*!
  * \brief Creates a reduction message with metadata, data, and callback.
  *
