@@ -191,6 +191,23 @@ Message_t create_local_invoke_message(
 
 namespace reduction {
 /*!
+ * \brief The size in bytes of the metadata block following the MessageHeader in
+ * a reduction message.
+ *
+ * This block is reserved for future use and is currently zero-initialized.
+ */
+constexpr std::size_t metadata_block_size = 64;
+
+/*!
+ * \brief The alignment in bytes for the reduction callback object in a
+ * reduction message.
+ *
+ * The callback is aligned to 64 bytes to avoid false sharing and to ensure
+ * proper alignment for performance on modern hardware.
+ */
+constexpr std::size_t callback_alignment = 64;
+
+/*!
  * \brief Sets the reduction ID in the data portion of a reduction message.
  *
  * The reduction ID is stored at the beginning of the data buffer in the
@@ -258,5 +275,128 @@ void set_callback_offset(Message_t& message, std::uint32_t callback_offset);
  * \return The 32-bit callback offset stored in the message.
  */
 std::uint32_t get_callback_offset(const Message_t& message);
+
+/*!
+ * \brief Creates a reduction message with metadata, data, and callback.
+ *
+ * This function allocates and constructs a reduction message buffer containing:
+ *   - A MessageHeader at the start.
+ *   - A 64-byte metadata block after the header (zero-initialized).
+ *   - The reduction data (as a std::tuple of arguments), properly aligned.
+ *   - The reduction callback object, aligned to 64 bytes.
+ *
+ * The memory layout of the resulting message buffer is:
+ * ```
+ *   [MessageHeader][64-byte metadata][data][callback (64-byte aligned)]
+ * ```
+ * The metadata sent along is
+ * 1. The reduction id (`std::uint64_t`, 8 bytes). Retrieve using
+ *    `rts::reduction::get_id()`.
+ * 2. The offset of the data relative to the MessageHeader address
+ *    (`std::uint32_t`, 4 bytes).Retrieve using
+ *    `rts::reduction::get_data_offset()`.
+ * 3. The offset of the callback relative to the MessageHeader address
+ *    (`std::uint32_t`, 4 bytes). Retrieve using
+ *    `rts::reduction::get_callback_offset()`.
+ * ```
+ *
+ * The function computes the correct offsets and alignments for the data and
+ * callback, constructs them in-place, and sets the appropriate metadata fields
+ * in the message. The resulting buffer is wrapped in a Message_t, which takes
+ * ownership of the memory.
+ *
+ * \tparam Args
+ *   The types of the arguments to be stored in the data tuple.
+ * \tparam BroadcastAction
+ *   The action type for the broadcast.
+ * \tparam BroadcastParallelComponent
+ *   The parallel component type for the broadcast.
+ * \tparam ReductionCallback
+ *   The template for the reduction callback type.
+ *
+ * \param distributed_object_index
+ *   The distributed object index for the message header.
+ * \param reduction_id
+ *   The unique 64-bit reduction ID for this reduction operation.
+ * \param args
+ *   The arguments to be stored in the data tuple (as a std::tuple).
+ * \param callback
+ *   The reduction callback object to be invoked after reduction.
+ * \param message_type
+ *   The type of message (default is MessageType::Reduction).
+ *
+ * \return
+ *   A Message_t containing the allocated buffer with header, metadata, data,
+ *   and callback.
+ *
+ * \note
+ *   - The buffer is aligned to ensure both the data tuple and callback are
+ *     properly aligned.
+ *   - The metadata block is reserved for future use and is zero-initialized.
+ *   - The function sets the reduction ID, data offset, and callback offset
+ *     in the message metadata.
+ */
+template <class BroadcastAction, class BroadcastParallelComponent,
+          template <class...> class ReductionCallback, class... Args>
+Message_t create_message(
+    const std::uint32_t distributed_object_index,
+    const std::uint64_t reduction_id, std::tuple<Args...> args,
+    ReductionCallback<BroadcastAction, BroadcastParallelComponent,
+                      std::decay_t<Args>...>
+        callback,
+    const MessageType message_type) {
+  using DataTuple = std::tuple<Args...>;
+  using CallbackType =
+      ReductionCallback<BroadcastAction, BroadcastParallelComponent,
+                        std::decay_t<Args>...>;
+
+  constexpr std::size_t header_size = sizeof(MessageHeader);
+  constexpr std::size_t data_align = alignof(DataTuple);
+  constexpr std::size_t callback_align = callback_alignment;
+
+  // Compute data_offset: header + metadata, aligned for DataTuple
+  const std::size_t unaligned_data_offset = header_size + metadata_block_size;
+  const std::size_t data_offset =
+      unaligned_data_offset +
+      ((data_align - (unaligned_data_offset % data_align)) % data_align);
+
+  // Compute callback_offset: after data, aligned to 64 bytes
+  const std::size_t unaligned_callback_offset = data_offset + sizeof(DataTuple);
+  const std::size_t callback_offset =
+      unaligned_callback_offset +
+      ((callback_align - (unaligned_callback_offset % callback_align)) %
+       callback_align);
+
+  const std::size_t total_size = callback_offset + sizeof(CallbackType);
+
+  // Allocate buffer
+  std::unique_ptr<std::byte[]> buffer(new (std::align_val_t(std::max(
+      std::max(alignof(MessageHeader), data_align), callback_alignment)))
+                                          std::byte[total_size]);
+
+  // Placement-new the header
+  MessageHeader* header = new (buffer.get()) MessageHeader(
+      {0, 0}, MessageHeader::reduction_message_collection_index(), total_size,
+      distributed_object_index, data_offset, -1, -1,
+      std::numeric_limits<std::uint64_t>::max(), false, message_type);
+  header->set_data_alignment(alignof(DataTuple));
+
+  // Zero the metadata block for safety/future use
+  std::memset(buffer.get() + header_size, 0, metadata_block_size);
+
+  // Construct the data and callback
+  new (buffer.get() + data_offset) DataTuple(std::move(args));
+  new (buffer.get() + callback_offset) CallbackType(std::move(callback));
+
+  // Wrap in Message_t
+  Message_t message{std::move(buffer)};
+
+  // Set metadata using reduction helpers
+  set_id(message, reduction_id);
+  set_data_offset(message, static_cast<std::uint32_t>(data_offset));
+  set_callback_offset(message, static_cast<std::uint32_t>(callback_offset));
+
+  return message;
+}
 }  // namespace reduction
 }  // namespace rts

@@ -461,6 +461,85 @@ void test_set_and_get_callback_offset() {
   set_callback_offset(message, dummy_offset);
   CHECK(get_callback_offset(message) == dummy_offset);
 }
+
+struct DummyAction {};
+
+struct DummyComponent {};
+
+template <class Action, class Component, class... Args>
+struct DummyCallback {
+  int value;
+  DummyCallback(int v) : value(v) {}
+  bool operator==(const DummyCallback& other) const {
+    return value == other.value;
+  }
+};
+
+void test_create_message() {
+  using DataTuple = std::tuple<int, double>;
+  using CallbackType = DummyCallback<DummyAction, DummyComponent, int, double>;
+
+  const std::uint32_t distributed_object_index = 42;
+  const std::uint64_t reduction_id = 123456789;
+  const DataTuple data_tuple{7, 3.14};
+  const CallbackType callback{99};
+
+  // Create the message
+  const Message_t message =
+      create_message(distributed_object_index, reduction_id, data_tuple,
+                     callback, MessageType::Reduction);
+
+  // Check metadata was set correctly.
+  CHECK(get_id(message) == reduction_id);
+  CHECK(get_data_offset(message) ==
+        (message.get_header()->data_location() -
+         reinterpret_cast<const char*>(message.get_header())));
+  CHECK(get_callback_offset(message) > get_data_offset(message));
+  // Strictly less than because zero-size objects aren't allowed in C++
+  CHECK(get_callback_offset(message) <
+        message.get_header()->number_of_bytes_in_message());
+
+  // Check header
+  const MessageHeader* header = message.get_header();
+  CHECK(header != nullptr);
+  CHECK(header->distributed_object_index() == distributed_object_index);
+  CHECK(header->message_type() == MessageType::Reduction);
+  CHECK(header->data_alignment() == alignof(DataTuple));
+
+  {
+    // Check metadata block is zeroed. We may stop zeroing in the future for
+    // better efficiency.
+    const std::byte* metadata_ptr = reinterpret_cast<const std::byte*>(header);
+    for (std::size_t i = (callback_offset_jump_in_bytes + 4);
+         i < metadata_block_size; ++i) {
+      CAPTURE(i);
+      CHECK(std::to_integer<unsigned char>(metadata_ptr[i]) == 0);
+    }
+  }
+
+  CHECK(header->target_collection_index() ==
+        MessageHeader::reduction_message_collection_index());
+
+  const std::uint32_t data_offset = get_data_offset(message);
+  const DataTuple* data_ptr = reinterpret_cast<const DataTuple*>(
+      reinterpret_cast<const std::byte*>(header) + data_offset);
+  CHECK(reinterpret_cast<const char*>(data_ptr) == header->data_location());
+  CHECK(data_ptr != nullptr);
+  CHECK(std::get<0>(*data_ptr) == std::get<0>(data_tuple));
+  CHECK(std::get<1>(*data_ptr) == std::get<1>(data_tuple));
+
+  // Check callback
+  const std::uint32_t callback_offset = get_callback_offset(message);
+  const CallbackType* callback_ptr = reinterpret_cast<const CallbackType*>(
+      reinterpret_cast<const std::byte*>(header) + callback_offset);
+  CHECK(callback_ptr != nullptr);
+  CHECK(*callback_ptr == callback);
+
+  // Check alignment
+  CHECK(reinterpret_cast<std::uintptr_t>(data_ptr) % alignof(DataTuple) == 0);
+  CHECK(reinterpret_cast<std::uintptr_t>(callback_ptr) % callback_alignment ==
+        0);
+}
 }  // namespace
 }  // namespace reduction
 }  // namespace rts
@@ -474,6 +553,7 @@ TEST_CASE("Message") {
   rts::reduction::test_set_and_get_id();
   rts::reduction::test_set_and_get_data_offset();
   rts::reduction::test_set_and_get_callback_offset();
+  rts::reduction::test_create_message();
 }
 
 #endif
