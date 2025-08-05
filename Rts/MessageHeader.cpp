@@ -447,6 +447,13 @@ TEST_CASE("MessageHeader") {
                       distributed_object_index, data_offset, source_id, dest_id,
                       sweep, was_serialized, rts::MessageType::Broadcast));
   }
+  {
+    // Check special collection index values
+    CHECK(rts::MessageHeader::no_collection_index() != 0);
+    CHECK(rts::MessageHeader::reduction_message_collection_index() != 0);
+    CHECK(rts::MessageHeader::no_collection_index() !=
+          rts::MessageHeader::reduction_message_collection_index());
+  }
 }
 }  // namespace rts
 #endif
