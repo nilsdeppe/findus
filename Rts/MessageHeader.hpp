@@ -95,6 +95,12 @@ struct alignas(64) MessageHeader {
     return std::numeric_limits<std::uint64_t>::max();
   }
 
+  /// \brief The value of `target_collection_index` used for reduction
+  /// messages since those are essentially sent "to the collection".
+  static constexpr std::uint64_t reduction_message_collection_index() {
+    return std::numeric_limits<std::uint64_t>::max() - 1;
+  }
+
   /// \brief Get the member function pointer.
   const detail::MemberFunctionPtr& member_function_ptr() const {
     return member_function_ptr_;
