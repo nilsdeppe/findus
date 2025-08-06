@@ -4,9 +4,13 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <string>
+#include <tuple>
 
 #include "Rts/Message.hpp"
+#include "Rts/MessageHeader.hpp"
 
 namespace rts::reduction {
 /*!
@@ -55,4 +59,52 @@ enum class InsertAction {
  * \return The output stream.
  */
 std::ostream& operator<<(std::ostream& os, const InsertAction action);
+
+namespace detail {
+template <class BinaryOp, class Data_t, size_t... Is>
+void combine_impl(Message_t& message0, const Message_t& message1,
+                  std::index_sequence<Is...> /*meta*/) {
+  const Data_t& message1_data =
+      *data_from_message<Data_t>(*message1.get_header());
+  Data_t& message0_data = *data_from_message<Data_t>(*message0.get_header());
+  BinaryOp{}(message0_data, std::get<Is>(message1_data)...);
+}
+
+/*!
+ * \brief Combines the reduction data from two messages using a binary
+ * operation.
+ *
+ * This function merges the data from `message1` into `message0` using the
+ * specified binary operation (`BinaryOp`). The data in both messages must not
+ * have been serialized (i.e., must be in-place constructed). The reduction IDs
+ * in both messages must match, otherwise an exception is thrown.
+ *
+ * \tparam BinaryOp The binary operation to use for combining the data.
+ * \tparam Data_t The type of the data tuple stored in the message.
+ * \param message0 The message whose data will be updated in-place.
+ * \param message1 The message whose data will be combined into message0.
+ *
+ * \throws Exception if the data in either message was serialized or if the
+ *         reduction IDs do not match.
+ */
+template <class BinaryOp, class Data_t>
+void combine(Message_t& message0, const Message_t& message1) {
+  if (message0.get_header()->data_was_serialized() or
+      message1.get_header()->data_was_serialized()) {
+    throw Exception{"Cannot currently combine data that was serialized."};
+  }
+  const std::uint64_t reduction_id0 = get_id(message0);
+  const std::uint64_t reduction_id1 = get_id(message1);
+  if (reduction_id0 != reduction_id1) {
+    throw Exception{
+        "The reduction id in the two reduction messages must match but "
+        "message0 has: " +
+        std::to_string(reduction_id0) +
+        " and message1 has: " + std::to_string(reduction_id1)};
+  }
+  combine_impl<BinaryOp, Data_t>(
+      message0, message1,
+      std::make_index_sequence<std::tuple_size_v<Data_t>>{});
+}
+}  // namespace detail
 }  // namespace rts::reduction
