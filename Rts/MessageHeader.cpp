@@ -215,6 +215,8 @@ TEST_CASE("MessageHeader") {
     CHECK(reinterpret_cast<char*>(data_from_message<T>(message_header)) ==
           std::next(reinterpret_cast<char*>(&message_header), 128));
     CHECK(*data_from_message<T>(message_header) == expected_data);
+    CHECK(*data_from_message<T>(std::as_const(message_header)) ==
+          expected_data);
     CHECK(alignof(T) == message_header.data_alignment());
 
     const std::string expected_message =

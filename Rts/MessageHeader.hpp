@@ -300,6 +300,7 @@ auto create_data_in_message(MessageHeader& message_header)
   return data;
 }
 
+/// @{
 /*!
  * \brief Converts the internal data pointer from the message header to the
  * desired type.
@@ -337,4 +338,12 @@ auto data_from_message(MessageHeader& message_header) -> DataTypeReturned* {
   }
   return reinterpret_cast<DataTypeReturned*>(message_header.data_location());
 }
+
+template <class DataTypeReturned>
+auto data_from_message(const MessageHeader& message_header)
+    -> const DataTypeReturned* {
+  return data_from_message<DataTypeReturned>(
+      const_cast<MessageHeader&>(message_header));
+}
+/// @}
 }  // namespace rts
