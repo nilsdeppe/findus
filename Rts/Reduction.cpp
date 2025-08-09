@@ -16,13 +16,15 @@ std::ostream& operator<<(std::ostream& os, const InsertAction action) {
       return os << "Combine";
     case InsertAction::Complete:
       return os << "Complete";
+    case InsertAction::AtCapacity:
+      return os << "AtCapacity";
     default:
       return os << "Unknown";
   }
 }
 }  // namespace rts::reduction
 
-// #if defined(RTS_ENABLE_TESTING)
+#if defined(RTS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 
@@ -38,6 +40,7 @@ void test_insert_action_stream_operator() {
   CHECK(get_output(InsertAction::Insert) == "Insert");
   CHECK(get_output(InsertAction::Combine) == "Combine");
   CHECK(get_output(InsertAction::Complete) == "Complete");
+  CHECK(get_output(InsertAction::AtCapacity) == "AtCapacity");
 }
 
 template <class Action, class Component, class... Args>
@@ -105,4 +108,4 @@ TEST_CASE("Reduction") {
   rts::reduction::test_combine_function();
 }
 
-// #endif
+#endif

@@ -45,7 +45,13 @@ enum class InsertAction {
    * This value indicates that the reduction has finished and no further
    * insertions or combinations are needed for the given reduction ID.
    */
-  Complete
+  Complete,
+
+  /*!
+   * \brief The reduction operation could not be performed because there are
+   * too many simultaneous reductions.
+   */
+  AtCapacity
 };
 
 /*!
