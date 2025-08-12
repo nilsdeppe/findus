@@ -64,6 +64,100 @@ std::optional<std::uint64_t> DataHandler::index_of(
 }
 
 size_t DataHandler::capacity() const { return entries_.size(); }
+
+Handler::Handler(const size_t number_of_threads,
+                 const size_t max_simultaneous_reductions)
+    : reduction_counter_{max_simultaneous_reductions},
+      inter_process_entries_(max_simultaneous_reductions) {
+  per_thread_data_handlers_.reserve(number_of_threads);
+  for (size_t i = 0; i < number_of_threads; ++i) {
+    per_thread_data_handlers_.emplace_back(max_simultaneous_reductions);
+  }
+}
+
+std::optional<Message_t> Handler::combine_inter_process(
+    Message_t message, const rts::detail::ParentAndChildren p_and_c) {
+  if (message.get_header()->message_type() != MessageType::Reduction and
+      message.get_header()->message_type() != MessageType::ReductionOver) {
+    throw Exception{
+        "The message must be a Reduction or ReductionOver but got " +
+        rts::detail::get_output(message.get_header()->message_type())};
+  }
+  const auto reduction_id = get_id(message);
+  std::uint64_t index = reduction_id;
+  for (std::uint64_t counter = 0; counter < inter_process_entries_.size();
+       (void)++index, (void)++counter) {  // loop for linear probing
+    index = index bitand (inter_process_entries_.size() - 1);
+    const std::uint64_t probed_reduction_id =
+        inter_process_entries_[index].reduction_id;
+    if (probed_reduction_id == reduction_id) {
+      // We are combining with an existing message. Since we aren't guaranteed
+      // that the local message contributed first, we handle the total
+      // number of contributions by always adding the total contributions from
+      // the incoming message, which is zero except when it comes locally.
+      set_expected_number_of_contributions(
+          inter_process_entries_[index].message,
+          get_expected_number_of_contributions(
+              inter_process_entries_[index].message) +
+              get_expected_number_of_contributions(message) - 1);
+      if (message.get_header()->source_process_id() ==
+          p_and_c.self_process_id) {
+        set_target_process_id(inter_process_entries_[index].message,
+                              get_target_process_id(message));
+        set_expected_number_of_root_contributions(
+            inter_process_entries_[index].message,
+            get_expected_number_of_root_contributions(message));
+      }
+      get_combine_function_pointer(message)(
+          inter_process_entries_[index].message, message);
+      break;
+    } else {
+      // We insert the message
+      if (probed_reduction_id != 0) {
+        // The entry is used by another key.
+        continue;
+      }
+      inter_process_entries_[index].reduction_id = reduction_id;
+      inter_process_entries_[index].message = std::move(message);
+      if (inter_process_entries_[index]
+                  .message.get_header()
+                  ->destination_process_id() == 0 and
+          get_expected_number_of_root_contributions(
+              inter_process_entries_[index].message) != 0) {
+        // If we are the root node and the message tells us how many
+        // contributions we should expect, then we need to set the number of
+        // expected contributions from that.
+        set_expected_number_of_contributions(
+            inter_process_entries_[index].message,
+            get_expected_number_of_root_contributions(
+                inter_process_entries_[index].message) -
+                1);
+      } else {
+        // Otherwise we set the number of contributions we are still waiting
+        // for but decrement by 1 since the current message is contributing.
+        set_expected_number_of_contributions(
+            inter_process_entries_[index].message,
+            get_expected_number_of_contributions(
+                inter_process_entries_[index].message) -
+                1);
+      }
+      break;
+    }
+  }
+  if (get_expected_number_of_contributions(
+          inter_process_entries_[index].message) == 0) {
+    inter_process_entries_[index].reduction_id = 0;
+    inter_process_entries_[index]
+        .message.get_header()
+        ->change_destination_process_id(
+            get_target_process_id(inter_process_entries_[index].message));
+    inter_process_entries_[index]
+        .message.get_header()
+        ->change_source_process_id(p_and_c.self_process_id);
+    return {std::move(inter_process_entries_[index].message)};
+  }
+  return std::nullopt;
+}
 }  // namespace rts::reduction
 
 #if defined(RTS_ENABLE_TESTING)
@@ -150,6 +244,7 @@ void test_combine_function() {
                        rts::Exception);
 }
 
+/// [rts_reduction_sump_op_functor]
 struct SumOp {
   void operator()(std::tuple<int, double>& lhs, const int rhs_int,
                   const double rhs_double) const {
@@ -157,6 +252,7 @@ struct SumOp {
     std::get<1>(lhs) += rhs_double;
   }
 };
+/// [rts_reduction_sump_op_functor]
 
 void test_data_handler_parallel(const size_t num_reductions,
                                 const size_t max_entries = 0) {
