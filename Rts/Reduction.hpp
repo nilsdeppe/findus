@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -17,6 +18,7 @@
 
 #include "Rts/Detail/GetOutput.hpp"
 #include "Rts/Detail/IndexConversion.hpp"
+#include "Rts/Detail/ReductionCounter.hpp"
 #include "Rts/DistributedObjectIndex.hpp"
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/HardwareInfo.hpp"
@@ -387,5 +389,343 @@ InsertAction DataHandler::insert_or_combine(
     }
   }
   return InsertAction::AtCapacity;
+}
+
+/*!
+ * \brief Manages reduction operations across multiple threads and processes.
+ *
+ * The Handler class coordinates the collection, combination, and forwarding of
+ * reduction data within a node (across threads) and between nodes (across
+ * processes). It maintains thread-local storage for reduction data, tracks
+ * contributions, and ensures that reduction operations are completed correctly
+ * before invoking the associated callback or forwarding the result.
+ *
+ * Key responsibilities:
+ * - Maintains a thread-local `DataHandler` for each worker thread to store and
+ *   combine local reduction contributions.
+ * - Tracks the number of expected contributions for each reduction operation.
+ * - Combines reduction data from different threads and, when complete, prepares
+ *   the result for inter-process reduction or callback invocation.
+ * - Handles inter-process reduction messages, combining data from different
+ *   processes and forwarding results up the process tree.
+ * - Provides utilities for setting metadata in reduction messages to track
+ *   contributions from different processes and collection elements.
+ *
+ * Usage:
+ * - Each distributed object or collection holds a `Handler` instance to manage
+ *   its reductions.
+ * - Threads contribute data to reductions via `insert_or_combine()`.
+ * - When all expected contributions are received, the `Handler` combines the
+ *   data, signaling to the task driver when all data from this process and its
+ *   children has been reduced by returning a `Message_t` from
+ *   `combine_inter_process()`.
+ *
+ * Thread safety:
+ * - Each thread has its own `DataHandler` for local contributions.
+ * - Intra-process reduction data is managed with atomic operations to ensure
+ *   safe concurrent access.
+ *
+ * \see `rts::reduction::DataHandler`
+ * \see `rts::reduction::InsertAction`
+ * \see `rts::reduction::ReductionCallback`
+ */
+class Handler {
+ public:
+  /*!
+   * \brief Because of the need for thread-safety, there is no useful case
+   * where this class is default-constructed.
+   */
+  Handler() = delete;
+
+  /*!
+   * \brief Constructs a Handler for managing reductions across multiple
+   * threads.
+   *
+   * This constructor initializes the `Handler` with the specified number of
+   * threads and the maximum number of simultaneous reductions that can be
+   * tracked. It allocates and prepares thread-local `DataHandler` instances and
+   * internal storage for inter-process reduction data.
+   *
+   * \param number_of_threads
+   *   The number of threads that will contribute to reductions.
+   * \param max_simultaneous_reductions
+   *   The maximum number of reductions that can be tracked at the same time.
+   *
+   * \note
+   *   - Each thread gets its own `DataHandler` for thread-local reduction data.
+   *   - The `Handler` prepares storage for inter-process reduction handling.
+   *   - Throws if `max_simultaneous_reductions` is not a power of two or is
+   *     zero.
+   */
+  Handler(size_t number_of_threads, size_t max_simultaneous_reductions);
+
+  /*!
+   * \brief Main internal entry for contributing data to a reduction.
+   *
+   * Inserts or combines reduction data for a given reduction ID. If the
+   * reduction is complete, returns the combined reduction message. Otherwise,
+   * returns `std::nullopt`.
+   *
+   * \tparam BinaryOp
+   *   The binary operation used to combine reduction data. An example is
+   *   given below.
+   * \tparam ComputeExpected
+   *   A callable that takes a reduction ID and returns true if the ID is
+   *   used in the reduction, false otherwise.
+   * \tparam BroadcastAction
+   *   The action type for the broadcast.
+   * \tparam BroadcastParallelComponent
+   *   The parallel component type for the broadcast.
+   * \tparam Args
+   *   The types of the reduction data arguments.
+   *
+   * \param compute_expected
+   *   Callable that takes a reduction ID and returns true if the ID is
+   *   used in the reduction, false otherwise.
+   * \param message_type The `MessageType`, either `Reduction` or
+   *                     `ReductionOver`
+   * \param thread_id
+   *   The ID of the thread contributing the data. Must be in the range
+   *   `[1, thread_count]`. Thread 0 is reserved for the communication thread.
+   * \param distributed_object_index
+   *   The index of the distributed object performing the reduction.
+   * \param reduction_id
+   *   The unique reduction ID for this reduction operation.
+   * \param reduction_callback
+   *   The callback to invoke after reduction is complete.
+   * \param args
+   *   The reduction data arguments to be combined.
+   *
+   * \return
+   *   If the reduction is complete, returns the combined reduction `Message_t`.
+   *   Otherwise, returns `std::nullopt`.
+   *
+   * An example of a binary operator is:
+   *
+   * \snippet Rts/Reduction.cpp rts_reduction_sump_op_functor
+   *
+   * \throws rts::Exception
+   *   - If the reduction ID is zero (reserved as a sentinel value).
+   *   - If insertion or combination fails due to a full container or other
+   *     error.
+   *
+   * \note
+   *   - This function is thread-safe for concurrent calls from multiple
+   *     threads, provided each thread uses a unique `thread_id` in
+   *     `[1, thread_count]`.
+   *   - The expected number of contributions for each reduction ID must be
+   *     correctly provided by `compute_expected`; otherwise, reductions may
+   *     never complete or may complete prematurely.
+   *   - Only threads that have contributed to the reduction are combined.
+   *   - After completion, reduction data is removed from all thread-local
+   *     `DataHandlers`.
+   *   - The reduction callback is stored in the message and can be retrieved
+   *     using `rts::reduction::get_callback()`.
+   *   - If the container is full, insertion will fail and
+   *     `InsertAction::AtCapacity` will be returned by
+   *     `DataHandler::insert_or_combine()`.
+   *   - This function only combines data within a single node.
+   *
+   * \see rts::reduction::DataHandler
+   * \see rts::reduction::detail::Counter
+   * \see rts::reduction::InsertAction
+   * \see rts::reduction::get_callback()
+   */
+  template <class BinaryOp, class ComputeExpected, class BroadcastAction,
+            class BroadcastParallelComponent, class... Args>
+  std::optional<Message_t> insert_or_combine(
+      const ComputeExpected& compute_expected, MessageType message_type,
+      std::uint64_t thread_id, std::uint32_t distributed_object_index,
+      std::uint64_t reduction_id,
+      ReductionCallback<BroadcastAction, BroadcastParallelComponent>
+          reduction_callback,
+      Args&&... args);
+
+  /*!
+   * \brief Sets metadata in a reduction message for inter-process reduction.
+   *
+   * This function configures a reduction message with all necessary metadata
+   * for correct routing and aggregation of reduction data across multiple
+   * processes. It determines the parent process to which the message should be
+   * sent, the expected number of contributions at each process, and handles
+   * special cases for the root process. The function also records the source
+   * process ID in the message.
+   *
+   * \tparam ParallelComponent The parallel component type.
+   * \tparam Predicate A callable type that takes a collection index and returns
+   *         true if the element should be included in the reduction.
+   *
+   * \param message The reduction message to update.
+   * \param process_id The process ID of the current process.
+   * \param total_processes The total number of processes in the system.
+   * \param elements_on_pid A vector mapping each process ID to a vector of
+   *        collection indices present on that process.
+   * \param element_predicate Predicate to select which elements participate in
+   *        the reduction.
+   *
+   * \details
+   * **Algorithm for tracking inter-process reduction information:**
+   *
+   * Each process in the system may contribute to a reduction. For a
+   * given process $n$, its first parent is denoted as $n_{p1}$, and
+   * higher-order parents can be found by traversing up the virtual spanning
+   * tree across the processes. The algorithm finds the first parent process
+   * $p_r$ that will actually contribute to the reduction. This is also the
+   * process to which we send our reduction data. Note that  $p_r \geq n_{p1}$.
+   *
+   * The parent process $p_r$ must know how many different processes will
+   * send contributions to it directly. This is determined by searching down the
+   * subtree rooted at $p_r$ to find all "orphaned" contributors (i.e.,
+   * processes contribute to the reduction but whose direct do not). In a
+   * balanced binary tree, each parent typically has two direct contributors:
+   * its left and right children. However, since processes may not contribute,
+   * a process may receive from many more children down the (sub)tree.
+   *
+   * The child process only needs to determine which parent will receive its
+   * contribution. If the root process (process 0) is reached, the message must
+   * also communicate how many contributions are expected from the other half of
+   * the tree, ensuring the root knows when the reduction is complete.
+   *
+   * This function sets the following metadata in the message:
+   * - The parent process ID to which the message should be sent.
+   * - The expected number of contributions for this reduction at the parent.
+   * - The expected number of contributions to the root process (if applicable).
+   * - The source process ID.
+   *
+   * This metadata is used to correctly route and combine reduction messages
+   * across the process tree, ensuring that reductions are completed efficiently
+   * and correctly in a distributed environment.
+   */
+  template <class ParallelComponent, class Predicate>
+  void set_interprocess_message_info(
+      Message_t& message, int process_id, int total_processes,
+      const std::vector<std::vector<std::uint64_t>>& elements_on_pid,
+      const Predicate& element_predicate) const;
+
+  /*!
+   * \brief Combines reduction data from inter-process messages.
+   *
+   * This function merges the reduction data from a reduction message received
+   * from another process with any existing data for the same reduction ID. If
+   * the reduction is complete after combining, the resulting combined message
+   * is returned. Otherwise, `std::nullopt` is returned.
+   *
+   * \param message The incoming reduction message to combine.
+   * \param p_and_c The parent and children process information for the
+   *        reduction.
+   * \return The combined reduction message if the reduction is complete, or
+   * `std::nullopt` if not yet complete.
+   */
+  std::optional<Message_t> combine_inter_process(
+      Message_t message, rts::detail::ParentAndChildren p_and_c);
+
+ private:
+  alignas(rts::hardware_info::hardware_destructive_interference_size)
+      detail::Counter reduction_counter_;
+  [[maybe_unused]] std::byte cacheline_interference_padding_
+      [2 * rts::hardware_info::hardware_destructive_interference_size];
+  alignas(rts::hardware_info::hardware_destructive_interference_size)
+      std::vector<DataHandler> per_thread_data_handlers_;
+
+  struct InterprocessData {
+    std::uint64_t reduction_id{0};
+    std::uint64_t count{0};
+    Message_t message{};
+  };
+
+  alignas(rts::hardware_info::hardware_destructive_interference_size)
+      std::vector<InterprocessData> inter_process_entries_{};
+};
+
+template <class BinaryOp, class ComputeExpected, class BroadcastAction,
+          class BroadcastParallelComponent, class... Args>
+std::optional<Message_t> Handler::insert_or_combine(
+    const ComputeExpected& compute_expected, const MessageType message_type,
+    const std::uint64_t thread_id, const std::uint32_t distributed_object_index,
+    const std::uint64_t reduction_id,
+    ReductionCallback<BroadcastAction, BroadcastParallelComponent>
+        reduction_callback,
+    Args&&... args) {
+  const InsertAction insert_action =
+      per_thread_data_handlers_[thread_id].insert_or_combine<BinaryOp>(
+          message_type, distributed_object_index, reduction_id,
+          std::move(reduction_callback), std::forward<Args>(args)...);
+  if (insert_action == InsertAction::AtCapacity) {
+    throw Exception{
+        "Reached the maximum number of simultaneous reductions, currently set "
+        "to " +
+        std::to_string(per_thread_data_handlers_[thread_id].capacity()) +
+        ". You can increase this number when constructing the "
+        "DistributedTaskDriver."};
+  }
+  if (reduction_counter_.increment(reduction_id, compute_expected)) {
+    Message_t this_thread_data =
+        per_thread_data_handlers_[thread_id].pop(reduction_id);
+    // Combine all the cases within the node.
+    for (size_t i = 1; i < per_thread_data_handlers_.size(); ++i) {
+      if (i == thread_id or
+          not per_thread_data_handlers_[i].index_of(reduction_id).has_value()) {
+        continue;
+      }
+      detail::combine<BinaryOp, std::tuple<std::decay_t<Args>...>>(
+          this_thread_data, per_thread_data_handlers_[i].pop(reduction_id));
+    }
+    reduction::set_combine_function_pointer(
+        this_thread_data,
+        &detail::combine<BinaryOp, std::tuple<std::decay_t<Args>...>>);
+    reduction::zero_contributed_metadata(this_thread_data);
+    reduction::set_contributed_metadata(this_thread_data,
+                                        Contribution::self_contributed);
+    return this_thread_data;
+  }
+  return std::nullopt;
+}
+
+template <class ParallelComponent, class Predicate>
+void Handler::set_interprocess_message_info(
+    Message_t& message, const int process_id, const int total_processes,
+    const std::vector<std::vector<std::uint64_t>>& elements_on_pid,
+    const Predicate& element_predicate) const {
+  // Need to set:
+  // 1. Parent process to send to.
+  // 2. Expected number of contributions to this element, including self. This
+  //    gets decremented each time a process contributes until we reach 0.
+  // 3. If the parent is the root process and the root process has nobody
+  //    contributing, this holds the number of expected contributions to the
+  //    root process. On the root process when we receive a reduction message,
+  //    we use the first reduction message received to set slot 2.
+  // 4. The source process ID.
+
+  const auto pid_predicate = [&elements_on_pid,
+                              &element_predicate](const int pid) {
+    return std::any_of(
+        elements_on_pid[static_cast<size_t>(pid)].begin(),
+        elements_on_pid[static_cast<size_t>(pid)].end(),
+        [&element_predicate](const std::uint64_t internal_id) {
+          return element_predicate(
+              rts::detail::from_internal<ParallelComponent>(internal_id));
+        });
+  };
+
+  const std::int32_t parent_to_send_to =
+      process_id == 0 ? -1
+                      : rts::detail::find_first_parent(
+                            process_id, total_processes, pid_predicate);
+  set_target_process_id(message, std::max(parent_to_send_to, 0));
+  const std::int32_t number_of_expected_contributions =
+      rts::detail::count_first_descendants(process_id, total_processes,
+                                           pid_predicate) +
+      1;
+  set_expected_number_of_contributions(message,
+                                       number_of_expected_contributions);
+  if (process_id != 0 and
+      ((parent_to_send_to == 0 or parent_to_send_to == -1) and
+       not pid_predicate(0))) {
+    const std::int32_t number_of_expected_contributions_to_root =
+        rts::detail::count_first_descendants(0, total_processes, pid_predicate);
+    set_expected_number_of_root_contributions(
+        message, number_of_expected_contributions_to_root);
+  }
+  message.get_header()->change_source_process_id(process_id);
 }
 }  // namespace rts::reduction
