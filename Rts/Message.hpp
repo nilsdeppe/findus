@@ -311,6 +311,33 @@ const CallbackType* get_callback(const Message_t& message) {
 /// @}
 
 /*!
+ * \brief Sets the function pointer for combining reduction messages.
+ *
+ * Stores a pointer to a function that combines two Message_t objects
+ * in the message metadata. This function is used to perform the reduction
+ * operation when combining messages.
+ *
+ * \param message The message in which to store the function pointer.
+ * \param pointer The function pointer to store. Must have signature:
+ *        `void(Message_t&, const Message_t&)`.
+ */
+void set_combine_function_pointer(Message_t& message,
+                                  void (*pointer)(Message_t&,
+                                                  const Message_t&));
+
+/*!
+ * \brief Retrieves the function pointer for combining reduction messages.
+ *
+ * Returns the function pointer stored in the message metadata that can be
+ * used to combine two Message_t objects for reduction.
+ *
+ * \param message The message from which to retrieve the function pointer.
+ * \return Function pointer with signature: `void(Message_t&, const Message_t&)`
+ */
+auto get_combine_function_pointer(const Message_t& message)
+    -> void (*)(Message_t&, const Message_t&);
+
+/*!
  * \brief Creates a reduction message with metadata, data, and callback.
  *
  * This function allocates and constructs a reduction message buffer containing:

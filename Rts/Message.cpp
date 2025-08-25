@@ -130,6 +130,8 @@ static constexpr std::ptrdiff_t data_offset_jump_in_bytes =
     8 + reduction_id_offset_in_bytes;
 static constexpr std::ptrdiff_t callback_offset_jump_in_bytes =
     data_offset_jump_in_bytes + 4;
+static constexpr std::ptrdiff_t combine_offset_jump_in_bytes =
+    callback_offset_jump_in_bytes + 4;
 
 void set_id(Message_t& message, const std::uint64_t reduction_id) {
   static_assert(reduction_id_offset_in_bytes + alignof(MessageHeader) >=
@@ -184,6 +186,42 @@ const std::byte* get_callback_address(const Message_t& message) {
                    get_callback_offset(message));
 }
 
+namespace {
+void combine_anchor(Message_t&, const Message_t&) {}
+
+using combine_function_ptr_t = void (*)(Message_t&, const Message_t&);
+}  // namespace
+
+void set_combine_function_pointer(Message_t& message,
+                                  void (*pointer)(Message_t&,
+                                                  const Message_t&)) {
+  static_assert(sizeof(std::uint64_t) == sizeof(pointer),
+                "Internal error. Please file a bug report.");
+  union PtrConversionUnion {
+    combine_function_ptr_t f;
+    std::uint64_t bits;
+  };
+  PtrConversionUnion f_ptr{pointer};
+  PtrConversionUnion anchor_ptr{&combine_anchor};
+  *reinterpret_cast<std::uint64_t*>(
+      std::next(reinterpret_cast<std::byte*>(message.get_header()),
+                combine_offset_jump_in_bytes)) = (f_ptr.bits - anchor_ptr.bits);
+}
+
+auto get_combine_function_pointer(const Message_t& message)
+    -> void (*)(Message_t&, const Message_t&) {
+  union PtrConversionUnion {
+    combine_function_ptr_t f;
+    std::uint64_t bits;
+  };
+  PtrConversionUnion anchor_ptr{&combine_anchor};
+  PtrConversionUnion f_ptr{};
+  f_ptr.bits = *reinterpret_cast<const std::uint64_t*>(std::next(
+                   reinterpret_cast<const std::byte*>(message.get_header()),
+                   combine_offset_jump_in_bytes)) +
+               anchor_ptr.bits;
+  return f_ptr.f;
+}
 }  // namespace reduction
 }  // namespace rts
 
@@ -599,6 +637,46 @@ void test_get_callback_address_and_get_callback() {
             callback_alignment ==
         0);
 }
+
+void test_set_and_get_combine_function_pointer() {
+  INFO("Test set_combine_function_pointer and get_combine_function_pointer");
+
+  using namespace rts::reduction;
+
+  // Dummy combine function for testing
+  static bool called = false;
+  auto dummy_combine = [](Message_t& /*lhs*/, const Message_t& /*rhs*/) {
+    called = true;
+  };
+
+  // Create a reduction message
+  using DataTuple = std::tuple<int, double>;
+  using CallbackType = DummyCallback<DummyAction, DummyComponent, int, double>;
+  const std::uint32_t distributed_object_index = 7;
+  const std::uint64_t reduction_id = 12345;
+  DataTuple data_tuple{42, 3.14};
+  CallbackType callback{99};
+  Message_t message = create_message<DummyAction, DummyComponent>(
+      distributed_object_index, reduction_id, data_tuple, callback,
+      MessageType::Reduction);
+
+  // Set the combine function pointer
+  set_combine_function_pointer(message, dummy_combine);
+
+  // Retrieve the function pointer
+  auto retrieved_ptr = get_combine_function_pointer(message);
+
+  // Check that the retrieved pointer is not null
+  CHECK(retrieved_ptr != nullptr);
+
+  // Call the retrieved function and check that it sets 'called' to true
+  called = false;
+  retrieved_ptr(message, message);
+  CHECK(called == true);
+
+  // Check that the retrieved pointer matches the original function pointer
+  // (function pointers to lambdas may not compare equal, so this is optional)
+}
 }  // namespace
 }  // namespace reduction
 }  // namespace rts
@@ -614,6 +692,7 @@ TEST_CASE("Message") {
   rts::reduction::test_set_and_get_callback_offset();
   rts::reduction::test_create_message();
   rts::reduction::test_get_callback_address_and_get_callback();
+  rts::reduction::test_set_and_get_combine_function_pointer();
 }
 
 #endif
