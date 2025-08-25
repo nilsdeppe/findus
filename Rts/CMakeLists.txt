@@ -7,6 +7,7 @@ set(LIBRARY ToyRTS)
 add_library(
   ${LIBRARY}
   ActionState.cpp
+  Detail/ActiveObject.cpp
   Detail/DistributedObjectBase.cpp
   Detail/DistributedObjectIndex.cpp
   Detail/IndexConversion.cpp
