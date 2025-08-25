@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "Rts/Callback.hpp"
+#include "Rts/Detail/ActiveObject.hpp"
 #include "Rts/Detail/DistributedObjectIndex.hpp"
 #include "Rts/Detail/GetOutput.hpp"
 #include "Rts/Detail/MpiErrorMessage.hpp"
@@ -91,6 +92,8 @@ DistributedTaskDriver::DistributedTaskDriver(bool finalize_mpi,
       static_cast<uint32_t>(number_of_threads_), 1, this);
   hardware_info::print_hardware_info(rts_comm_);
 
+  active_object_.resize(static_cast<size_t>(number_of_threads_ + 1),
+                        detail::ActiveObject{});
 
   parent_and_children_ =
       detail::parent_and_children(current_node_id(), number_of_nodes());
@@ -751,8 +754,17 @@ void DistributedTaskDriver::invoke(Message_t& message,
                                    const uint32_t thread_id) {
   thread_id_ = thread_id_offset_ + thread_id;
   MessageHeader* message_header = message.get_header();
+  if (thread_id_ >= active_object_.size()) {
+    throw Exception{"Received thread ID " + std::to_string(thread_id) +
+                    " but we initialized assuming at most " +
+                    std::to_string(active_object_.size()) + " threads."};
+  }
+  active_object_[thread_id_] =
+      detail::ActiveObject{message_header->distributed_object_index(),
+                           message_header->target_collection_index()};
   (this->*threaded_action_absolute_ptr(message_header->member_function_ptr()))(
       message);
+  active_object_[thread_id_] = detail::ActiveObject{};
 }
 
 void DistributedTaskDriver::send_data(const int target_node,

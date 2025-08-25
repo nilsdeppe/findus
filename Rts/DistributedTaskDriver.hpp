@@ -25,6 +25,7 @@
 #include <variant>
 #include <vector>
 
+#include "Rts/Detail/ActiveObject.hpp"
 #include "Rts/Detail/DistributedObjectBase.hpp"
 #include "Rts/Detail/DistributedObjectIndex.hpp"
 #include "Rts/Detail/GetOutput.hpp"
@@ -768,6 +769,7 @@ class DistributedTaskDriver {
 
   std::unique_ptr<ThreadPool_t> thread_pool_{};
   std::vector<DistributedOjectClassHolder> distributed_objects_;
+  std::vector<detail::ActiveObject> active_object_;
 
   detail::ParentAndChildren parent_and_children_{};
   IncomingMpiMessages_t incoming_mpi_messages_{};
