@@ -772,6 +772,10 @@ class DistributedTaskDriver {
   std::vector<detail::ActiveObject> active_object_;
 
   detail::ParentAndChildren parent_and_children_{};
+  int parent_other_child_process_id_{-1};
+  std::vector<int> all_left_children_{};
+  std::vector<int> all_right_children_{};
+  std::vector<int> parent_other_subtree_children_{};
   IncomingMpiMessages_t incoming_mpi_messages_{};
   OutgoingMpiMessages_t outgoing_mpi_messages_{};
   moodycamel::ConcurrentQueue<std::tuple<int, Message_t>> outgoing_messages_{};
