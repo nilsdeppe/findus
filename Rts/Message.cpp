@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <ostream>
 #include <utility>
 
 #include "Rts/DistributedTaskDriver.hpp"
@@ -132,6 +133,23 @@ static constexpr std::ptrdiff_t callback_offset_jump_in_bytes =
     data_offset_jump_in_bytes + 4;
 static constexpr std::ptrdiff_t combine_offset_jump_in_bytes =
     callback_offset_jump_in_bytes + 4;
+static constexpr std::ptrdiff_t contributed_metadata_jump_in_bytes =
+    combine_offset_jump_in_bytes + 8;
+// Note: since the contributed_metadata is only 8 bits (1 byte), the "next"
+// thing would no longer be 8-byte aligned, so we probably want to push this
+// metadata to always be the last thing we store.
+//
+// The layout of the metadata in terms of bytes (from right to left)
+// 1. self has contributed (& 0b1)
+// 2. left child has contributed (>> 1 & 0b1)
+// 3. right child has contributed (>> 2 & 0b1)
+// 4. parent has local contributions (>> 3 & 0b1)
+// 5. parent's other child should contribute [only set if parent has local
+//    isn't set] (>> 4 & 0b1)
+
+static_assert(contributed_metadata_jump_in_bytes -
+                  reduction_id_offset_in_bytes <=
+              metadata_block_size);
 
 void set_id(Message_t& message, const std::uint64_t reduction_id) {
   static_assert(reduction_id_offset_in_bytes + alignof(MessageHeader) >=
@@ -222,6 +240,47 @@ auto get_combine_function_pointer(const Message_t& message)
                anchor_ptr.bits;
   return f_ptr.f;
 }
+
+std::ostream& operator<<(std::ostream& os, const Contribution contribution) {
+  switch (contribution) {
+    case Contribution::self_contributed:
+      return os << "self_contributed";
+    case Contribution::left_child_contributed:
+      return os << "left_child_contributed";
+    case Contribution::right_child_contributed:
+      return os << "right_child_contributed";
+    case Contribution::parent_has_local_contributions:
+      return os << "parent_has_local_contributions";
+    case Contribution::parents_other_child_has_contributions:
+      return os << "parents_other_child_has_contributions";
+    default:
+      return os << "Unknown";
+  }
+}
+
+void zero_contributed_metadata(Message_t& message) {
+  *reinterpret_cast<std::uint8_t*>(
+      std::next(reinterpret_cast<std::byte*>(message.get_header()),
+                contributed_metadata_jump_in_bytes)) = 0;
+}
+
+void set_contributed_metadata(Message_t& message,
+                              const Contribution contribution) {
+  *reinterpret_cast<std::uint8_t*>(
+      std::next(reinterpret_cast<std::byte*>(message.get_header()),
+                contributed_metadata_jump_in_bytes)) |=
+      static_cast<std::uint8_t>(contribution);
+}
+
+bool get_contributed_metadata(const Message_t& message,
+                              const Contribution contribution) {
+  return static_cast<bool>(
+      *reinterpret_cast<const std::uint8_t*>(
+          std::next(reinterpret_cast<const std::byte*>(message.get_header()),
+                    contributed_metadata_jump_in_bytes)) &
+      static_cast<std::uint8_t>(contribution));
+}
+
 }  // namespace reduction
 }  // namespace rts
 
@@ -677,6 +736,61 @@ void test_set_and_get_combine_function_pointer() {
   // Check that the retrieved pointer matches the original function pointer
   // (function pointers to lambdas may not compare equal, so this is optional)
 }
+
+void test_contribution_metadata() {
+  using rts::detail::get_output;
+  CHECK(get_output(Contribution::self_contributed) == "self_contributed");
+  CHECK(get_output(Contribution::left_child_contributed) ==
+        "left_child_contributed");
+  CHECK(get_output(Contribution::right_child_contributed) ==
+        "right_child_contributed");
+  CHECK(get_output(Contribution::parent_has_local_contributions) ==
+        "parent_has_local_contributions");
+  CHECK(get_output(Contribution::parents_other_child_has_contributions) ==
+        "parents_other_child_has_contributions");
+  CHECK(get_output(static_cast<Contribution>(0xff)) == "Unknown");
+
+  // All possible flags
+  const std::vector<Contribution> flags = {
+      Contribution::self_contributed, Contribution::left_child_contributed,
+      Contribution::right_child_contributed,
+      Contribution::parent_has_local_contributions,
+      Contribution::parents_other_child_has_contributions};
+
+  // There are 2^5 = 32 possible combinations
+  for (std::uint8_t mask = 0; mask < 32; ++mask) {
+    // Create a message using the recommended pattern
+    const std::uint32_t distributed_object_index = 1;
+    const std::uint64_t reduction_id = 42;
+    const std::tuple<int> data_tuple{0};
+    DummyCallback<DummyAction, DummyComponent, int> callback{0};
+    Message_t message = create_message<DummyAction, DummyComponent>(
+        distributed_object_index, reduction_id, data_tuple, callback,
+        MessageType::Reduction);
+
+    // Zero metadata before setting flags
+    zero_contributed_metadata(message);
+
+    // Set flags according to mask
+    for (size_t i = 0; i < flags.size(); ++i) {
+      if (mask bitand (0b1 << i)) {
+        set_contributed_metadata(message, flags[i]);
+      }
+    }
+
+    // Check each flag
+    for (size_t i = 0; i < flags.size(); ++i) {
+      const bool should_be_set = (mask bitand (0b1 << i)) != 0;
+      CHECK(get_contributed_metadata(message, flags[i]) == should_be_set);
+    }
+
+    // Check that no extra bits are set
+    const std::uint8_t stored = *reinterpret_cast<std::uint8_t*>(
+        std::next(reinterpret_cast<std::byte*>(message.get_header()),
+                  rts::reduction::contributed_metadata_jump_in_bytes));
+    CHECK((stored bitand ~0b11111) == 0);  // Only lower 5 bits should be set
+  }
+}
 }  // namespace
 }  // namespace reduction
 }  // namespace rts
@@ -693,6 +807,7 @@ TEST_CASE("Message") {
   rts::reduction::test_create_message();
   rts::reduction::test_get_callback_address_and_get_callback();
   rts::reduction::test_set_and_get_combine_function_pointer();
+  rts::reduction::test_contribution_metadata();
 }
 
 #endif

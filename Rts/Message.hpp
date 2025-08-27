@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstring>
+#include <iosfwd>
 #include <memory>
 #include <tuple>
 #include <utility>
@@ -339,6 +340,61 @@ void set_combine_function_pointer(Message_t& message,
  */
 auto get_combine_function_pointer(const Message_t& message)
     -> void (*)(Message_t&, const Message_t&);
+
+/*!
+ * \brief Enum representing contribution metadata for reduction messages.
+ *
+ * The Contribution enum encodes the state of contributions in a reduction
+ * operation. Each value is a bit flag that can be combined to represent
+ * multiple states in the metadata block of a reduction message.
+ */
+enum class Contribution : std::uint8_t {
+  /// The current process has contributed to the reduction.
+  self_contributed = 0b1,
+  /// The left child process has contributed to the reduction.
+  left_child_contributed = 0b10,
+  /// The right child process has contributed to the reduction.
+  right_child_contributed = 0b100,
+  /// The parent process has local contributions.
+  parent_has_local_contributions = 0b1000,
+  /// The parent's other child will contribute to the reduction.
+  parents_other_child_has_contributions = 0b10000
+};
+
+/// \brief Stream operator for `Contribution`.
+std::ostream& operator<<(std::ostream& os, Contribution contribution);
+
+/*!
+ * \brief Zeros out the contribution metadata in a reduction message.
+ *
+ * This function resets the contribution metadata block in the message to zero,
+ * clearing all contribution flags.
+ *
+ * \param message The reduction message whose metadata will be zeroed.
+ */
+void zero_contributed_metadata(Message_t& message);
+
+/*!
+ * \brief Sets a specific contribution flag in the reduction message metadata.
+ *
+ * This function sets the specified `Contribution` flag in the message's
+ * metadata block, marking the corresponding contribution state as active.
+ *
+ * \param message The reduction message to update.
+ * \param contribution The `Contribution` flag to set.
+ */
+void set_contributed_metadata(Message_t& message, Contribution contribution);
+
+/*!
+ * \brief Returns true if the specified `Contribution` flag is set in the
+ * message.
+ *
+ * \param message The reduction message to query.
+ * \param contribution The `Contribution` flag to check.
+ * \return `true` if the flag is set, `false` otherwise.
+ */
+bool get_contributed_metadata(const Message_t& message,
+                              Contribution contribution);
 
 /*!
  * \brief Creates a reduction message with metadata, data, and callback.
