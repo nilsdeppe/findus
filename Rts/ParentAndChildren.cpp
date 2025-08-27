@@ -6,6 +6,7 @@
 
 #include <ostream>
 #include <string>
+#include <vector>
 
 #include "Rts/Exceptions/Exception.hpp"
 
@@ -64,6 +65,59 @@ ParentAndChildren parent_and_children(const int process_id,
   }
   return result;
 }
+
+std::vector<int> children_in_subtree(const int process_id,
+                                     const int total_process_ids) {
+  if (process_id < 0) {
+    throw Exception{"Process ID must be non-negative but got " +
+                    std::to_string(process_id)};
+  }
+  if (total_process_ids < 0) {
+    throw Exception{"Total process IDs must be non-negative but got " +
+                    std::to_string(total_process_ids)};
+  }
+  if (process_id + 1 > total_process_ids) {
+    throw Exception{
+        "Process ID must be less than or equal to total_process_ids-1, but "
+        "process_id is " +
+        std::to_string(process_id) + " and total_process_ids is " +
+        std::to_string(total_process_ids)};
+  }
+  std::vector<int> result{};
+  result.reserve(static_cast<size_t>(total_process_ids));
+  size_t start = 0;
+  {
+    const auto pc = parent_and_children(process_id, total_process_ids);
+    if (pc.left_process_id != -1) {
+      result.push_back(pc.left_process_id);
+    }
+    if (pc.right_process_id != -1) {
+      result.push_back(pc.right_process_id);
+    }
+  }
+  size_t end = result.size();
+  while (true) {
+    bool some_added = false;
+    for (size_t i = start; i < end; ++i) {
+      const auto pc = parent_and_children(result[i], total_process_ids);
+      if (pc.left_process_id != -1) {
+        result.push_back(pc.left_process_id);
+        some_added = true;
+      }
+      if (pc.right_process_id != -1) {
+        result.push_back(pc.right_process_id);
+        some_added = true;
+      }
+    }
+    if (not some_added) {
+      break;
+    }
+    start = end;
+    end = result.size();
+  }
+  result.shrink_to_fit();
+  return result;
+}
 }  // namespace rts::detail
 
 #if defined(RTS_ENABLE_TESTING)
@@ -72,10 +126,12 @@ ParentAndChildren parent_and_children(const int process_id,
 #include <string>
 
 #include "Rts/Detail/GetOutput.hpp"
+#include "Rts/Detail/VectorStream.hpp"
 
 namespace rts::detail {
 
-TEST_CASE("ParentAndChildren") {
+namespace {
+void test_p_and_c() {
   CHECK(get_output(ParentAndChildren{1, 2, 3, 4}) == "[1:p:2:l:3:r:4]");
   CHECK_THROWS_AS(parent_and_children(-5, 8), Exception);
   try {
@@ -138,6 +194,69 @@ TEST_CASE("ParentAndChildren") {
   CHECK(parent_and_children(9, 12) == ParentAndChildren{9, 4, -1, -1});
   CHECK(parent_and_children(10, 12) == ParentAndChildren{10, 4, -1, -1});
   CHECK(parent_and_children(11, 12) == ParentAndChildren{11, 5, -1, -1});
+}
+
+void test_subtree() {
+  using rts::detail::children_in_subtree;
+  using rts::detail::operator<<;
+
+  // Edge cases: invalid arguments
+  CHECK_THROWS_AS(children_in_subtree(-1, 5), Exception);
+  CHECK_THROWS_AS(children_in_subtree(2, -1), Exception);
+  CHECK_THROWS_AS(children_in_subtree(5, 3), Exception);
+
+  // Single process: no children
+  CHECK(children_in_subtree(0, 1).empty());
+
+  // Two processes: root has one child
+  {
+    std::vector<int> expected{1};
+    CHECK(children_in_subtree(0, 2) == expected);
+    CHECK(children_in_subtree(1, 2).empty());
+  }
+
+  // Three processes: root has two children, children have none
+  {
+    std::vector<int> expected{1, 2};
+    CHECK(children_in_subtree(0, 3) == expected);
+    CHECK(children_in_subtree(1, 3).empty());
+    CHECK(children_in_subtree(2, 3).empty());
+  }
+
+  // Seven processes: test subtree for each node
+  {
+    // Tree: 0->1,2; 1->3,4; 2->5,6
+    CHECK(children_in_subtree(0, 7) == std::vector<int>{1, 2, 3, 4, 5, 6});
+    CHECK(children_in_subtree(1, 7) == std::vector<int>{3, 4});
+    CHECK(children_in_subtree(2, 7) == std::vector<int>{5, 6});
+    CHECK(children_in_subtree(3, 7).empty());
+    CHECK(children_in_subtree(4, 7).empty());
+    CHECK(children_in_subtree(5, 7).empty());
+    CHECK(children_in_subtree(6, 7).empty());
+  }
+
+  // Larger tree: 12 processes
+  {
+    CHECK(children_in_subtree(0, 12) ==
+          std::vector<int>{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11});
+    CHECK(children_in_subtree(1, 12) == std::vector<int>{3, 4, 7, 8, 9, 10});
+    CHECK(children_in_subtree(2, 12) == std::vector<int>{5, 6, 11});
+    CHECK(children_in_subtree(3, 12) == std::vector<int>{7, 8});
+    CHECK(children_in_subtree(4, 12) == std::vector<int>{9, 10});
+    CHECK(children_in_subtree(5, 12) == std::vector<int>{11});
+    CHECK(children_in_subtree(6, 12).empty());
+    CHECK(children_in_subtree(7, 12).empty());
+    CHECK(children_in_subtree(8, 12).empty());
+    CHECK(children_in_subtree(9, 12).empty());
+    CHECK(children_in_subtree(10, 12).empty());
+    CHECK(children_in_subtree(11, 12).empty());
+  }
+}
+}  // namespace
+
+TEST_CASE("ParentAndChildren") {
+  test_p_and_c();
+  test_subtree();
 }
 }  // namespace rts::detail
 #endif
