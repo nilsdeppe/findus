@@ -97,6 +97,54 @@ DistributedTaskDriver::DistributedTaskDriver(bool finalize_mpi,
 
   parent_and_children_ =
       detail::parent_and_children(current_node_id(), number_of_nodes());
+  if (parent_and_children_.parent_process_id != -1) {
+    const auto p_and_c_of_parent = detail::parent_and_children(
+        parent_and_children_.parent_process_id, number_of_nodes());
+    parent_other_child_process_id_ =
+        p_and_c_of_parent.left_process_id == current_node_id()
+            ? p_and_c_of_parent.right_process_id
+            : p_and_c_of_parent.left_process_id;
+  }
+  if (parent_and_children_.left_process_id != -1) {
+    all_left_children_ = detail::children_in_subtree(
+        parent_and_children_.left_process_id, number_of_nodes());
+    all_left_children_.push_back(parent_and_children_.left_process_id);
+    std::sort(all_left_children_.begin(), all_left_children_.end());
+  }
+  if (parent_and_children_.right_process_id != -1) {
+    all_right_children_ = detail::children_in_subtree(
+        parent_and_children_.right_process_id, number_of_nodes());
+    all_right_children_.push_back(parent_and_children_.right_process_id);
+    std::sort(all_right_children_.begin(), all_right_children_.end());
+  }
+  if (const auto parent_pid = parent_and_children_.parent_process_id;
+      parent_pid != -1) {
+    const auto parents_info =
+        detail::parent_and_children(parent_pid, number_of_nodes());
+    if (parents_info.left_process_id != parent_and_children_.self_process_id and
+        parents_info.right_process_id != parent_and_children_.self_process_id) {
+      throw Exception{
+          "Either the left (" + std::to_string(parents_info.left_process_id) +
+          ") or right (" + std::to_string(parents_info.right_process_id) +
+          ") child of parent process (" + std::to_string(parent_pid) +
+          ") should be the self (current child) process " +
+          std::to_string(parent_and_children_.self_process_id)};
+    }
+    if (parents_info.left_process_id != parent_and_children_.self_process_id and
+        parents_info.left_process_id != -1) {
+      parent_other_subtree_children_ = detail::children_in_subtree(
+          parents_info.left_process_id, number_of_nodes());
+      parent_other_subtree_children_.push_back(parents_info.left_process_id);
+    } else if (parents_info.right_process_id !=
+                   parent_and_children_.self_process_id and
+               parents_info.right_process_id != -1) {
+      parent_other_subtree_children_ = detail::children_in_subtree(
+          parents_info.right_process_id, number_of_nodes());
+      parent_other_subtree_children_.push_back(parents_info.right_process_id);
+    }
+    std::sort(parent_other_subtree_children_.begin(),
+              parent_other_subtree_children_.end());
+  }
 
   // Set global quiescence detection bookkeeping.
   global_qd_ = qd::Global{current_node_id(), number_of_nodes(), 10};
