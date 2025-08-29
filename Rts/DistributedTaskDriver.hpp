@@ -250,6 +250,49 @@ class DistributedTaskDriver {
       int node_to_insert_on, Args&&... args);
 
   /*!
+   * \brief Returns a vector of vectors containing the collection indices for
+   * each process.
+   *
+   * For a given collection parallel component, this function returns a
+   * reference to a vector where each element corresponds to a process, and
+   * contains a vector of collection indices (as `uint64_t`) that reside on that
+   * process.
+   *
+   * This allows querying which collection elements are present on each process.
+   *
+   * \tparam ParallelComponent The collection parallel component.
+   * \return A const reference to a vector of vectors of collection indices per
+   * process.
+   * \throws Exception if the parallel component is not registered or is not a
+   * collection.
+   */
+  template <class ParallelComponent>
+  auto collection_ids_on_processes() const
+      -> const std::vector<std::vector<std::uint64_t>>&;
+
+  /*!
+   * \brief Returns a vector of collection indices for a specific process.
+   *
+   * For a given collection parallel component and process ID, this function
+   * returns a reference to the vector of collection indices (as `uint64_t`)
+   * that reside on the specified process.
+   *
+   * This allows querying which collection elements are present on a particular
+   * process.
+   *
+   * \tparam ParallelComponent The collection parallel component.
+   * \tparam Integer The type of the process ID (must be integral).
+   * \param pid The process ID to query.
+   * \return A const reference to the vector of collection indices for the given
+   * process.
+   * \throws Exception if the parallel component is not registered or is not a
+   * collection.
+   */
+  template <class ParallelComponent, class Integer>
+  auto collection_ids_on_process(const Integer& pid) const
+      -> const std::vector<std::uint64_t>&;
+
+  /*!
    * \brief Returns a map of collection indices to their location and object
    * holder.
    *
@@ -736,17 +779,18 @@ class DistributedTaskDriver {
 
     DistributedOjectClassHolder(
         std::unique_ptr<detail::DistributedObjectBase> in_object,
-        std::string in_name)
-        : objects(std::move(in_object)), name(std::move(in_name)) {}
+        std::string in_name);
 
     DistributedOjectClassHolder(
         std::unordered_map<uint64_t, CollectionHolder> in_objects,
-        std::string in_name)
-        : objects(std::move(in_objects)), name(std::move(in_name)) {}
+        std::string in_name, size_t number_of_processes);
 
     using variant_t =
         std::variant<std::unique_ptr<detail::DistributedObjectBase>, Map_t>;
     variant_t objects;
+    /// The collection IDs on each process ID. This is completely empty for
+    /// non-collection parallel components.
+    std::vector<std::vector<std::uint64_t>> ids_per_process{};
     std::string name;
     int number_of_local_objects{-1};
   };
@@ -819,19 +863,25 @@ template <class ParallelComponent, class... Args>
 void DistributedTaskDriver::insert_parallel_component_collection(
     const typename ParallelComponent::rts_collection_index& user_index,
     const int node_to_insert_on, Args&&... args) {
+  if (node_to_insert_on < 0) {
+    throw Exception{"The process to insert on must be non-negative but got " +
+                    std::to_string(node_to_insert_on)};
+  }
   in_insert_mode_ = true;
   static_assert(
       rts::is_collection_v<ParallelComponent>,
       "To insert into a collection use insert_parallel_component_collection");
   static_assert(sizeof(typename ParallelComponent::rts_collection_index) ==
                 sizeof(std::uint64_t));
-  const auto index = rts::detail::distributed_object_index<ParallelComponent>();
+  const std::uint32_t index =
+      rts::detail::distributed_object_index<ParallelComponent>();
   using Map =
       std::variant_alternative_t<1, DistributedOjectClassHolder::variant_t>;
   if (index == distributed_objects_.size()) {
     // If we do not have the distributed object collection already inserted,
     // insert it.
-    distributed_objects_.emplace_back(Map{}, ParallelComponent::name());
+    distributed_objects_.emplace_back(Map{}, ParallelComponent::name(),
+                                      number_of_nodes());
     distributed_objects_.back().number_of_local_objects = 0;
   }
   if (index + 1 != distributed_objects_.size()) {
@@ -854,6 +904,13 @@ void DistributedTaskDriver::insert_parallel_component_collection(
                     ParallelComponent::name());
   }
 
+  if (node_to_insert_on >= number_of_nodes_) {
+    throw Exception("Cannot insert collection " + ParallelComponent::name() +
+                    " into node " + std::to_string(node_to_insert_on) +
+                    " because we only have " +
+                    std::to_string(number_of_nodes_) + " nodes.\n");
+  }
+
   if (node_to_insert_on == my_node_id_) {
     collection.emplace(std::pair{
         collection_index,
@@ -862,11 +919,6 @@ void DistributedTaskDriver::insert_parallel_component_collection(
                              std::make_unique<ParallelComponent>(
                                  std::forward<Args>(args)...)}}});
     ++distributed_objects_[index].number_of_local_objects;
-  } else if (node_to_insert_on >= number_of_nodes_) {
-    throw Exception("Cannot insert collection " + ParallelComponent::name() +
-                    " into node " + std::to_string(node_to_insert_on) +
-                    " because we only have " +
-                    std::to_string(number_of_nodes_) + " nodes.\n");
   } else {
     // Insert for tracking which node this collection element is on.
     collection.emplace(std::pair{
@@ -875,6 +927,42 @@ void DistributedTaskDriver::insert_parallel_component_collection(
             node_to_insert_on,
             std::unique_ptr<detail::DistributedObjectBase>{nullptr}}});
   }
+  distributed_objects_[index]
+      .ids_per_process[static_cast<size_t>(node_to_insert_on)]
+      .push_back(collection_index);
+}
+
+template <class ParallelComponent>
+auto DistributedTaskDriver::collection_ids_on_processes() const
+    -> const std::vector<std::vector<std::uint64_t>>& {
+  static_assert(rts::is_collection_v<ParallelComponent>);
+  const std::uint32_t object_index =
+      detail::distributed_object_index<ParallelComponent>();
+  if (object_index >= distributed_objects_.size()) {
+    throw rts::Exception{"Requested distributed object with index " +
+                         std::to_string(object_index) + " and name " +
+                         ParallelComponent::name() + " was never inserted."};
+  }
+  if (distributed_objects_[object_index].objects.index() !=
+      detail::Collection) {
+    // We should never hit this exception since the static_assert should
+    // prevent it. However, an insertion bug could allow it to happen.
+    throw Exception{
+        "Cannot retrieve the local index from the parallel component " +
+        ParallelComponent::name() + " because it is of type " +
+        detail::get_output(static_cast<detail::DistributedObjectIndex>(
+            distributed_objects_[object_index].objects.index())) +
+        " but it should be a collection."};
+  }
+  return distributed_objects_[object_index].ids_per_process;
+}
+
+template <class ParallelComponent, class Integer>
+auto DistributedTaskDriver::collection_ids_on_process(const Integer& pid) const
+    -> const std::vector<std::uint64_t>& {
+  static_assert(std::is_integral_v<Integer>);
+  return collection_ids_on_processes<ParallelComponent>()[static_cast<size_t>(
+      pid)];
 }
 
 template <class ParallelComponent>
