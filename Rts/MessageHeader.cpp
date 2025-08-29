@@ -29,8 +29,8 @@ std::ostream& operator<<(std::ostream& os, MessageType t) {
       return os << "BroadcastTo";
     case MessageType::Reduction:
       return os << "Reduction";
-    case MessageType::SubsetReduction:
-      return os << "SubsetReduction";
+    case MessageType::ReductionOver:
+      return os << "ReductionOver";
     default:
       return os << "Unknown";
   }
@@ -169,7 +169,7 @@ TEST_CASE("MessageType") {
   CHECK("Broadcast" == detail::get_output(MessageType::Broadcast));
   CHECK("BroadcastTo" == detail::get_output(MessageType::BroadcastTo));
   CHECK("Reduction" == detail::get_output(MessageType::Reduction));
-  CHECK("SubsetReduction" == detail::get_output(MessageType::SubsetReduction));
+  CHECK("ReductionOver" == detail::get_output(MessageType::ReductionOver));
   CHECK("Unknown" == detail::get_output(static_cast<MessageType>(0b111)));
 }
 

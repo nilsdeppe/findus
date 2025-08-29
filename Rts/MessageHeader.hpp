@@ -32,7 +32,7 @@ enum class MessageType : std::uint8_t {
   /// \brief A reduction over all elements of a collection.
   Reduction = 0b100,
   /// \brief A reduction over a subset of elements of a collection.
-  SubsetReduction = 0b101
+  ReductionOver = 0b101
 };
 
 /// \brief Stream operator for `rts::MessageType`.
