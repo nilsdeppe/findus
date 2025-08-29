@@ -8,6 +8,7 @@
 #include <array>
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -1352,6 +1353,18 @@ void DistributedTaskDriver::add_local_broadcast_tasks(
   }
 }
 
+DistributedTaskDriver::DistributedOjectClassHolder::DistributedOjectClassHolder(
+    std::unique_ptr<detail::DistributedObjectBase> in_object,
+    std::string in_name)
+    : objects(std::move(in_object)), name(std::move(in_name)) {}
+
+DistributedTaskDriver::DistributedOjectClassHolder::DistributedOjectClassHolder(
+    std::unordered_map<uint64_t, CollectionHolder> in_objects,
+    std::string in_name, const size_t number_of_processes)
+    : objects(std::move(in_objects)),
+      ids_per_process(number_of_processes),
+      name(std::move(in_name)) {}
+
 thread_local std::uint32_t DistributedTaskDriver::thread_id_ =
     std::numeric_limits<std::uint32_t>::max();
 
@@ -1848,6 +1861,8 @@ void test_invoke(DistributedTaskDriver& driver) {
 
   REQUIRE(driver.collection_ids_and_locations<CollectionComponent>().size() ==
           all_indices.size());
+  REQUIRE(driver.collection_ids_on_processes<CollectionComponent>().size() ==
+          driver.number_of_nodes());
 
   //! [collection_ids_and_locations_usage]
   for (const auto [id, pid] : all_indices) {
@@ -1858,6 +1873,14 @@ void test_invoke(DistributedTaskDriver& driver) {
     CHECK(it->second.process_id == pid);
   }
   //! [collection_ids_and_locations_usage]
+
+  //! [collection_ids_on_processes_usage]
+  for (const auto [id, pid] : all_indices) {
+    const std::vector<std::uint64_t>& elements_on_pid =
+        driver.collection_ids_on_process<CollectionComponent>(pid);
+    CHECK(std::count(elements_on_pid.begin(), elements_on_pid.end(), id) == 1);
+  }
+  //! [collection_ids_on_processes_usage]
 
   // Check exceptions that should be thrown before we call insert_barrier()
   CHECK_THROWS_WITH_AS(
