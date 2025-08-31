@@ -2,13 +2,14 @@
 # Distributed under the MIT License.
 # See LICENSE.txt for details.
 
+add_library(RtsFlags INTERFACE)
+
 set(_RTS_CXX_FLAGS
   "-W;\
 -Wall;\
 -Wcast-align;\
 -Wcast-qual;\
 -Wdisabled-optimization;\
--Wdocumentation;\
 -Wextra;\
 -Wformat-nonliteral;\
 -Wformat-security;\
@@ -20,7 +21,6 @@ set(_RTS_CXX_FLAGS
 -Wmissing-format-attribute;\
 -Wmissing-include-dirs;\
 -Wmissing-noreturn;\
--Wnewline-eof;\
 -Wnon-virtual-dtor;\
 -Wold-style-cast;\
 -Woverloaded-virtual;\
@@ -33,10 +33,27 @@ set(_RTS_CXX_FLAGS
 -Wstack-protector;\
 -Wswitch-default;\
 -Wunreachable-code;\
--Wwrite-strings;\
--Werror=undefined-internal")
+-Wwrite-strings;")
 
-add_library(RtsFlags INTERFACE)
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  set(_RTS_CXX_FLAGS "${_RTS_CXX_FLAGS}\
+-Wdocumentation;\
+-Wnewline-eof;\
+-Werror=undefined-internal;")
+endif()
+
+option(RTS_DEBUG_SYMBOLS "Add -g to CMAKE_CXX_FLAGS if ON, -g0 if OFF." ON)
+
+if(NOT ${RTS_DEBUG_SYMBOLS})
+  string(REPLACE "-g " "-g0 " CMAKE_CXX_FLAGS_DEBUG ${CMAKE_CXX_FLAGS_DEBUG})
+endif()
+
+# Always build with -g so we can view backtraces, etc. when production code
+# fails. This can be overridden by passing `-D DEBUG_SYMBOLS=OFF` to CMake
+if(${RTS_DEBUG_SYMBOLS})
+  set_property(TARGET RtsFlags
+    APPEND PROPERTY INTERFACE_COMPILE_OPTIONS -g)
+endif(${RTS_DEBUG_SYMBOLS})
 
 foreach(_FLAG ${_RTS_CXX_FLAGS})
   set_property(TARGET RtsFlags
