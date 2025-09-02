@@ -12,6 +12,7 @@
 
 #include "Rts/Detail/MemberFunctionPtr.hpp"
 #include "Rts/Exceptions/Exception.hpp"
+#include "Rts/HardwareInfo.hpp"
 
 namespace rts {
 /*!
@@ -78,7 +79,8 @@ std::ostream& operator<<(std::ostream& os, MessageType t);
  * - `rts::create_data_in_message()`
  * - `rts::data_from_message()`
  */
-struct alignas(64) MessageHeader {
+struct alignas(hardware_info::hardware_destructive_interference_size)
+    MessageHeader {
  public:
   MessageHeader(detail::MemberFunctionPtr member_function_ptr,
                 std::uint64_t target_collection_index,
