@@ -29,7 +29,7 @@ struct MemberFunctionPtr {
 #ifdef __BIG_ENDIAN__
   uint64_t upper = 0, lower = 0;
   static_assert(false, "Big endian architecture not tested but should work.");
-#elif __LITTLE_ENDIAN__
+#elif defined(__LITTLE_ENDIAN__)
   uint64_t lower = 0, upper = 0;
 #else
   static_assert(false, "Must be either big or little endian.");
