@@ -22,6 +22,7 @@ add_library(
   Message.cpp
   MessageHeader.cpp
   MessageTags.cpp
+  MessageType.cpp
   ParentAndChildren.cpp
   QuiescenceDetection.cpp
   Reduction.cpp
