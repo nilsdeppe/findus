@@ -148,6 +148,7 @@ TEST_CASE("MessageHeader") {
   static_assert(sizeof(MessageHeader) == 64);
   static_assert(alignof(TestClass) == 64);
   const auto foo_ptr = detail::to_member_function_ptr(&TestClass::foo);
+  const auto bar_ptr = detail::to_member_function_ptr(&TestClass::bar);
 
   const auto test_impl = [&foo_ptr](
                              MessageHeader& message_header,
@@ -224,6 +225,13 @@ TEST_CASE("MessageHeader") {
         const int expected_int = 13;
         test_impl(*message_header_int, message_type, collection_index,
                   data_is_serialized, expected_int);
+
+        message_header_int->member_function_ptr(bar_ptr);
+        CHECK(message_header_int->member_function_ptr() != foo_ptr);
+        CHECK(message_header_int->member_function_ptr() == bar_ptr);
+        message_header_int->member_function_ptr(foo_ptr);
+        CHECK(message_header_int->member_function_ptr() == foo_ptr);
+        CHECK(message_header_int->member_function_ptr() != bar_ptr);
 
         MessageHeader* message_header_test_class =
             new (buffer.get()) MessageHeader{foo_ptr,
