@@ -1318,12 +1318,12 @@ void DistributedTaskDriver::add_local_broadcast_tasks(
                           std::to_string(i) + " and number of elements " +
                           std::to_string(number_of_local_elements)};
         }
-        all_tasks.push_back(create_local_invoke_message(
+        all_tasks.push_back(create_message(
             message_header.member_function_ptr(), collection_index,
             message_header.distributed_object_index(),
             message_header.source_process_id(), current_node_id(),
             message_header.quiescence_detection_sweep_number(),
-            message_header.data_was_serialized(),
+            message_header.data_was_serialized(), rts::MessageType::Invoke,
             message_header.data_alignment(), data_size,
             header.data_location()));
       }

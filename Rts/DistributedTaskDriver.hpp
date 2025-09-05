@@ -1221,15 +1221,15 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
   for (const auto& [collection_index, collection_holder] : objects) {
     if (predicate(detail::from_internal<ParallelComponent>(collection_index))) {
       if (collection_holder.process_id == current_node_id()) {
-        broadcast_to_messages.emplace_back(create_local_invoke_message(
+        broadcast_to_messages.emplace_back(create_message(
             threaded_action_relative_ptr<Action, ParallelComponent,
                                          std::decay_t<Args>...>(
                 std::make_index_sequence<sizeof...(Args)>{}),
             collection_index,
             detail::distributed_object_index<ParallelComponent>(),
             current_node_id(), current_node_id(),
-            global_qd_.local_sweep_number(), false, data_alignment, data_size,
-            data.get()));
+            global_qd_.local_sweep_number(), false, rts::MessageType::Invoke,
+            data_alignment, data_size, data.get()));
       } else {
         Message_t& this_message = broadcast_to_messages[static_cast<size_t>(
             collection_holder.process_id)];

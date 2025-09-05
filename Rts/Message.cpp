@@ -91,15 +91,16 @@ Message_t create_broadcast_to_message(
   return {std::move(buffer)};
 }
 
-Message_t create_local_invoke_message(
+Message_t create_message(
     const rts::detail::MemberFunctionPtr& member_function_ptr,
     const std::uint64_t collection_index,
     const std::uint32_t distributed_object_index,
     const std::int32_t source_process_id,
     const std::int32_t destination_process_id,
     const std::uint64_t quiescence_detection_sweep_number,
-    const bool was_serialized, const std::uint64_t data_alignment,
-    const std::uint64_t data_size, const void* const data_ptr) {
+    const bool was_serialized, const MessageType message_type,
+    const std::uint64_t data_alignment, const std::uint64_t data_size,
+    const void* const data_ptr) {
   const std::uint32_t header_size = sizeof(rts::MessageHeader);
   const std::uint32_t data_offset =
       header_size + (data_alignment - (header_size % data_alignment));
@@ -113,7 +114,7 @@ Message_t create_local_invoke_message(
       member_function_ptr, collection_index, buffer_size,
       distributed_object_index, data_offset, source_process_id,
       destination_process_id, quiescence_detection_sweep_number, was_serialized,
-      rts::MessageType::Invoke);
+      message_type);
 
   // Copy the data tuple into the correct location using memcpy
   std::memcpy(header_ptr->data_location(), data_ptr, data_size);
@@ -477,7 +478,7 @@ void test_create_broadcast_to_message() {
   CHECK(header->number_of_bytes_in_message() == expected_buffer_size);
 }
 
-void test_create_local_invoke_message() {
+void test_create_message() {
   INFO(
       "Test create_local_invoke_message for correct header, alignment, and "
       "data");
@@ -498,10 +499,10 @@ void test_create_local_invoke_message() {
   const std::uint64_t data_size = sizeof(DataTuple);
 
   // Create the message
-  Message_t message = create_local_invoke_message(
+  Message_t message = create_message(
       dummy_ptr, collection_index, distributed_object_index, source_process_id,
-      destination_process_id, sweep_number, was_serialized, data_alignment,
-      data_size, &data_value);
+      destination_process_id, sweep_number, was_serialized,
+      rts::MessageType::Invoke, data_alignment, data_size, &data_value);
 
   // Check header fields
   const MessageHeader* header = message.get_header();
@@ -890,7 +891,7 @@ void test_contribution_metadata() {
 TEST_CASE("Message") {
   rts::test_create_message_alignment_and_values();
   rts::test_create_broadcast_to_message();
-  rts::test_create_local_invoke_message();
+  rts::test_create_message();
   rts::test_copy_message();
 
   rts::reduction::test_set_and_get_id();
