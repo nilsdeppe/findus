@@ -133,8 +133,10 @@ static constexpr std::ptrdiff_t callback_offset_jump_in_bytes =
     data_offset_jump_in_bytes + 4;
 static constexpr std::ptrdiff_t combine_offset_jump_in_bytes =
     callback_offset_jump_in_bytes + 4;
-static constexpr std::ptrdiff_t contributed_metadata_jump_in_bytes =
+static constexpr std::ptrdiff_t data_size_jump_in_bytes =
     combine_offset_jump_in_bytes + 8;
+static constexpr std::ptrdiff_t contributed_metadata_jump_in_bytes =
+    data_size_jump_in_bytes + 4;
 // Note: since the contributed_metadata is only 8 bits (1 byte), the "next"
 // thing would no longer be 8-byte aligned, so we probably want to push this
 // metadata to always be the last thing we store.
@@ -247,6 +249,18 @@ auto get_combine_function_pointer(const Message_t& message)
                    combine_offset_jump_in_bytes)) +
                anchor_ptr.bits;
   return f_ptr.f;
+}
+
+void set_data_size(Message_t& message, const std::uint32_t data_size) {
+  *reinterpret_cast<std::uint32_t*>(
+      std::next(reinterpret_cast<std::byte*>(message.get_header()),
+                data_size_jump_in_bytes)) = data_size;
+}
+
+std::uint32_t get_data_size(Message_t& message) {
+  return *reinterpret_cast<const std::uint32_t*>(
+      std::next(reinterpret_cast<const std::byte*>(message.get_header()),
+                data_size_jump_in_bytes));
 }
 
 std::ostream& operator<<(std::ostream& os, const Contribution contribution) {
@@ -579,6 +593,7 @@ void test_set_and_get_id() {
 void test_set_and_get_data_offset() {
   INFO("Test set_data_offset and get_data_offset");
   const std::uint32_t dummy_offset = 305419896;  // Example: 123456789
+  const std::uint32_t dummy_size = 182739;
   Message_t message =
       create_message(rts::detail::MemberFunctionPtr{}, 0, 0, 0, 0, 0, false,
                      MessageType::Reduction, std::tuple<>{});
@@ -588,6 +603,8 @@ void test_set_and_get_data_offset() {
   CHECK(get_data_pointer(message) ==
         std::next(reinterpret_cast<std::byte*>(message.get_header()),
                   dummy_offset));
+  set_data_size(message, dummy_size);
+  CHECK(get_data_size(message) == dummy_size);
 }
 
 void test_set_and_get_callback_offset() {

@@ -272,6 +272,30 @@ const std::byte* get_data_pointer(const Message_t& message);
 /// @}
 
 /*!
+ * \brief Sets the size of the reduction data in a reduction message.
+ *
+ * This function stores the size (in bytes) of the reduction data within the
+ * message metadata. This information is used to correctly interpret and
+ * extract the reduction data from the message buffer.
+ *
+ * \param message The reduction message in which to set the data size.
+ * \param data_size The size of the reduction data in bytes.
+ */
+void set_data_size(Message_t& message, std::uint32_t data_size);
+
+/*!
+ * \brief Retrieves the size of the reduction data from a reduction message.
+ *
+ * This function reads the size (in bytes) of the reduction data from the
+ * message metadata. This allows code to determine how much data is stored
+ * in the reduction message.
+ *
+ * \param message The reduction message from which to retrieve the data size.
+ * \return The size of the reduction data in bytes.
+ */
+std::uint32_t get_data_size(Message_t& message);
+
+/*!
  * \brief Sets the callback offset in the data portion of a reduction message.
  *
  * The callback offset indicates the byte offset to the post-reduction
