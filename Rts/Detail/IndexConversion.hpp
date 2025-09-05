@@ -7,7 +7,64 @@
 #include <cstdint>
 #include <memory>
 
+#include "Rts/IsCollection.hpp"
+
 namespace rts::detail {
+/*!
+ * \brief Helper struct to determine the collection index type for a parallel
+ * component.
+ *
+ * This struct is used internally to select the appropriate type for the
+ * collection index based on whether the given parallel component is a
+ * collection. If the boolean template parameter `S` is true, the type alias `f`
+ * resolves to the `rts_collection_index` type defined by the parallel
+ * component. Otherwise, it defaults to `int`.
+ *
+ * \tparam S Boolean value indicating whether the parallel component is a
+ * collection.
+ *
+ * \see get_collection_index
+ */
+template <bool S>
+struct get_collection_index_impl {
+  /*!
+   * \brief Type alias for the collection index type.
+   *
+   * If the parallel component is a collection, this resolves to the
+   * `rts_collection_index` type defined by the component.
+   *
+   * \tparam ParallelComponent The parallel component type.
+   */
+  template <class ParallelComponent>
+  using f = typename ParallelComponent::rts_collection_index;
+};
+
+/// \cond
+template <>
+struct get_collection_index_impl<false> {
+  template <class ParallelComponent>
+  using f = int;
+};
+/// \endcond
+
+/*!
+ * \brief Type alias for obtaining the collection index type of a parallel
+ * component.
+ *
+ * This type alias resolves to the type used as the collection index for a given
+ * parallel component. If the parallel component is a collection, it uses the
+ * `rts_collection_index` type defined by the component. Otherwise, it defaults
+ * to `int`.
+ *
+ * \tparam ParallelComponent The parallel component type for which to obtain the
+ *         collection index type.
+ *
+ * \see rts::is_collection
+ */
+template <class ParallelComponent>
+using get_collection_index = typename get_collection_index_impl<
+    is_collection_v<ParallelComponent>>::template f<ParallelComponent>;
+
 /*!
  * \brief Converts a user-defined collection index to an internal 64-bit
  * representation.
