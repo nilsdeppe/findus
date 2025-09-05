@@ -255,6 +255,22 @@ void set_data_offset(Message_t& message, std::uint32_t data_offset);
  */
 std::uint32_t get_data_offset(const Message_t& message);
 
+/// @{
+/*!
+ * \brief Returns a pointer to the reduction data in a reduction message.
+ *
+ * This function computes and returns a pointer to the start of the reduction
+ * data within the message buffer. The pointer can be used to access or
+ * manipulate the reduction data directly.
+ *
+ * \param message The reduction message containing the data.
+ * \return Pointer to the start of the reduction data.
+ */
+std::byte* get_data_pointer(Message_t& message);
+
+const std::byte* get_data_pointer(const Message_t& message);
+/// @}
+
 /*!
  * \brief Sets the callback offset in the data portion of a reduction message.
  *

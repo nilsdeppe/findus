@@ -179,6 +179,14 @@ std::uint32_t get_data_offset(const Message_t& message) {
                 data_offset_jump_in_bytes));
 }
 
+std::byte* get_data_pointer(Message_t& message) {
+  return std::next(message.message.get(), get_data_offset(message));
+}
+
+const std::byte* get_data_pointer(const Message_t& message) {
+  return std::next(message.message.get(), get_data_offset(message));
+}
+
 void set_callback_offset(Message_t& message,
                          const std::uint32_t callback_offset) {
   static_assert(callback_offset_jump_in_bytes + alignof(MessageHeader) >=
@@ -576,6 +584,10 @@ void test_set_and_get_data_offset() {
                      MessageType::Reduction, std::tuple<>{});
   set_data_offset(message, dummy_offset);
   CHECK(get_data_offset(message) == dummy_offset);
+  CHECK(get_data_pointer(message) == get_data_pointer(std::as_const(message)));
+  CHECK(get_data_pointer(message) ==
+        std::next(reinterpret_cast<std::byte*>(message.get_header()),
+                  dummy_offset));
 }
 
 void test_set_and_get_callback_offset() {
