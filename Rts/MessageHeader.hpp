@@ -84,6 +84,11 @@ struct alignas(hardware_info::hardware_destructive_interference_size)
   const detail::MemberFunctionPtr& member_function_ptr() const {
     return member_function_ptr_;
   }
+
+  /// \brief Set the member function pointer.
+  void member_function_ptr(const detail::MemberFunctionPtr& pointer) {
+    member_function_ptr_ = pointer;
+  }
   /// \brief The index for the type of parallel component/distributed object.
   std::uint32_t distributed_object_index() const {
     return distributed_object_index_;
