@@ -575,6 +575,7 @@ Message_t create_message(
   // Set metadata using reduction helpers
   set_id(message, reduction_id);
   set_data_offset(message, static_cast<std::uint32_t>(data_offset));
+  set_data_size(message, sizeof(DataTuple));
   set_callback_offset(message, static_cast<std::uint32_t>(callback_offset));
 
   return message;
