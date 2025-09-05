@@ -10,6 +10,8 @@
 #include <doctest/doctest.h>
 #include <initializer_list>
 
+#include "Rts/DistributedObjectCollection.hpp"
+
 namespace rts::detail {
 namespace {
 struct TestUserIndex {
@@ -39,9 +41,26 @@ struct TestUserIndex {
 };
 
 // For static_assert in from_internal
-struct DummyParallelComponentForIndexConversion {
+struct DummyParallelComponentForIndexConversion
+    : rts::DistributedObjectCollection<
+          DummyParallelComponentForIndexConversion> {
   using rts_collection_index = TestUserIndex;
 };
+
+struct DummyComponent1
+    : rts::DistributedObject<DummyParallelComponentForIndexConversion> {
+  using rts_collection_index = TestUserIndex;
+};
+
+struct DummyComponent2 {
+  using rts_collection_index = TestUserIndex;
+};
+
+static_assert(std::is_same_v<
+              get_collection_index<DummyParallelComponentForIndexConversion>,
+              TestUserIndex>);
+static_assert(std::is_same_v<get_collection_index<DummyComponent1>, int>);
+static_assert(std::is_same_v<get_collection_index<DummyComponent2>, int>);
 }  // namespace
 
 TEST_CASE("UserIndexToFromInternalIndex") {
