@@ -272,6 +272,14 @@ void set_contributed_metadata(Message_t& message,
       static_cast<std::uint8_t>(contribution);
 }
 
+void unset_contributed_metadata(Message_t& message,
+                                const Contribution contribution) {
+  *reinterpret_cast<std::uint8_t*>(
+      std::next(reinterpret_cast<std::byte*>(message.get_header()),
+                contributed_metadata_jump_in_bytes)) &=
+      ~static_cast<std::uint8_t>(contribution);
+}
+
 bool get_contributed_metadata(const Message_t& message,
                               const Contribution contribution) {
   return static_cast<bool>(
@@ -287,7 +295,10 @@ bool get_contributed_metadata(const Message_t& message,
 
 #if defined(RTS_ENABLE_TESTING)
 
+#include <bitset>
 #include <doctest/doctest.h>
+
+#include "Rts/DistributedObjectCollection.hpp"
 
 namespace rts {
 namespace {
@@ -768,6 +779,9 @@ void test_contribution_metadata() {
         distributed_object_index, reduction_id, data_tuple, callback,
         MessageType::Reduction);
 
+    const std::string mask_string = std::bitset<8>{mask}.to_string();
+    CAPTURE(mask_string);
+
     // Zero metadata before setting flags
     zero_contributed_metadata(message);
 
@@ -780,15 +794,46 @@ void test_contribution_metadata() {
 
     // Check each flag
     for (size_t i = 0; i < flags.size(); ++i) {
+      const std::string bits_string =
+          std::bitset<8>{
+              *reinterpret_cast<std::uint8_t*>(std::next(
+                  reinterpret_cast<std::byte*>(message.get_header()),
+                  rts::reduction::contributed_metadata_jump_in_bytes))}
+              .to_string();
+      CAPTURE(bits_string);
       const bool should_be_set = (mask bitand (0b1 << i)) != 0;
       CHECK(get_contributed_metadata(message, flags[i]) == should_be_set);
     }
 
     // Check that no extra bits are set
-    const std::uint8_t stored = *reinterpret_cast<std::uint8_t*>(
-        std::next(reinterpret_cast<std::byte*>(message.get_header()),
-                  rts::reduction::contributed_metadata_jump_in_bytes));
-    CHECK((stored bitand ~0b11111) == 0);  // Only lower 5 bits should be set
+    CHECK((*reinterpret_cast<std::uint8_t*>(std::next(
+               reinterpret_cast<std::byte*>(message.get_header()),
+               rts::reduction::contributed_metadata_jump_in_bytes)) bitand
+           ~0b11111) == 0);  // Only lower 5 bits should be set
+
+    // Unset flags according to mask
+    for (size_t i = 0; i < flags.size(); ++i) {
+      if (mask bitand (0b1 << i)) {
+        unset_contributed_metadata(message, flags[i]);
+      }
+    }
+    // Check each flag was unset
+    for (size_t i = 0; i < flags.size(); ++i) {
+      const std::string bits_string =
+          std::bitset<8>{
+              *reinterpret_cast<std::uint8_t*>(std::next(
+                  reinterpret_cast<std::byte*>(message.get_header()),
+                  rts::reduction::contributed_metadata_jump_in_bytes))}
+              .to_string();
+      CAPTURE(bits_string);
+      CHECK_FALSE(get_contributed_metadata(message, flags[i]));
+    }
+
+    // Check that no extra bits are set
+    CHECK((*reinterpret_cast<std::uint8_t*>(std::next(
+               reinterpret_cast<std::byte*>(message.get_header()),
+               rts::reduction::contributed_metadata_jump_in_bytes)) bitand
+           ~0b11111) == 0);  // Only lower 5 bits should be set
   }
 }
 }  // namespace
