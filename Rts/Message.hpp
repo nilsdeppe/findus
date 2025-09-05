@@ -183,13 +183,13 @@ Message_t create_broadcast_to_message(
  * \param data_ptr Pointer to the data to copy into the message.
  * \return Message_t containing the allocated buffer with header and data.
  */
-Message_t create_local_invoke_message(
+Message_t create_message(
     const rts::detail::MemberFunctionPtr& member_function_ptr,
     std::uint64_t collection_index, std::uint32_t distributed_object_index,
     std::int32_t source_process_id, std::int32_t destination_process_id,
     std::uint64_t quiescence_detection_sweep_number, bool was_serialized,
-    std::uint64_t data_alignment, std::uint64_t data_size,
-    const void* data_ptr);
+    const MessageType message_type, std::uint64_t data_alignment,
+    std::uint64_t data_size, const void* data_ptr);
 
 namespace reduction {
 /*!
