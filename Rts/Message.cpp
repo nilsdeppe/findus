@@ -258,6 +258,13 @@ std::ostream& operator<<(std::ostream& os, const Contribution contribution) {
   }
 }
 
+bool message_ready(const Message_t& message) {
+  return std::all_of(core_contributed.begin(), core_contributed.end(),
+                     [&message](const Contribution cont) {
+                       return get_contributed_metadata(message, cont);
+                     });
+}
+
 void zero_contributed_metadata(Message_t& message) {
   *reinterpret_cast<std::uint8_t*>(
       std::next(reinterpret_cast<std::byte*>(message.get_header()),
@@ -768,6 +775,14 @@ void test_contribution_metadata() {
       Contribution::parent_has_local_contributions,
       Contribution::parents_other_child_has_contributions};
 
+  const std::uint8_t all_contributed_mask =
+      static_cast<std::uint8_t>(Contribution::self_contributed) bitor
+      static_cast<std::uint8_t>(Contribution::left_child_contributed) bitor
+      static_cast<std::uint8_t>(Contribution::right_child_contributed);
+  const std::string all_contributed_string =
+      std::bitset<8>{all_contributed_mask}.to_string();
+  CAPTURE(all_contributed_string);
+
   // There are 2^5 = 32 possible combinations
   for (std::uint8_t mask = 0; mask < 32; ++mask) {
     // Create a message using the recommended pattern
@@ -804,6 +819,9 @@ void test_contribution_metadata() {
       const bool should_be_set = (mask bitand (0b1 << i)) != 0;
       CHECK(get_contributed_metadata(message, flags[i]) == should_be_set);
     }
+
+    CHECK(message_ready(message) ==
+          ((all_contributed_mask bitand mask) == all_contributed_mask));
 
     // Check that no extra bits are set
     CHECK((*reinterpret_cast<std::uint8_t*>(std::next(

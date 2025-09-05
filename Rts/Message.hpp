@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstring>
 #include <iosfwd>
@@ -363,6 +364,16 @@ enum class Contribution : std::uint8_t {
 
 /// \brief Stream operator for `Contribution`.
 std::ostream& operator<<(std::ostream& os, Contribution contribution);
+
+/// \brief Array of the self and child contributed flags used to check if a
+/// message has all necessary contributed data.
+constexpr static std::array<Contribution, 3> core_contributed{
+    Contribution::self_contributed, Contribution::left_child_contributed,
+    Contribution::right_child_contributed};
+
+/// \brief Returns `true` if all of the `core_contributed` flags are set in the
+/// message.
+bool message_ready(const Message_t& message);
 
 /*!
  * \brief Zeros out the contribution metadata in a reduction message.
