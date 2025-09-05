@@ -1395,10 +1395,6 @@ DistributedTaskDriver& create_distributed_task_driver(
   task_driver->attach_debugger();
   return *task_driver.get();
 }
-
-namespace detail {
-uint32_t distributed_object_index_counter = 0;
-}  // namespace detail
 }  // namespace rts
 
 // Callback.cpp equivalent

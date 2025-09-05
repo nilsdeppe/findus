@@ -30,6 +30,7 @@
 #include "Rts/Detail/DistributedObjectIndex.hpp"
 #include "Rts/Detail/GetOutput.hpp"
 #include "Rts/Detail/IndexConversion.hpp"
+#include "Rts/DistributedObjectIndex.hpp"
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/IsCollection.hpp"
 #include "Rts/Message.hpp"
@@ -40,23 +41,6 @@
 
 namespace rts {
 namespace detail {
-/*!
- * \brief Counter used to assign each distributed object a unique integer ID.
- *
- * The function `detail::distributed_object_index()` gives the resulting index
- * for a parallel component.
- */
-extern uint32_t distributed_object_index_counter;
-
-/*!
- * \brief Returns the unique ID for the parallel component.
- */
-template <typename ParallelComponent>
-uint32_t distributed_object_index() {
-  static uint32_t index = (distributed_object_index_counter++);
-  return index;
-}
-
 /*!
  * \brief Class used to track argument types and their index in the tuple used
  * to store data.
