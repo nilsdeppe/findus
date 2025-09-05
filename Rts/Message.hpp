@@ -386,6 +386,17 @@ void zero_contributed_metadata(Message_t& message);
 void set_contributed_metadata(Message_t& message, Contribution contribution);
 
 /*!
+ * \brief Unsets a specific contribution flag in the reduction message metadata.
+ *
+ * This function unsets the specified `Contribution` flag in the message's
+ * metadata block, marking the corresponding contribution state as inactive.
+ *
+ * \param message The reduction message to update.
+ * \param contribution The `Contribution` flag to unset.
+ */
+void unset_contributed_metadata(Message_t& message, Contribution contribution);
+
+/*!
  * \brief Returns true if the specified `Contribution` flag is set in the
  * message.
  *
