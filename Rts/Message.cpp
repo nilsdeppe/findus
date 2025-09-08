@@ -329,6 +329,7 @@ bool get_contributed_metadata(const Message_t& message,
 #include <doctest/doctest.h>
 
 #include "Rts/DistributedObjectCollection.hpp"
+#include "Rts/Reduction.hpp"
 
 namespace rts {
 namespace {
@@ -620,7 +621,10 @@ void test_set_and_get_callback_offset() {
 
 struct DummyAction {};
 
-struct DummyComponent {};
+struct DummyComponent
+    : public rts::DistributedObjectCollection<DummyComponent> {
+  using rts_collection_index = std::int64_t;
+};
 
 template <class Action, class Component, class... Args>
 struct DummyCallback {
@@ -633,7 +637,7 @@ struct DummyCallback {
 
 void test_create_message() {
   using DataTuple = std::tuple<int, double>;
-  using CallbackType = DummyCallback<DummyAction, DummyComponent, int, double>;
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
 
   const std::uint32_t distributed_object_index = 42;
   const std::uint64_t reduction_id = 123456789;
@@ -699,7 +703,7 @@ void test_create_message() {
 
 void test_get_callback_address_and_get_callback() {
   using DataTuple = std::tuple<int, double>;
-  using CallbackType = DummyCallback<DummyAction, DummyComponent, int, double>;
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
 
   const std::uint32_t distributed_object_index = 7;
   const std::uint64_t reduction_id = 12345;
@@ -758,7 +762,7 @@ void test_set_and_get_combine_function_pointer() {
 
   // Create a reduction message
   using DataTuple = std::tuple<int, double>;
-  using CallbackType = DummyCallback<DummyAction, DummyComponent, int, double>;
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
   const std::uint32_t distributed_object_index = 7;
   const std::uint64_t reduction_id = 12345;
   DataTuple data_tuple{42, 3.14};
@@ -819,7 +823,7 @@ void test_contribution_metadata() {
     const std::uint32_t distributed_object_index = 1;
     const std::uint64_t reduction_id = 42;
     const std::tuple<int> data_tuple{0};
-    DummyCallback<DummyAction, DummyComponent, int> callback{0};
+    ReductionCallback<DummyAction, DummyComponent> callback{0};
     Message_t message = create_message<DummyAction, DummyComponent>(
         distributed_object_index, reduction_id, data_tuple, callback,
         MessageType::Reduction);

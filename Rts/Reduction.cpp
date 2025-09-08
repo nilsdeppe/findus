@@ -117,9 +117,7 @@ void test_combine_function() {
   DataTuple data1{5, 4.0};
 
   // Dummy callback (not used in combine)
-  struct DummyAction {};
-  struct DummyComponent {};
-  using CallbackType = DummyCallback<DummyAction, DummyComponent, int, double>;
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
   CallbackType callback{0};
 
   // Create two messages
@@ -159,7 +157,7 @@ void test_data_handler_parallel(const size_t num_reductions,
   INFO("Test DataHandler with " << num_reductions << " reductions");
 
   using DataTuple = std::tuple<int, double>;
-  using CallbackType = DummyCallback<DummyAction, DummyComponent, int, double>;
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
 
   const size_t rng_seed = 4444;
   const std::uint32_t max_per_thread_contributions = 100;
@@ -185,7 +183,7 @@ void test_data_handler_parallel(const size_t num_reductions,
       const int int_value = 1000 * int(r) + i;
       const double double_value = 0.5 * int_value;
       const InsertAction result = handler.insert_or_combine<SumOp>(
-          distributed_object_index, r + 1, CallbackType(99 + int(r)), int_value,
+          distributed_object_index, r + 1, CallbackType{}, int_value,
           double_value);
       // First insert should be Insert, others Combine
       if (result == InsertAction::Insert) {
@@ -228,7 +226,6 @@ void test_data_handler_parallel(const size_t num_reductions,
     // Check the callback
     const CallbackType* cb = reduction::get_callback<CallbackType>(msg);
     CHECK(cb != nullptr);
-    CHECK(cb->value == 99 + int(r));
   }
 
   // Popping again should throw
@@ -241,13 +238,13 @@ void test_data_handler_parallel(const size_t num_reductions,
 
 void test_data_handler_exceptions() {
   INFO("Test DataHandler throws for invalid reduction_id and full container");
-  using CallbackType = DummyCallback<DummyAction, DummyComponent, int, double>;
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
 
   DataHandler handler(2);
 
   // reduction_id == 0 should throw
   CHECK_THROWS_WITH_AS(
-      handler.insert_or_combine<SumOp>(42, 0, CallbackType(1), 1, 2.0),
+      handler.insert_or_combine<SumOp>(42, 0, CallbackType{}, 1, 2.0),
       "The key value of 0 is not supported in reductions because it is used as "
       "a sentinel.",
       rts::Exception);

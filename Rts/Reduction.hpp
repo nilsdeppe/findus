@@ -244,7 +244,6 @@ class alignas(rts::hardware_info::hardware_destructive_interference_size)
    * \tparam BinaryOp The binary operation used for combining data.
    * \tparam BroadcastAction The action type for the broadcast.
    * \tparam BroadcastParallelComponent The parallel component type.
-   * \tparam ReductionCallback The callback type template.
    * \tparam Args The types of the reduction data arguments.
    * \param distributed_object_index The index of the distributed object.
    * \param reduction_id The unique reduction ID.
@@ -256,12 +255,10 @@ class alignas(rts::hardware_info::hardware_destructive_interference_size)
    * \throws `rts::Exception` if the reduction ID is zero or if insertion fails.
    */
   template <class BinaryOp, class BroadcastAction,
-            class BroadcastParallelComponent,
-            template <class...> class ReductionCallback, class... Args>
+            class BroadcastParallelComponent, class... Args>
   InsertAction insert_or_combine(
       std::uint32_t distributed_object_index, std::uint64_t reduction_id,
-      ReductionCallback<BroadcastAction, BroadcastParallelComponent,
-                        std::decay_t<Args>...>
+      ReductionCallback<BroadcastAction, BroadcastParallelComponent>
           reduction_callback,
       Args&&... args);
 
@@ -313,13 +310,11 @@ class alignas(rts::hardware_info::hardware_destructive_interference_size)
 };
 
 template <class BinaryOp, class BroadcastAction,
-          class BroadcastParallelComponent,
-          template <class...> class ReductionCallback, class... Args>
+          class BroadcastParallelComponent, class... Args>
 InsertAction DataHandler::insert_or_combine(
     const std::uint32_t distributed_object_index,
     const std::uint64_t reduction_id,
-    ReductionCallback<BroadcastAction, BroadcastParallelComponent,
-                      std::decay_t<Args>...>
+    ReductionCallback<BroadcastAction, BroadcastParallelComponent>
         reduction_callback,
     Args&&... args) {
   if (reduction_id == 0) {
