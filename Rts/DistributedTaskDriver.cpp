@@ -1951,6 +1951,57 @@ void test_invoke(DistributedTaskDriver& driver) {
         expected_message_broadcast_to.c_str(), rts::Exception);
   }
 
+  {
+    // Check that we can remove and then re-add a collection element
+    const std::uint64_t element_to_remove = 44;
+    driver.barrier();
+    driver.remove_parallel_component_collection<CollectionComponent>(
+        element_to_remove);
+    driver.insert_barrier();
+
+    REQUIRE(driver.collection_ids_and_locations<CollectionComponent>().find(
+                element_to_remove) ==
+            driver.collection_ids_and_locations<CollectionComponent>().end());
+
+    {
+      const std::vector<std::uint64_t>& elements_on_pid =
+          driver.collection_ids_on_process<CollectionComponent>(
+              all_indices.at(element_to_remove));
+      CHECK(std::count(elements_on_pid.begin(), elements_on_pid.end(),
+                       element_to_remove) == 0);
+    }
+
+    driver.barrier();
+    driver.insert_parallel_component_collection<CollectionComponent>(
+        element_to_remove, all_indices.at(element_to_remove));
+    driver.insert_barrier();
+
+    const auto it =
+        driver.collection_ids_and_locations<CollectionComponent>().find(
+            element_to_remove);
+    REQUIRE(it !=
+            driver.collection_ids_and_locations<CollectionComponent>().end());
+    CHECK(it->second.process_id == all_indices.at(element_to_remove));
+    {
+      const std::vector<std::uint64_t>& elements_on_pid =
+          driver.collection_ids_on_process<CollectionComponent>(
+              all_indices.at(element_to_remove));
+      CHECK(std::count(elements_on_pid.begin(), elements_on_pid.end(),
+                       element_to_remove) == 1);
+    }
+    driver.barrier();
+    {
+      const std::string expected_message{
+          "Unable to remove collection element 10000 from parallel component " +
+          CollectionComponent::name()};
+      CHECK_THROWS_WITH_AS(
+          driver.remove_parallel_component_collection<CollectionComponent>(
+              10000),
+          expected_message.c_str(), rts::Exception);
+    }
+    driver.insert_barrier();
+  }
+
   driver.launch_threads();
   // Test that we can safely stop and start threads:
   driver.run_to_quiescence();
