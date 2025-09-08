@@ -234,6 +234,29 @@ class DistributedTaskDriver {
       int node_to_insert_on, Args&&... args);
 
   /*!
+   * \brief Removes an element from a collection parallel component.
+   *
+   * This function removes a specific element, identified by its collection
+   * index, from a collection parallel component that was previously inserted
+   * into the DistributedTaskDriver. The element is removed from both the
+   * internal collection mapping and the list of collection indices for the
+   * corresponding process.
+   *
+   * \tparam ParallelComponent The collection parallel component type.
+   * \param user_index The collection index of the element to remove.
+   *
+   * \throws Exception if the parallel component is not registered, is not a
+   *         collection, or if the specified element does not exist.
+   *
+   * \note This function must be called in insert mode (before
+   * insert_barrier()). All processes must remove the same elements to maintain
+   * consistency.
+   */
+  template <class ParallelComponent>
+  void remove_parallel_component_collection(
+      const typename ParallelComponent::rts_collection_index& user_index);
+
+  /*!
    * \brief Returns a vector of vectors containing the collection indices for
    * each process.
    *
@@ -914,6 +937,53 @@ void DistributedTaskDriver::insert_parallel_component_collection(
   distributed_objects_[index]
       .ids_per_process[static_cast<size_t>(node_to_insert_on)]
       .push_back(collection_index);
+}
+
+template <class ParallelComponent>
+void DistributedTaskDriver::remove_parallel_component_collection(
+    const typename ParallelComponent::rts_collection_index& user_index) {
+  in_insert_mode_ = true;
+  static_assert(
+      rts::is_collection_v<ParallelComponent>,
+      "To insert into a collection use insert_parallel_component_collection");
+  static_assert(sizeof(typename ParallelComponent::rts_collection_index) ==
+                sizeof(std::uint64_t));
+  const std::uint32_t object_index =
+      detail::distributed_object_index<ParallelComponent>();
+  if (object_index >= distributed_objects_.size()) {
+    throw rts::Exception{"Requested to remove distributed object with index " +
+                         std::to_string(object_index) + " and name " +
+                         ParallelComponent::name() + " was never inserted."};
+  }
+  if (distributed_objects_[object_index].objects.index() !=
+      detail::Collection) {
+    // We should never hit this exception since the static_assert should
+    // prevent it. However, an insertion bug could allow it to happen.
+    throw Exception{
+        "Cannot retrieve the local index from the parallel component " +
+        ParallelComponent::name() + " because it is of type " +
+        detail::get_output(static_cast<detail::DistributedObjectIndex>(
+            distributed_objects_[object_index].objects.index())) +
+        " but it should be a collection."};
+  }
+  const std::uint64_t collection_index = detail::to_internal(user_index);
+  DistributedOjectClassHolder::Map_t& collection =
+      std::get<1>(distributed_objects_[object_index].objects);
+  if (auto it = collection.find(collection_index); it != collection.end()) {
+    if (it->second.process_id == current_node_id()) {
+      --distributed_objects_[object_index].number_of_local_objects;
+    }
+    std::vector<std::uint64_t>& ids_on_pid =
+        distributed_objects_[object_index]
+            .ids_per_process[static_cast<size_t>(it->second.process_id)];
+    ids_on_pid.erase(
+        std::find(ids_on_pid.begin(), ids_on_pid.end(), collection_index));
+    collection.erase(it);
+  } else {
+    throw Exception{"Unable to remove collection element " +
+                    std::to_string(collection_index) +
+                    " from parallel component " + ParallelComponent::name()};
+  }
 }
 
 template <class ParallelComponent>
