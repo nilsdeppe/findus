@@ -195,6 +195,10 @@ Message_t create_message(
     std::uint64_t data_size, const void* data_ptr);
 
 namespace reduction {
+/// \brief The unique process ID used to mark a message as going from a local
+/// thread to the local communication thread and is part of a reduction.
+constexpr int reduction_process_id = -2;
+
 /*!
  * \brief The size in bytes of the metadata block following the MessageHeader in
  * a reduction message.
@@ -558,8 +562,9 @@ Message_t create_message(
   // Placement-new the header
   MessageHeader* header = new (buffer.get()) MessageHeader(
       {0, 0}, MessageHeader::reduction_message_collection_index(), total_size,
-      distributed_object_index, data_offset, -1, -1,
-      std::numeric_limits<std::uint64_t>::max(), false, message_type);
+      distributed_object_index, data_offset, reduction_process_id,
+      reduction_process_id, std::numeric_limits<std::uint64_t>::max(), false,
+      message_type);
   header->set_data_alignment(alignof(DataTuple));
 
   // Zero the metadata block for safety/future use
