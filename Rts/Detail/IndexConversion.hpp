@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 
 #include "Rts/IsCollection.hpp"
@@ -83,6 +84,7 @@ using get_collection_index = typename get_collection_index_impl<
  */
 template <class IndexType>
 std::uint64_t to_internal(const IndexType& collection_index) {
+  static_assert(sizeof(IndexType) == sizeof(std::uint64_t));
   return *reinterpret_cast<const std::uint64_t*>(
       std::addressof(collection_index));
 }
