@@ -8,17 +8,97 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <vector>
 
+#include "Rts/Detail/IndexConversion.hpp"
+#include "Rts/DistributedObjectIndex.hpp"
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/HardwareInfo.hpp"
+#include "Rts/IsCollection.hpp"
 #include "Rts/Message.hpp"
 #include "Rts/MessageHeader.hpp"
 
 namespace rts::reduction {
+namespace detail {
+struct ReductionCallbackImpl {
+  std::uint64_t collection_index_{std::numeric_limits<std::uint64_t>::max()};
+  std::uint32_t distributed_object_index_{
+      std::numeric_limits<std::uint32_t>::max()};
+  MessageType message_type_{MessageType::Uninitialized};
+};
+}  // namespace detail
+
+/*!
+ * \brief Callback object invoked after a reduction operation completes.
+ *
+ * The ReductionCallback class encapsulates the information needed to perform
+ * a post-reduction action, such as invoking a specific action on a parallel
+ * component or broadcasting the result to all elements of a collection.
+ *
+ * \tparam Action The action to be invoked after the reduction completes.
+ * \tparam ParallelComponent The parallel component on which the action will be
+ *         invoked.
+ *
+ * Usage:
+ * - For a broadcast reduction callback, use the default constructor.
+ * - For an invoke reduction callback (targeting a specific collection element),
+ *   use the constructor that takes a collection index.
+ *
+ */
+template <class Action, class ParallelComponent>
+class ReductionCallback : public detail::ReductionCallbackImpl {
+ public:
+  /// \brief Create a Broadcast reduction callback.
+  ReductionCallback();
+
+  /// \brief Create an Invoke reduction callback.
+  template <class T = ParallelComponent>
+  explicit ReductionCallback(
+      rts::detail::get_collection_index<T> collection_index);
+};
+
+template <class Action, class ParallelComponent>
+template <class T>
+ReductionCallback<Action, ParallelComponent>::ReductionCallback(
+    const rts::detail::get_collection_index<T> collection_index)
+    : detail::ReductionCallbackImpl{
+          [](const rts::detail::get_collection_index<T> index) {
+            if constexpr (is_collection_v<ParallelComponent>) {
+              return rts::detail::to_internal(index);
+            } else {
+              return static_cast<std::uint64_t>(index);
+            }
+          }(collection_index),
+          rts::detail::distributed_object_index<ParallelComponent>(),
+          MessageType::Invoke} {}
+
+template <class Action, class ParallelComponent>
+ReductionCallback<Action, ParallelComponent>::ReductionCallback()
+    : detail::ReductionCallbackImpl{
+          MessageHeader::no_collection_index(),
+          rts::detail::distributed_object_index<ParallelComponent>(),
+          MessageType::Broadcast} {}
+
+/// \brief Equivalence operator for `ReductionCallback`.
+template <class Action, class ParallelComponent>
+bool operator==(const ReductionCallback<Action, ParallelComponent>& lhs,
+                const ReductionCallback<Action, ParallelComponent>& rhs) {
+  return lhs.collection_index_ == rhs.collection_index_ and
+         lhs.message_type_ == rhs.message_type_;
+}
+
+/// \brief Inequivalence operator for `ReductionCallback`.
+template <class Action, class ParallelComponent>
+bool operator!=(const ReductionCallback<Action, ParallelComponent>& lhs,
+                const ReductionCallback<Action, ParallelComponent>& rhs) {
+  return not(lhs == rhs);
+}
+
 /*!
  * \brief Indicates the result of attempting to insert or combine reduction
  * data.

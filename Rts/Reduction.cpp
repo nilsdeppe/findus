@@ -67,6 +67,7 @@ std::optional<std::uint64_t> DataHandler::index_of(
 #include <thread>
 
 #include "Rts/Detail/GetOutput.hpp"
+#include "Rts/DistributedObjectCollection.hpp"
 #include "Rts/Message.hpp"
 #include "Rts/Reduction.hpp"
 
@@ -82,7 +83,10 @@ void test_insert_action_stream_operator() {
 }
 
 struct DummyAction {};
-struct DummyComponent {};
+struct DummyComponent
+    : public rts::DistributedObjectCollection<DummyComponent> {
+  using rts_collection_index = std::int64_t;
+};
 
 template <class Action, class Component, class... Args>
 struct DummyCallback {
@@ -256,6 +260,33 @@ void test_data_handler_exceptions() {
   CHECK(handler.insert_or_combine<SumOp>(42, 3, CallbackType(3), 3, 4.0) ==
         InsertAction::AtCapacity);
 }
+
+void test_reduction_callback() {
+  using Callback = ReductionCallback<DummyAction, DummyComponent>;
+
+  // Test default constructor (Broadcast)
+  const Callback cb_broadcast{};
+  CHECK(cb_broadcast.collection_index_ == MessageHeader::no_collection_index());
+  CHECK(cb_broadcast.distributed_object_index_ ==
+        rts::detail::distributed_object_index<DummyComponent>());
+  CHECK(cb_broadcast.message_type_ == MessageType::Broadcast);
+
+  // Test constructor with collection index (Invoke)
+  const std::int64_t index = 42;
+  const Callback cb_invoke{index};
+  CHECK(cb_invoke.collection_index_ == rts::detail::to_internal(index));
+  CHECK(cb_invoke.distributed_object_index_ ==
+        rts::detail::distributed_object_index<DummyComponent>());
+  CHECK(cb_invoke.message_type_ == MessageType::Invoke);
+
+  // Test equality and inequality
+  const Callback cb_broadcast2{};
+  const Callback cb_invoke2{43};
+  CHECK(cb_broadcast == cb_broadcast2);
+  CHECK(cb_broadcast != cb_invoke);
+  CHECK(cb_invoke != cb_invoke2);
+  CHECK(cb_invoke == Callback{index});
+}
 }  // namespace
 }  // namespace rts::reduction
 
@@ -267,6 +298,7 @@ TEST_CASE("Reduction") {
     rts::reduction::test_data_handler_parallel(num_reductions);
   }
   rts::reduction::test_data_handler_exceptions();
+  rts::reduction::test_reduction_callback();
 }
 
 #endif
