@@ -71,6 +71,11 @@ void MessageHeader::change_destination_process_id(
   destination_process_id_ = destination_process_id;
 }
 
+void MessageHeader::change_source_process_id(
+    const std::int32_t source_process_id) {
+  source_process_id_ = source_process_id;
+}
+
 void MessageHeader::convert_broadcast_to_invoke(
     const std::uint64_t target_collection_index) {
   if (not is_broadcast() and not is_broadcast_to()) {
@@ -236,6 +241,12 @@ TEST_CASE("MessageHeader") {
         message_header_int->quiescence_detection_sweep_number(111);
         CHECK(message_header_int->quiescence_detection_sweep_number() == 111);
         message_header_int->quiescence_detection_sweep_number(8);
+
+        CHECK(message_header_int->source_process_id() == 2);
+        message_header_int->change_source_process_id(111);
+        CHECK(message_header_int->source_process_id() == 111);
+        message_header_int->change_source_process_id(2);
+        CHECK(message_header_int->source_process_id() == 2);
 
         MessageHeader* message_header_test_class =
             new (buffer.get()) MessageHeader{foo_ptr,

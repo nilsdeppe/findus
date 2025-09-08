@@ -176,6 +176,9 @@ struct alignas(hardware_info::hardware_destructive_interference_size)
   /// destination, which is original set to the self process ID.
   void change_destination_process_id(std::int32_t destination_process_id);
 
+  /// \brief Change the source process ID in the `MessageHeader`.
+  void change_source_process_id(std::int32_t destination_process_id);
+
   /// \brief Convert Broadcast or BroadcastTo message to an Invoke message.
   ///
   /// This is used in broadcast operations where the broadcast message has a
