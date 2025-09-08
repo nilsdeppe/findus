@@ -152,6 +152,12 @@ struct alignas(hardware_info::hardware_destructive_interference_size)
     return quiescence_detection_sweep_number_;
   }
 
+  /// \brief Set the global quiescence detection sweep number.
+  void quiescence_detection_sweep_number(
+      const std::uint64_t quiescence_detection_sweep_number) {
+    quiescence_detection_sweep_number_ = quiescence_detection_sweep_number;
+  }
+
   std::uint32_t data_alignment() const {
     return (data_alignment_mask bitand number_of_bytes_in_message_) >> 52;
   }
