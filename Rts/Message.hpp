@@ -522,18 +522,15 @@ bool get_contributed_metadata(const Message_t& message,
  *     in the message metadata.
  */
 template <class BroadcastAction, class BroadcastParallelComponent,
-          template <class...> class ReductionCallback, class... Args>
+          template <class, class> class ReductionCallback, class... Args>
 Message_t create_message(
     const std::uint32_t distributed_object_index,
     const std::uint64_t reduction_id, std::tuple<Args...> args,
-    ReductionCallback<BroadcastAction, BroadcastParallelComponent,
-                      std::decay_t<Args>...>
-        callback,
+    ReductionCallback<BroadcastAction, BroadcastParallelComponent> callback,
     const MessageType message_type) {
   using DataTuple = std::tuple<Args...>;
   using CallbackType =
-      ReductionCallback<BroadcastAction, BroadcastParallelComponent,
-                        std::decay_t<Args>...>;
+      ReductionCallback<BroadcastAction, BroadcastParallelComponent>;
 
   constexpr std::size_t header_size = sizeof(MessageHeader);
   constexpr std::size_t data_align = alignof(DataTuple);
