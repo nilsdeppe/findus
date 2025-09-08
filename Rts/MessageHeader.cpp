@@ -233,6 +233,10 @@ TEST_CASE("MessageHeader") {
         CHECK(message_header_int->member_function_ptr() == foo_ptr);
         CHECK(message_header_int->member_function_ptr() != bar_ptr);
 
+        message_header_int->quiescence_detection_sweep_number(111);
+        CHECK(message_header_int->quiescence_detection_sweep_number() == 111);
+        message_header_int->quiescence_detection_sweep_number(8);
+
         MessageHeader* message_header_test_class =
             new (buffer.get()) MessageHeader{foo_ptr,
                                              collection_index,
