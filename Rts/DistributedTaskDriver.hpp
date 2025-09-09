@@ -37,6 +37,7 @@
 #include "Rts/MessageHeader.hpp"
 #include "Rts/ParentAndChildren.hpp"
 #include "Rts/QuiescenceDetection.hpp"
+#include "Rts/Reduction.hpp"
 #include "Rts/ThreadPool.hpp"
 
 namespace rts {
@@ -786,11 +787,13 @@ class DistributedTaskDriver {
 
     DistributedOjectClassHolder(
         std::unique_ptr<detail::DistributedObjectBase> in_object,
-        std::string in_name);
+        std::string in_name, size_t number_of_threads,
+        size_t max_simultaneous_reductions);
 
     DistributedOjectClassHolder(
         std::unordered_map<uint64_t, CollectionHolder> in_objects,
-        std::string in_name, size_t number_of_processes);
+        std::string in_name, size_t number_of_processes,
+        size_t number_of_threads, size_t max_simultaneous_reductions);
 
     using variant_t =
         std::variant<std::unique_ptr<detail::DistributedObjectBase>, Map_t>;
@@ -800,6 +803,14 @@ class DistributedTaskDriver {
     std::vector<std::vector<std::uint64_t>> ids_per_process{};
     std::string name;
     int number_of_local_objects{-1};
+    // We hold a unique_ptr<reduction::Handler> since the Handler itself can
+    // be neither copied nor moved, but DistributedOjectClassHolder is stored
+    // in a std::vector where move is a necessary feature. Unfortunately this
+    // adds a single pointer indirection as overhead. It is possible to get
+    // around this if we force users to specify the maximum number of components
+    // on construction and then reserve sufficient space (though we'd likely
+    // need our own very basic/minimal vector implementation).
+    std::unique_ptr<reduction::Handler> reduction_handler{nullptr};
   };
 
   MPI_Comm rts_comm_{};
@@ -836,6 +847,8 @@ class DistributedTaskDriver {
   std::vector<std::vector<int>> per_process_broadcast_to_number_of_elements_{};
   // Special values used for different types of messages.
   static constexpr int broadcast_process_id = -1;
+
+  size_t max_simultaneous_reductions_ = 1024;
 };
 
 template <class ParallelComponent, class... Args>
@@ -853,7 +866,8 @@ void DistributedTaskDriver::insert_parallel_component(Args&&... args) {
   distributed_objects_.emplace_back(
       std::unique_ptr<detail::DistributedObjectBase>{
           std::make_unique<ParallelComponent>(std::forward<Args>(args)...)},
-      ParallelComponent::name());
+      ParallelComponent::name(), static_cast<size_t>(number_of_threads_ + 1),
+      max_simultaneous_reductions_);
   distributed_objects_.back().number_of_local_objects = 1;
   if (index + 1 != distributed_objects_.size()) {
     throw Exception("The index " + std::to_string(index) +
@@ -888,7 +902,8 @@ void DistributedTaskDriver::insert_parallel_component_collection(
     // If we do not have the distributed object collection already inserted,
     // insert it.
     distributed_objects_.emplace_back(Map{}, ParallelComponent::name(),
-                                      number_of_nodes());
+                                      number_of_nodes(), number_of_threads_ + 1,
+                                      max_simultaneous_reductions_);
     distributed_objects_.back().number_of_local_objects = 0;
   }
   if (index + 1 != distributed_objects_.size()) {

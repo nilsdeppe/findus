@@ -1354,15 +1354,22 @@ void DistributedTaskDriver::add_local_broadcast_tasks(
 
 DistributedTaskDriver::DistributedOjectClassHolder::DistributedOjectClassHolder(
     std::unique_ptr<detail::DistributedObjectBase> in_object,
-    std::string in_name)
-    : objects(std::move(in_object)), name(std::move(in_name)) {}
+    std::string in_name, const size_t number_of_threads,
+    const size_t max_simultaneous_reductions)
+    : objects(std::move(in_object)),
+      name(std::move(in_name)),
+      reduction_handler(std::make_unique<reduction::Handler>(
+          number_of_threads, max_simultaneous_reductions)) {}
 
 DistributedTaskDriver::DistributedOjectClassHolder::DistributedOjectClassHolder(
     std::unordered_map<uint64_t, CollectionHolder> in_objects,
-    std::string in_name, const size_t number_of_processes)
+    std::string in_name, const size_t number_of_processes,
+    const size_t number_of_threads, const size_t max_simultaneous_reductions)
     : objects(std::move(in_objects)),
       ids_per_process(number_of_processes),
-      name(std::move(in_name)) {}
+      name(std::move(in_name)),
+      reduction_handler(std::make_unique<reduction::Handler>(
+          number_of_threads, max_simultaneous_reductions)) {}
 
 thread_local std::uint32_t DistributedTaskDriver::thread_id_ =
     std::numeric_limits<std::uint32_t>::max();
