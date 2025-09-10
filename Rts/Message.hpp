@@ -463,6 +463,92 @@ bool get_contributed_metadata(const Message_t& message,
                               Contribution contribution);
 
 /*!
+ * \brief Sets the target process ID in the reduction message metadata.
+ *
+ * Stores the process ID of the parent process to which the reduction message
+ * should be sent during inter-node reduction. Used to route the message up
+ * the process tree.
+ *
+ * \param message The reduction message to update.
+ * \param target_process_id The process ID of the parent process to send to.
+ *
+ * \see get_target_process_id()
+ */
+void set_target_process_id(Message_t& message, std::int32_t target_process_id);
+
+/*!
+ * \brief Gets the target process ID from the reduction message metadata.
+ *
+ * Returns the process ID of the parent process to which the reduction message
+ * should be sent, as set by `set_target_process_id()`.
+ *
+ * \param message The reduction message to query.
+ * \return The process ID of the parent process to send to.
+ *
+ * \see `set_target_process_id()`
+ */
+std::int32_t get_target_process_id(const Message_t& message);
+
+/*!
+ * \brief Sets the expected number of contributions for a reduction message.
+ *
+ * Stores the number of expected contributions (including self) for the
+ * reduction operation in the message metadata. Used to track when all
+ * required contributions have been received at a node in the process tree.
+ *
+ * \param message The reduction message to update.
+ * \param expected_number_of_contributions The number of expected contributions.
+ *
+ * \see `get_expected_number_of_contributions()`
+ */
+void set_expected_number_of_contributions(
+    Message_t& message, std::int32_t expected_number_of_contributions);
+
+/*!
+ * \brief Gets the expected number of contributions from a reduction message.
+ *
+ * Returns the number of expected contributions for the reduction operation,
+ * as set by `set_expected_number_of_contributions()`.
+ *
+ * \param message The reduction message to query.
+ * \return The number of expected contributions.
+ *
+ * \see `set_expected_number_of_contributions()`
+ */
+std::int32_t get_expected_number_of_contributions(const Message_t& message);
+
+/*!
+ * \brief Sets the expected number of root contributions in a reduction message.
+ *
+ * Stores the number of expected contributions to the root process for the
+ * reduction operation. Used when the root process needs to know how many
+ * contributions to expect from all subtrees.
+ *
+ * \param message The reduction message to update.
+ * \param expected_number_of_contributions The number of expected root
+ *        contributions.
+ *
+ * \see `get_expected_number_of_root_contributions()`
+ */
+void set_expected_number_of_root_contributions(
+    Message_t& message, std::int32_t expected_number_of_contributions);
+
+/*!
+ * \brief Gets the expected number of root contributions from a reduction
+ * message.
+ *
+ * Returns the number of expected contributions to the root process for the
+ * reduction operation, as set by `set_expected_number_of_root_contributions()`.
+ *
+ * \param message The reduction message to query.
+ * \return The number of expected root contributions.
+ *
+ * \see `set_expected_number_of_root_contributions()`
+ */
+std::int32_t get_expected_number_of_root_contributions(
+    const Message_t& message);
+
+/*!
  * \brief Creates a reduction message with metadata, data, and callback.
  *
  * This function allocates and constructs a reduction message buffer containing:

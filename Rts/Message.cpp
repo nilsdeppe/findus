@@ -138,6 +138,12 @@ static constexpr std::ptrdiff_t data_size_jump_in_bytes =
     combine_offset_jump_in_bytes + 8;
 static constexpr std::ptrdiff_t contributed_metadata_jump_in_bytes =
     data_size_jump_in_bytes + 4;
+static constexpr std::ptrdiff_t target_parent_jump_in_bytes =
+    contributed_metadata_jump_in_bytes + 4;
+static constexpr std::ptrdiff_t expected_contributions_jump_in_bytes =
+    target_parent_jump_in_bytes + 4;
+static constexpr std::ptrdiff_t root_expected_contributions_jump_in_bytes =
+    expected_contributions_jump_in_bytes + 4;
 // Note: since the contributed_metadata is only 8 bits (1 byte), the "next"
 // thing would no longer be 8-byte aligned, so we probably want to push this
 // metadata to always be the last thing we store.
@@ -319,6 +325,47 @@ bool get_contributed_metadata(const Message_t& message,
       static_cast<std::uint8_t>(contribution));
 }
 
+void set_target_process_id(Message_t& message,
+                           const std::int32_t target_process_id) {
+  *reinterpret_cast<std::int32_t*>(
+      std::next(reinterpret_cast<std::byte*>(message.get_header()),
+                target_parent_jump_in_bytes)) = target_process_id;
+}
+
+std::int32_t get_target_process_id(const Message_t& message) {
+  return *reinterpret_cast<const std::int32_t*>(
+      std::next(reinterpret_cast<const std::byte*>(message.get_header()),
+                target_parent_jump_in_bytes));
+}
+
+void set_expected_number_of_contributions(
+    Message_t& message, const std::int32_t expected_number_of_contributions) {
+  *reinterpret_cast<std::int32_t*>(std::next(
+      reinterpret_cast<std::byte*>(message.get_header()),
+      expected_contributions_jump_in_bytes)) = expected_number_of_contributions;
+}
+
+std::int32_t get_expected_number_of_contributions(const Message_t& message) {
+  return *reinterpret_cast<const std::int32_t*>(
+      std::next(reinterpret_cast<const std::byte*>(message.get_header()),
+                expected_contributions_jump_in_bytes));
+}
+
+void set_expected_number_of_root_contributions(
+    Message_t& message,
+    const std::int32_t expected_number_of_root_contributions) {
+  *reinterpret_cast<std::int32_t*>(
+      std::next(reinterpret_cast<std::byte*>(message.get_header()),
+                root_expected_contributions_jump_in_bytes)) =
+      expected_number_of_root_contributions;
+}
+
+std::int32_t get_expected_number_of_root_contributions(
+    const Message_t& message) {
+  return *reinterpret_cast<const std::int32_t*>(
+      std::next(reinterpret_cast<const std::byte*>(message.get_header()),
+                root_expected_contributions_jump_in_bytes));
+}
 }  // namespace reduction
 }  // namespace rts
 
@@ -888,6 +935,49 @@ void test_contribution_metadata() {
            ~0b11111) == 0);  // Only lower 5 bits should be set
   }
 }
+
+void test_reduction_contribution_counters() {
+  INFO("Test reduction metadata number setters and getters");
+
+  // Create a reduction message
+  const std::uint32_t distributed_object_index = 1;
+  const std::uint64_t reduction_id = 42;
+  const std::tuple<int> data_tuple{0};
+  ReductionCallback<DummyAction, DummyComponent> callback{0};
+  Message_t message = create_message<DummyAction, DummyComponent>(
+      distributed_object_index, reduction_id, data_tuple, callback,
+      MessageType::Reduction);
+
+  // Test target process id
+  const std::int32_t target_pid = 12345;
+  set_target_process_id(message, target_pid);
+  CHECK(get_target_process_id(message) == target_pid);
+
+  // Test expected number of contributions
+  const std::int32_t expected_contributions = 42;
+  set_expected_number_of_contributions(message, expected_contributions);
+  CHECK(get_expected_number_of_contributions(message) ==
+        expected_contributions);
+
+  // Test expected number of root contributions
+  const std::int32_t expected_root_contributions = 99;
+  set_expected_number_of_root_contributions(message,
+                                            expected_root_contributions);
+  CHECK(get_expected_number_of_root_contributions(message) ==
+        expected_root_contributions);
+
+  // Now set all three to different values and check for collisions
+  const std::int32_t val1 = 111;
+  const std::int32_t val2 = 222;
+  const std::int32_t val3 = 333;
+  set_target_process_id(message, val1);
+  set_expected_number_of_contributions(message, val2);
+  set_expected_number_of_root_contributions(message, val3);
+
+  CHECK(get_target_process_id(message) == val1);
+  CHECK(get_expected_number_of_contributions(message) == val2);
+  CHECK(get_expected_number_of_root_contributions(message) == val3);
+}
 }  // namespace
 }  // namespace reduction
 }  // namespace rts
@@ -905,6 +995,7 @@ TEST_CASE("Message") {
   rts::reduction::test_get_callback_address_and_get_callback();
   rts::reduction::test_set_and_get_combine_function_pointer();
   rts::reduction::test_contribution_metadata();
+  rts::reduction::test_reduction_contribution_counters();
 }
 
 #endif
