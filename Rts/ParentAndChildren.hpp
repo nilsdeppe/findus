@@ -5,6 +5,7 @@
 #pragma once
 
 #include <iosfwd>
+#include <stack>
 #include <vector>
 
 namespace rts::detail {
@@ -57,4 +58,84 @@ ParentAndChildren parent_and_children(int process_id, int total_processes);
  * \throws Exception if arguments are invalid.
  */
 std::vector<int> children_in_subtree(int process_id, int total_process_ids);
+
+/*!
+ * \brief Counts the number of "first descendant" nodes in a binary tree
+ *        that satisfy a given predicate.
+ *
+ * Starting from a specified node (given by \p process_id), this function
+ * traverses the binary tree defined by process IDs and parent-child
+ * relationships. For each branch (left and right), it searches for the
+ * first descendant node that satisfies the provided predicate \p predicate.
+ * Once a node in a branch satisfies the predicate, it is counted and
+ * traversal does not continue further down that branch.
+ *
+ * The root node (\p process_id) itself is never checked against the predicate.
+ *
+ * \tparam Predicate
+ *   A callable type with signature <tt>bool(int)</tt> that returns true if
+ *   the node should be counted.
+ *
+ * \param process_id
+ *   The integer ID of the node from which to start the search (the root of
+ *   the subtree).
+ * \param total_processes
+ *   The total number of nodes (processes) in the tree.
+ * \param predicate
+ *   A callable that takes an integer process ID and returns true if the node
+ *   should be counted as a "first descendant."
+ *
+ * \return
+ *   The total number of first descendant nodes (across all branches) that
+ *   satisfy the predicate.
+ *
+ * \details
+ *   - The function does not check the root node itself.
+ *   - For each branch, only the first node that satisfies the predicate is
+ *     counted; its descendants are not checked.
+ *   - If a branch contains no node that satisfies the predicate, it
+ *     contributes zero to the count.
+ *   - The tree structure and parent-child relationships are determined by
+ *     \ref rts::detail::parent_and_children.
+ *
+ * \see rts::detail::parent_and_children
+ */
+template <class Predicate>
+int count_first_descendants(const int process_id, const int total_processes,
+                            const Predicate& predicate) {
+  int count = 0;
+  const rts::detail::ParentAndChildren pc =
+      rts::detail::parent_and_children(process_id, total_processes);
+
+  std::stack<int> stack;
+  // Start with the immediate children (left and right)
+  if (pc.left_process_id != -1) {
+    stack.push(pc.left_process_id);
+  }
+  if (pc.right_process_id != -1) {
+    stack.push(pc.right_process_id);
+  }
+
+  while (not stack.empty()) {
+    const int current_process_id = stack.top();
+    stack.pop();
+
+    if (predicate(current_process_id)) {
+      count += 1;
+      // Do not push this node's children; stop this branch
+      continue;
+    }
+
+    const rts::detail::ParentAndChildren child_pc =
+        rts::detail::parent_and_children(current_process_id, total_processes);
+    if (child_pc.left_process_id != -1) {
+      stack.push(child_pc.left_process_id);
+    }
+    if (child_pc.right_process_id != -1) {
+      stack.push(child_pc.right_process_id);
+    }
+  }
+
+  return count;
+}
 }  // namespace rts::detail

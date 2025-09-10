@@ -252,11 +252,126 @@ void test_subtree() {
     CHECK(children_in_subtree(11, 12).empty());
   }
 }
+
+void test_count_first_descendants() {
+  const int total_layers = 8;
+  // For a complete binary tree, total nodes = 2^layers - 1
+  const int total_processes = (1 << total_layers) - 1;
+
+  // Start from a node 3 layers down (layer 3, 0-based)
+  // Layer 0:           root (0)
+  // Layer 1:       1,            2
+  // Layer 2:   3,    4,      5,      6
+  // Layer 3: 7, 8, 9, 10, 11, 12, 13, 14
+  // Subtree below node 3:
+  // Layer 4: 15, 16 (children of 7), 17, 18 (children of 8)
+  // Layer 5: 31, 32 (children of 15), 33, 34 (children of 16),
+  //          35, 36 (children of 17), 37, 38 (children of 18)
+  //        = 31 to 38
+  // Layer 6: 63, 64 (children of 31), 65, 66 (children of 32),
+  //          67, 68 (children of 33), 69, 70 (children of 34),
+  //          71, 72 (children of 35), 73, 74 (children of 36),
+  //          75, 76 (children of 37), 77, 78 (children of 38)
+  //        = 63 to 78
+  // Layer 7: 127, 128 (children of 63), 129, 130 (children of 64),
+  //          131, 132 (children of 65), 133, 134 (children of 66),
+  //          135, 136 (children of 67), 137, 138 (children of 68),
+  //          139, 140 (children of 69), 141, 142 (children of 70),
+  //          143, 144 (children of 71), 145, 146 (children of 72),
+  //          147, 148 (children of 73), 149, 150 (children of 74),
+  //          151, 152 (children of 75), 153, 154 (children of 76),
+  //          155, 156 (children of 77), 157, 158 (children of 78)
+  //        = 127 to 158
+  //
+  // - The node numbers for each layer can be calculated as:
+  // - Layer 4: children of 7–14 (nodes 15–30)
+  // - Layer 5: children of 15–30 (nodes 31–62)
+  // - Layer 6: children of 31–62 (nodes 63–126)
+  // - Layer 7: children of 63–126 (nodes 127–254)
+  //
+  // Let's pick node 3 (layer 2) as the starting node
+  const int process_id = 3;
+
+  {
+    // Compute expected number of leaf descendants under node 3
+    // Subtree rooted at node 3 is a complete binary tree of depth 5 (layers
+    // 3-7) Number of leaves in a complete binary tree of depth d: 2^(d-1) Here,
+    // d = 6 (layers 2 to 7 inclusive), so leaves = 2^(6-1) = 32
+    const int expected_leaves = 32;
+
+    // Predicate: only leaf nodes contribute
+    const auto is_leaf = [total_processes](const int pid) -> bool {
+      (void)total_processes;
+      const rts::detail::ParentAndChildren pc =
+          rts::detail::parent_and_children(pid, total_processes);
+      return pc.left_process_id == -1 and pc.right_process_id == -1;
+    };
+
+    const int count =
+        count_first_descendants(process_id, total_processes, is_leaf);
+    CHECK(count == expected_leaves);
+  }
+
+  {
+    // Additional test: mark every even process_id as contributing
+    const auto even_predicate = [](const int pid) -> bool {
+      return pid % 2 == 0;
+    };
+    // For a complete binary tree, starting at 3, count all even
+    // descendants
+    //
+    // The nodes are: 8, 16, 32, 64, 128
+    const int even_count =
+        count_first_descendants(process_id, total_processes, even_predicate);
+    CHECK(even_count == 5);
+  }
+
+  {
+    // Additional test: mark every even process_id as contributing
+    const auto even_or_parent_is_63_or_65_predicate =
+        [](const int pid) -> bool {
+      return pid % 2 == 0 or
+             (parent_and_children(pid, total_processes).parent_process_id ==
+                  63 or
+              parent_and_children(pid, total_processes).parent_process_id ==
+                  65);
+    };
+    // For a complete binary tree, starting at 3, count all even
+    // descendants
+    //
+    // The nodes are: 8, 16, 32, 64, 127, 128
+    const int even_count = count_first_descendants(
+        process_id, total_processes, even_or_parent_is_63_or_65_predicate);
+    CHECK(even_count == 6);
+  }
+
+  {
+    // Another test: all nodes contribute
+    const auto all_predicate = [](const int /*unused*/) -> bool {
+      return true;
+    };
+    const int all_count =
+        count_first_descendants(0, total_processes, all_predicate);
+    // Only the immediate children of root (1 and 2) are counted
+    CHECK(all_count == 2);
+  }
+
+  {
+    // Another test: no nodes contribute
+    const auto none_predicate = [](const int /*unused*/) -> bool {
+      return false;
+    };
+    const int none_count =
+        count_first_descendants(0, total_processes, none_predicate);
+    CHECK(none_count == 0);
+  }
+}
 }  // namespace
 
 TEST_CASE("ParentAndChildren") {
   test_p_and_c();
   test_subtree();
+  test_count_first_descendants();
 }
 }  // namespace rts::detail
 #endif
