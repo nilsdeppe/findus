@@ -73,12 +73,12 @@ std::vector<int> children_in_subtree(int process_id, int total_process_ids);
  * The root node (\p process_id) itself is never checked against the predicate.
  *
  * \tparam Predicate
- *   A callable type with signature <tt>bool(int)</tt> that returns true if
+ *   A callable type with signature `predicate(int)->bool` that returns true if
  *   the node should be counted.
  *
  * \param process_id
- *   The integer ID of the node from which to start the search (the root of
- *   the subtree).
+ *   The integer ID of the node (process ID) from which to start the search
+ *   (the root of the subtree).
  * \param total_processes
  *   The total number of nodes (processes) in the tree.
  * \param predicate
@@ -137,5 +137,56 @@ int count_first_descendants(const int process_id, const int total_processes,
   }
 
   return count;
+}
+
+/*!
+ * \brief Finds the first parent of a node that satisfies a given predicate.
+ *
+ * Starting from the specified node (\p process_id), this function traverses
+ * up the binary tree (using parent-child relationships) and returns the first
+ * parent process ID for which the predicate \p predicate returns true.
+ *
+ * If no parent satisfies the predicate, the function returns -1.
+ *
+ * \tparam Predicate
+ *   A callable type with signature <tt>bool(int)</tt> that returns true if
+ *   the parent node should be selected.
+ *
+ * \param process_id
+ *   The integer ID of the node from which to start the search.
+ * \param total_processes
+ *   The total number of nodes (processes) in the tree.
+ * \param predicate
+ *   A callable that takes an integer process ID and returns true if the node
+ *   should be selected as the "first parent."
+ *
+ * \return
+ *   The process ID of the first parent node that satisfies the predicate,
+ *   or -1 if no such parent exists.
+ *
+ * \details
+ *   - The function does not check the starting node itself.
+ *   - Traversal continues up the tree until a parent satisfies the predicate
+ *     or the root is reached.
+ *   - The tree structure and parent-child relationships are determined by
+ *     \ref rts::detail::parent_and_children.
+ *
+ * \see rts::detail::parent_and_children
+ */
+template <class Predicate>
+int find_first_parent(const int process_id, const int total_processes,
+                      const Predicate& predicate) {
+  int pid = process_id;
+  while (true) {
+    if (pid == -1) {
+      return pid;
+    }
+    const rts::detail::ParentAndChildren pc =
+        rts::detail::parent_and_children(pid, total_processes);
+    if (pc.parent_process_id != -1 and predicate(pc.parent_process_id)) {
+      return pc.parent_process_id;
+    }
+    pid = pc.parent_process_id;
+  }
 }
 }  // namespace rts::detail

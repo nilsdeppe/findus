@@ -366,12 +366,59 @@ void test_count_first_descendants() {
     CHECK(none_count == 0);
   }
 }
+
+void test_find_first_parent() {
+  const int total_layers = 4;
+  const int total_processes = (1 << total_layers) - 1;  // 15 nodes
+
+  // Predicate: find the first parent with an even process_id
+  const auto even_predicate = [](const int pid) -> bool {
+    return pid % 2 == 0 and pid != -1;
+  };
+
+  // Node 13: parent is 6 (even), so should return 6
+  CHECK(rts::detail::find_first_parent(13, total_processes, even_predicate) ==
+        6);
+
+  // Node 14: parent is 6 (even), so should return 6
+  CHECK(rts::detail::find_first_parent(14, total_processes, even_predicate) ==
+        6);
+
+  // Node 6: parent is 2 (even), so should return 2
+  CHECK(rts::detail::find_first_parent(6, total_processes, even_predicate) ==
+        2);
+
+  // Node 2: parent is 0 (even), so should return 0
+  CHECK(rts::detail::find_first_parent(2, total_processes, even_predicate) ==
+        0);
+
+  // Node 0: root, has no parent, should return -1
+  CHECK(rts::detail::find_first_parent(0, total_processes, even_predicate) ==
+        -1);
+
+  // Predicate: find the first parent with process_id > 3
+  const auto greater_than_3 = [](const int pid) -> bool { return pid > 3; };
+  // Node 14: parent is 6, which is > 3, so should return 6
+  CHECK(rts::detail::find_first_parent(14, total_processes, greater_than_3) ==
+        6);
+
+  // Node 5: parent is 2, which is not > 3, parent of 2 is 0, not > 3, so should
+  // return -1
+  CHECK(rts::detail::find_first_parent(5, total_processes, greater_than_3) ==
+        -1);
+
+  // Test edge case where we get -1.
+  CHECK(rts::detail::find_first_parent(
+            1, total_processes,
+            [](const int /*pid*/) -> bool { return false; }) == -1);
+}
 }  // namespace
 
 TEST_CASE("ParentAndChildren") {
   test_p_and_c();
   test_subtree();
   test_count_first_descendants();
+  test_find_first_parent();
 }
 }  // namespace rts::detail
 #endif
