@@ -8,7 +8,7 @@
 #include <ostream>
 
 namespace rts {
-std::ostream& operator<<(std::ostream& os, MessageType t) {
+std::ostream& operator<<(std::ostream& os, const MessageType t) {
   switch (t) {
     case MessageType::Uninitialized:
       return os << "Uninitialized";
