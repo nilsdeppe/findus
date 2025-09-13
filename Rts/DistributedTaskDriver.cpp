@@ -1015,6 +1015,8 @@ void DistributedTaskDriver::initiate_receives(const int max_to_receive) {
           "message."};
     }
     if (not static_cast<bool>(flag)) {
+      // Received nothing from this node, check the next node.
+      ++node_id_for_receive_;
       continue;
     }
     if (status.MPI_ERROR != MPI_SUCCESS) {
