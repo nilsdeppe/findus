@@ -9,6 +9,10 @@
 #include <cstdint>
 #include <string>
 
+#include "Rts/Detail/GetOutput.hpp"
+#include "Rts/Exceptions/Exception.hpp"
+#include "Rts/MessageType.hpp"
+
 namespace rts::reduction {
 std::ostream& operator<<(std::ostream& os, const InsertAction action) {
   switch (action) {
@@ -183,6 +187,7 @@ void test_data_handler_parallel(const size_t num_reductions,
       const int int_value = 1000 * int(r) + i;
       const double double_value = 0.5 * int_value;
       const InsertAction result = handler.insert_or_combine<SumOp>(
+          r % 2 == 0 ? MessageType::Reduction : MessageType::ReductionOver,
           distributed_object_index, r + 1, CallbackType{}, int_value,
           double_value);
       // First insert should be Insert, others Combine
@@ -207,6 +212,9 @@ void test_data_handler_parallel(const size_t num_reductions,
     CHECK(idx.has_value());
 
     Message_t msg = handler.pop(r + 1);
+
+    CHECK(msg.get_header()->message_type() ==
+          (r % 2 == 0 ? MessageType::Reduction : MessageType::ReductionOver));
 
     // index_of should be invalid after pop
     CHECK_FALSE(handler.index_of(r + 1).has_value());
@@ -244,18 +252,28 @@ void test_data_handler_exceptions() {
 
   // reduction_id == 0 should throw
   CHECK_THROWS_WITH_AS(
-      handler.insert_or_combine<SumOp>(42, 0, CallbackType{}, 1, 2.0),
+      handler.insert_or_combine<SumOp>(MessageType::Reduction, 42, 0,
+                                       CallbackType{}, 1, 2.0),
       "The key value of 0 is not supported in reductions because it is used as "
       "a sentinel.",
       rts::Exception);
+  CHECK_THROWS_WITH_AS(
+      handler.insert_or_combine<SumOp>(MessageType::Invoke, 42, 1,
+                                       CallbackType(1), 1, 2.0),
+      "MessageType passed to DataHandler::insert_or_combine must be "
+      "Reduction or ReductionOver but got Invoke",
+      rts::Exception);
 
   // Fill all slots
-  handler.insert_or_combine<SumOp>(42, 1, CallbackType(1), 1, 2.0);
-  handler.insert_or_combine<SumOp>(42, 2, CallbackType(2), 2, 3.0);
+  handler.insert_or_combine<SumOp>(MessageType::Reduction, 42, 1,
+                                   CallbackType(1), 1, 2.0);
+  handler.insert_or_combine<SumOp>(MessageType::Reduction, 42, 2,
+                                   CallbackType(2), 2, 3.0);
 
   // Now try to insert another key, should throw
-  CHECK(handler.insert_or_combine<SumOp>(42, 3, CallbackType(3), 3, 4.0) ==
-        InsertAction::AtCapacity);
+  CHECK(handler.insert_or_combine<SumOp>(MessageType::Reduction, 42, 3,
+                                         CallbackType(3), 3,
+                                         4.0) == InsertAction::AtCapacity);
 }
 
 void test_reduction_callback() {

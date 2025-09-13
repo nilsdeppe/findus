@@ -15,6 +15,7 @@
 #include <type_traits>
 #include <vector>
 
+#include "Rts/Detail/GetOutput.hpp"
 #include "Rts/Detail/IndexConversion.hpp"
 #include "Rts/DistributedObjectIndex.hpp"
 #include "Rts/Exceptions/Exception.hpp"
@@ -22,6 +23,8 @@
 #include "Rts/IsCollection.hpp"
 #include "Rts/Message.hpp"
 #include "Rts/MessageHeader.hpp"
+#include "Rts/MessageType.hpp"
+#include "Rts/ParentAndChildren.hpp"
 
 namespace rts::reduction {
 namespace detail {
@@ -245,6 +248,8 @@ class alignas(rts::hardware_info::hardware_destructive_interference_size)
    * \tparam BroadcastAction The action type for the broadcast.
    * \tparam BroadcastParallelComponent The parallel component type.
    * \tparam Args The types of the reduction data arguments.
+   * \param message_type The `MessageType`, either `Reduction` or
+   *                     `ReductionOver`
    * \param distributed_object_index The index of the distributed object.
    * \param reduction_id The unique reduction ID.
    * \param reduction_callback The callback to invoke after reduction.
@@ -257,7 +262,8 @@ class alignas(rts::hardware_info::hardware_destructive_interference_size)
   template <class BinaryOp, class BroadcastAction,
             class BroadcastParallelComponent, class... Args>
   InsertAction insert_or_combine(
-      std::uint32_t distributed_object_index, std::uint64_t reduction_id,
+      MessageType message_type, std::uint32_t distributed_object_index,
+      std::uint64_t reduction_id,
       ReductionCallback<BroadcastAction, BroadcastParallelComponent>
           reduction_callback,
       Args&&... args);
@@ -312,6 +318,7 @@ class alignas(rts::hardware_info::hardware_destructive_interference_size)
 template <class BinaryOp, class BroadcastAction,
           class BroadcastParallelComponent, class... Args>
 InsertAction DataHandler::insert_or_combine(
+    const MessageType message_type,
     const std::uint32_t distributed_object_index,
     const std::uint64_t reduction_id,
     ReductionCallback<BroadcastAction, BroadcastParallelComponent>
@@ -321,6 +328,13 @@ InsertAction DataHandler::insert_or_combine(
     throw Exception{
         "The key value of 0 is not supported in reductions because it is "
         "used as a sentinel."};
+  }
+  if (message_type != MessageType::Reduction and
+      message_type != MessageType::ReductionOver) {
+    throw Exception{
+        "MessageType passed to DataHandler::insert_or_combine must be "
+        "Reduction or ReductionOver but got " +
+        rts::detail::get_output(message_type)};
   }
   using Data_t = std::tuple<std::decay_t<Args>...>;
 
@@ -362,7 +376,7 @@ InsertAction DataHandler::insert_or_combine(
       entries_[index].callback_and_data = reduction::create_message(
           distributed_object_index, reduction_id,
           Data_t{std::forward<Args>(args)...}, std::move(reduction_callback),
-          rts::MessageType::Reduction);
+          message_type);
       return InsertAction::Insert;
     }
   }
