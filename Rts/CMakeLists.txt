@@ -12,6 +12,7 @@ add_library(
   Detail/DistributedObjectIndex.cpp
   Detail/IndexConversion.cpp
   Detail/MpiErrorMessage.cpp
+  Detail/PrintProcessPids.cpp
   Detail/ReductionCounter.cpp
   Detail/VectorStream.cpp
   DistributedObjectIndex.cpp
