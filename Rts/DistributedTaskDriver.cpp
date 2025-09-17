@@ -1396,6 +1396,8 @@ DistributedTaskDriver& create_distributed_task_driver(
       std::unique_ptr<DistributedTaskDriver>(new DistributedTaskDriver(
           initialize_mpi, mpi_threading_support == MPI_THREAD_MULTIPLE));
   task_driver->attach_debugger();
+  detail::print_process_pids(task_driver->current_node_id());
+  task_driver->barrier();
   return *task_driver.get();
 }
 }  // namespace rts
