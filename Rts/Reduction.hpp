@@ -289,6 +289,12 @@ class alignas(rts::hardware_info::hardware_destructive_interference_size)
    */
   std::optional<std::uint64_t> index_of(std::uint64_t reduction_id) const;
 
+  /*!
+   * \brief Returns the maximum number of simultaneous reductions that can be
+   * done over a single parallel component.
+   */
+  size_t capacity() const;
+
  private:
   /*!
    * \brief Holds the reduction ID and associated data for a single reduction.
