@@ -62,6 +62,8 @@ std::optional<std::uint64_t> DataHandler::index_of(
   }
   return std::nullopt;
 }
+
+size_t DataHandler::capacity() const { return entries_.size(); }
 }  // namespace rts::reduction
 
 #if defined(RTS_ENABLE_TESTING)
@@ -169,6 +171,8 @@ void test_data_handler_parallel(const size_t num_reductions,
       max_entries == 0 ? std::max(num_reductions * 2ul, 4ul) : max_entries;
   const std::uint32_t distributed_object_index = 42;
   DataHandler handler(entries);
+
+  CHECK(handler.capacity() == entries);
 
   // Randomize contributions per thread for each reduction
   std::vector<int> number_of_contributions(num_reductions, 1);
