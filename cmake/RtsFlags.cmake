@@ -61,3 +61,27 @@ foreach(_FLAG ${_RTS_CXX_FLAGS})
     INTERFACE_COMPILE_OPTIONS
     "$<$<COMPILE_LANGUAGE:CXX>:${_FLAG}>")
 endforeach()
+
+option(ENABLE_PROFILING "Enables various options to make profiling easier" OFF)
+
+option(KEEP_FRAME_POINTER "Add keep frame pointer for profiling" OFF)
+
+add_library(Profiling::KeepFramePointer IMPORTED INTERFACE)
+add_library(Profiling::EnableProfiling IMPORTED INTERFACE)
+
+if (KEEP_FRAME_POINTER OR ENABLE_PROFILING)
+  set_property(
+    TARGET Profiling::KeepFramePointer
+    APPEND PROPERTY
+    INTERFACE_COMPILE_OPTIONS
+    $<$<COMPILE_LANGUAGE:CXX>:-fno-omit-frame-pointer>
+    $<$<COMPILE_LANGUAGE:CXX>:-mno-omit-leaf-frame-pointer>
+  )
+endif()
+
+target_link_libraries(
+  RtsFlags
+  INTERFACE
+  Profiling::EnableProfiling
+  Profiling::KeepFramePointer
+)
