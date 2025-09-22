@@ -542,7 +542,8 @@ class Handler {
       Args&&... args);
 
   /*!
-   * \brief Sets metadata in a reduction message for inter-process reduction.
+   * \brief Sets metadata in a reduction message over a collection for
+   * inter-process reduction.
    *
    * This function configures a reduction message with all necessary metadata
    * for correct routing and aggregation of reduction data across multiple
@@ -601,6 +602,43 @@ class Handler {
       Message_t& message, int process_id, int total_processes,
       const std::vector<std::vector<std::uint64_t>>& elements_on_pid,
       const Predicate& element_predicate) const;
+
+  /*!
+   * \brief Sets metadata in a reduction message over a per-process component
+   * for inter-process reduction.
+   *
+   * This function configures a reduction message with the necessary metadata
+   * for correct routing and aggregation of reduction data across multiple
+   * processes. It determines the parent process to which the message should be
+   * sent, the expected number of contributions at each process, and handles
+   * special cases for the root process. The function also records the source
+   * process ID in the message.
+   *
+   * \tparam ParallelComponent The parallel component type.
+   * \tparam Predicate A callable type that takes a process ID and returns
+   *                   true if the process should be included in the reduction.
+   *
+   * \param message The reduction message to update.
+   * \param process_id The process ID of the current process.
+   * \param total_processes The total number of processes in the system.
+   * \param pid_predicate Predicate to select which processes participate in
+   *                      the reduction.
+   *
+   * \details
+   * This function sets the following metadata in the message:
+   * - The parent process ID to which the message should be sent.
+   * - The expected number of contributions for this reduction at the parent.
+   * - The expected number of contributions to the root process (if applicable).
+   * - The source process ID.
+   *
+   * This metadata is used to correctly route and combine reduction messages
+   * across the process tree, ensuring that reductions are completed efficiently
+   * and correctly in a distributed environment.
+   */
+  template <class ParallelComponent, class Predicate>
+  void set_interprocess_message_info(Message_t& message, const int process_id,
+                                     const int total_processes,
+                                     const Predicate& pid_predicate) const;
 
   /*!
    * \brief Combines reduction data from inter-process messages.
@@ -727,5 +765,44 @@ void Handler::set_interprocess_message_info(
         message, number_of_expected_contributions_to_root);
   }
   message.get_header()->change_source_process_id(process_id);
+}
+
+template <class ParallelComponent, class Predicate>
+void Handler::set_interprocess_message_info(
+    Message_t& message, const int process_id, const int total_processes,
+    const Predicate& pid_predicate) const {
+  // Need to set:
+  // 1. Parent process to send to.
+  // 2. Expected number of contributions to this element, including self. This
+  //    gets decremented each time a process contributes until we reach 0.
+  // 3. If the parent is the root process and the root process has nobody
+  //    contributing, this holds the number of expected contributions to the
+  //    root process. On the root process when we receive a reduction message,
+  //    we use the first reduction message received to set slot 2.
+  // 4. The source process ID.
+
+  const std::int32_t parent_to_send_to =
+      process_id == 0 ? -1
+                      : rts::detail::find_first_parent(
+                            process_id, total_processes, pid_predicate);
+  set_target_process_id(message, std::max(parent_to_send_to, 0));
+  const std::int32_t number_of_expected_contributions =
+      rts::detail::count_first_descendants(process_id, total_processes,
+                                           pid_predicate) +
+      1;
+  set_expected_number_of_contributions(message,
+                                       number_of_expected_contributions);
+  if (process_id != 0 and
+      ((parent_to_send_to == 0 or parent_to_send_to == -1) and
+       not pid_predicate(0))) {
+    const std::int32_t number_of_expected_contributions_to_root =
+        rts::detail::count_first_descendants(0, total_processes, pid_predicate);
+    set_expected_number_of_root_contributions(
+        message, number_of_expected_contributions_to_root);
+  }
+  message.get_header()->change_source_process_id(process_id);
+  reduction::zero_contributed_metadata(message);
+  reduction::set_contributed_metadata(
+      message, reduction::Contribution::self_contributed);
 }
 }  // namespace rts::reduction
