@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "Rts/Detail/ActiveObject.hpp"
+#include "Rts/Detail/AllElements.hpp"
 #include "Rts/Detail/DistributedObjectBase.hpp"
 #include "Rts/Detail/DistributedObjectIndex.hpp"
 #include "Rts/Detail/GetOutput.hpp"
@@ -35,6 +36,7 @@
 #include "Rts/IsCollection.hpp"
 #include "Rts/Message.hpp"
 #include "Rts/MessageHeader.hpp"
+#include "Rts/MessageType.hpp"
 #include "Rts/ParentAndChildren.hpp"
 #include "Rts/QuiescenceDetection.hpp"
 #include "Rts/Reduction.hpp"
@@ -504,6 +506,121 @@ class DistributedTaskDriver {
             class... Args>
   void broadcast_to(UnaryPredicate&& predicate, Args&&... args);
 
+  /*!
+   * \brief Contributes data to a reduction operation on a distributed
+   * component.
+   *
+   * This function is used to perform a reduction across all elements of a
+   * parallel component (typically a collection). The reduction callback
+   * determines what action is taken when the reduction is complete (e.g.,
+   * invoking an action on a specific element or broadcasting to all
+   * elements). The callback can be invoked on any parallel component, not
+   * just the one the reduction is being done over.
+   *
+   * \tparam ContributingParallelComponent The parallel component contributing
+   *                                       to the reduction.
+   * \tparam BinaryOp The stateless binary operator used to combine reduction
+   *                  data.
+   * \tparam CallbackAction The action to invoke when the reduction is complete.
+   * \tparam CallbackParallelComponent The parallel component for the callback.
+   * \tparam Args The types of the reduction data arguments.
+   *
+   * \param reduction_id The unique identifier for this reduction operation.
+   * \param reduction_callback The callback to invoke after reduction is
+   *                           complete.
+   * \param args The reduction data arguments to be combined.
+   *
+   * \throws Exception if the reduction cannot be performed due to internal
+   *         errors, misconfiguration, or because we reached
+   *         the maximum configured simultaneous reductions.
+   * \note
+   * - This function is thread-safe for concurrent calls from multiple threads,
+   *   provided each thread uses a unique thread ID.
+   * - If fewer elements contribute than expected, the reduction will not
+   *   complete, while if more contribute then a race condition will be
+   *   incurred and the behavior is completely undefined. The only way to over
+   *   contribute is if the same element contributes more than once.
+   * - For efficiency there is a maximum number of simultaneous reductions per
+   *   parallel component that may occur. This can be controlled in the
+   *   constructor of `DistributedTaskDriver`.  If the maximum is reached, an
+   *   exception is thrown. In this case you need to increase the number of
+   *   allowed simultaneous reductions.
+   *
+   * \see rts::DistributedTaskDriver::reduction_over()
+   */
+  template <class ContributingParallelComponent, class BinaryOp,
+            class CallbackAction, class CallbackParallelComponent,
+            class... Args>
+  void reduction(
+      std::uint64_t reduction_id,
+      reduction::ReductionCallback<CallbackAction, CallbackParallelComponent>
+          reduction_callback,
+      Args&&... args);
+
+  /*!
+   * \brief Contributes data to a reduction operation on a distributed
+   * component, with a predicate to select participating elements.
+   *
+   * This function is used to perform a reduction across a subset of elements of
+   * a distributed component (typically a collection), as selected by a
+   * user-provided predicate. The reduction callback determines what action is
+   * taken when the reduction is complete (e.g., invoking an action on a
+   * specific element or broadcasting to all elements). The callback can be
+   * invoked on any parallel component, not just the one the reduction is
+   * being done over.
+   *
+   * \tparam ContributingParallelComponent The parallel component contributing
+   *                                       to the reduction.
+   * \tparam BinaryOp The stateless binary operator used to combine reduction
+   *                  data.
+   * \tparam CallbackAction The action to invoke when the reduction is complete.
+   * \tparam CallbackParallelComponent The parallel component for the callback.
+   * \tparam UnaryPredicate The predicate type used to filter which
+   *         distributed objects (e.g. elements of a collection) to reduce over.
+   * \tparam Args The types of the reduction data arguments.
+   *
+   * \param predicate A callable that takes a collection index and returns true
+   *                  if the element should participate in the reduction.
+   * \param reduction_id The unique identifier for this reduction operation.
+   * \param reduction_callback The callback to invoke after reduction is
+   *                           complete.
+   * \param args The reduction data arguments to be combined.
+   *
+   * \throws Exception if the reduction cannot be performed due to internal
+   *         errors, misconfiguration, because the ID of the contributing
+   *         component does not satisfy the \p predicate, or because we reached
+   *         the maximum configured simultaneous reductions.
+   *
+   * \note
+   * - The predicate must be callable with a collection index of type
+   *   `ParallelComponent::rts_collection_index` for a collection parallel
+   *   component and with a type `int` for the per-process parallel
+   *   component. It must always return a bool.
+   * - This function is thread-safe for concurrent calls from multiple threads,
+   *   provided each thread uses a unique thread ID.
+   * - The expected number of contributions for each reduction ID must be
+   *   correctly provided; otherwise the behavior is undefined. If fewer IDs
+   *   contribute than expected, the reduction will not complete, while if
+   *   more contribute then a race condition will be incurred and the behavior
+   *   is completely undefined. The only way to over contribute is if the same
+   *   element contributes more than once.
+   * - For efficiency there is a maximum number of simultaneous reductions per
+   *   parallel component that may occur. This can be controlled in the
+   *   constructor of `DistributedTaskDriver`.  If the maximum is reached, an
+   *   exception is thrown. In this case you need to increase the number of
+   *   allowed simultaneous reductions.
+   *
+   * \see rts::DistributedTaskDriver::reduction()
+   */
+  template <class ContributingParallelComponent, class BinaryOp,
+            class CallbackAction, class CallbackParallelComponent,
+            class UnaryPredicate, class... Args>
+  void reduction_over(
+      UnaryPredicate&& predicate, std::uint64_t reduction_id,
+      reduction::ReductionCallback<CallbackAction, CallbackParallelComponent>
+          reduction_callback,
+      Args&&... args);
+
  private:
   // The DistributedTaskDriver can only be created using the
   // create_distributed_task_driver() function.
@@ -619,6 +736,23 @@ class DistributedTaskDriver {
    * \warning This function is not thread safe.
    */
   void send_message_impl(Message_t in_message);
+
+  /*!
+   * \brief Handles the processing and forwarding of reduction messages.
+   *
+   * This function processes a reduction message that has been received or
+   * generated locally. It updates contribution metadata, combines the message
+   * with any existing reduction data, and determines the next step:
+   * - If the reduction is complete and this is the root process, it invokes the
+   *   callback.
+   * - If the reduction is not yet complete, forwards the message to the parent
+   *   process or combines it with other contributions as needed.
+   *
+   * \param in_message The reduction message to process and forward.
+   *
+   * \throws Exception if the message is invalid or if an internal error occurs.
+   */
+  void send_reduction_message_impl(Message_t in_message);
 
   /// invoke_impl is invoked _by_ the thread pool on the task driver to
   /// initiate the action on the distributed action.
@@ -1361,6 +1495,143 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
       }
       send_data(pid, {std::move(this_message)});
     }
+  }
+}
+
+template <class ContributingParallelComponent, class BinaryOp,
+          class CallbackAction, class CallbackParallelComponent, class... Args>
+void DistributedTaskDriver::reduction(
+    const std::uint64_t reduction_id,
+    reduction::ReductionCallback<CallbackAction, CallbackParallelComponent>
+        reduction_callback,
+    Args&&... args) {
+  reduction_over<ContributingParallelComponent, BinaryOp>(
+      reduction::detail::AllElements{}, reduction_id,
+      std::move(reduction_callback), std::forward<Args>(args)...);
+}
+
+template <class ContributingParallelComponent, class BinaryOp,
+          class CallbackAction, class CallbackParallelComponent,
+          class UnaryPredicate, class... Args>
+void DistributedTaskDriver::reduction_over(
+    UnaryPredicate&& predicate, const std::uint64_t reduction_id,
+    reduction::ReductionCallback<CallbackAction, CallbackParallelComponent>
+        reduction_callback,
+    Args&&... args) {
+  const std::uint32_t object_index =
+      active_object_[thread_id()].distributed_object_index;
+  if (object_index >= distributed_objects_.size()) {
+    throw Exception{
+        "Object index " + std::to_string(object_index) +
+        " in reduction is out of range, " +
+        std::to_string(distributed_objects_.size()) +
+        ". This is an internal bug where either the thread id (" +
+        std::to_string(thread_id_) + " number of threads " +
+        std::to_string(total_number_of_threads()) +
+        ") is out of range, or the active object was not correctly set."};
+  }
+  DistributedOjectClassHolder& holder = distributed_objects_[object_index];
+  if (object_index !=
+      rts::detail::distributed_object_index<ContributingParallelComponent>()) {
+    throw Exception{
+        "The ContributingParallelComponent passed to reduction is " +
+        ContributingParallelComponent::name() +
+        " but the current component being worked on is " + holder.name};
+  }
+  if constexpr (not std::is_same_v<std::decay_t<UnaryPredicate>,
+                                   reduction::detail::AllElements>) {
+    if constexpr (is_collection_v<ContributingParallelComponent>) {
+      const auto collection_index =
+          detail::from_internal<ContributingParallelComponent>(
+              active_object_[thread_id()].target_collection_index);
+      if (not predicate(collection_index)) {
+        throw Exception{"The collection index (" +
+                        detail::get_output(collection_index) +
+                        ") contributing to the reduction with ID " +
+                        std::to_string(reduction_id) +
+                        " does not satisfy the predicate passed to "
+                        "reduction_over(). You may only contribute from "
+                        "collection elements that satisfy the predicate. The "
+                        "reduction is being done on the parallel component " +
+                        ContributingParallelComponent::name() + "."};
+      }
+    } else {
+      if (not predicate(current_node_id())) {
+        throw Exception{"The current process (" +
+                        std::to_string(current_node_id()) +
+                        ") contributing to the reduction with ID " +
+                        std::to_string(reduction_id) +
+                        " does not satisfy the predicate passed to "
+                        "reduction_over(). You may only contribute from "
+                        "processes that satisfy the predicate. The "
+                        "reduction is being done on the parallel component " +
+                        ContributingParallelComponent::name() + "."};
+      }
+    }
+  }
+  if constexpr (rts::is_collection_v<ContributingParallelComponent>) {
+    std::optional<Message_t> message_with_all_local_contributions =
+        holder.reduction_handler->insert_or_combine<BinaryOp>(
+            [current_pid = current_node_id(), &holder,
+             &predicate]() -> std::int32_t {
+              if constexpr (std::is_same_v<std::decay_t<UnaryPredicate>,
+                                           reduction::detail::AllElements>) {
+                (void)predicate;    // Acknowledge we aren't using this.
+                (void)current_pid;  // Acknowledge we aren't using this.
+                return holder.number_of_local_objects;
+              } else {
+                const size_t my_pid = static_cast<size_t>(current_pid);
+                return std::count_if(
+                    holder.ids_per_process[my_pid].begin(),
+                    holder.ids_per_process[my_pid].end(),
+                    [&predicate](const std::uint64_t index) -> bool {
+                      return predicate(
+                          detail::from_internal<ContributingParallelComponent>(
+                              index));
+                    });
+              }
+            },
+            std::is_same_v<std::decay_t<UnaryPredicate>,
+                           reduction::detail::AllElements>
+                ? MessageType::Reduction
+                : MessageType::ReductionOver,
+            thread_id_, object_index, reduction_id,
+            std::move(reduction_callback), std::forward<Args>(args)...);
+    if (not message_with_all_local_contributions.has_value()) {
+      return;
+    }
+    // At this stage we know we have all local contributions to this
+    // message. Since the current function could've been called from any
+    // thread on the process, we must move the message to the communication
+    // thread for further processing. We do this by pushing it to the
+    // outgoing_messages_ queue.
+    Message_t& message = message_with_all_local_contributions.value();
+    // TODO: serialize the data here? We could also store a function pointer to
+    // a serialization function.
+    holder.reduction_handler
+        ->set_interprocess_message_info<ContributingParallelComponent>(
+            message, current_node_id(), number_of_nodes(),
+            holder.ids_per_process, predicate);
+    message.get_header()->member_function_ptr(
+        threaded_action_relative_ptr<CallbackAction, CallbackParallelComponent,
+                                     std::decay_t<Args>...>(
+            std::make_index_sequence<sizeof...(Args)>{}));
+    outgoing_messages_.enqueue(std::tuple<int, Message_t>{
+        reduction::reduction_process_id, std::move(message)});
+  } else {
+    // TODO: create the message.
+    //
+    // holder.reduction_handler
+    //     ->set_interprocess_message_info<ContributingParallelComponent>(
+    //         message, current_node_id(), number_of_nodes(),
+    //         holder.ids_per_process, predicate);
+    // message.get_header()->member_function_ptr(
+    //     threaded_action_relative_ptr<CallbackAction,
+    //     CallbackParallelComponent,
+    //                                  std::decay_t<Args>...>(
+    //         std::make_index_sequence<sizeof...(Args)>{}));
+    throw Exception{
+        "Reduction not implemented fully for non-collection components"};
   }
 }
 
