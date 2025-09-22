@@ -7,11 +7,13 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <iostream>
 #include <iterator>
 #include <limits>
@@ -31,12 +33,15 @@
 #include "Rts/Detail/DistributedObjectIndex.hpp"
 #include "Rts/Detail/GetOutput.hpp"
 #include "Rts/Detail/MpiErrorMessage.hpp"
+#include "Rts/Detail/PrintProcessPids.hpp"
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/Exceptions/Mpi.hpp"
 #include "Rts/HardwareInfo.hpp"
+#include "Rts/Message.hpp"
 #include "Rts/MessageHeader.hpp"
 #include "Rts/MessageTags.hpp"
 #include "Rts/ParentAndChildren.hpp"
+#include "Rts/Reduction.hpp"
 
 namespace rts {
 DistributedTaskDriver::DistributedTaskDriver(bool finalize_mpi,
@@ -870,6 +875,90 @@ void DistributedTaskDriver::send_message_impl(Message_t in_message) {
   global_qd_.increment_sends();
 }
 
+void DistributedTaskDriver::send_reduction_message_impl(Message_t in_message) {
+  // We first combine (or insert) the message. If we get a message back, then
+  // we do one of:
+  // 1. Invoke callback (only if we have collected everything and are on root
+  //    process).
+  // 2. Send to parent (if we have everything).
+  const std::uint32_t object_index =
+      in_message.get_header()->distributed_object_index();
+  if (object_index >= distributed_objects_.size()) {
+    throw Exception{"The distributed object index is " +
+                    std::to_string(object_index) + " but we only have  " +
+                    std::to_string(distributed_objects_.size()) +
+                    " parallel components."};
+  }
+  std::optional<Message_t> message =
+      distributed_objects_[object_index]
+          .reduction_handler->combine_inter_process(std::move(in_message),
+                                                    parent_and_children_);
+  if (not message.has_value()) {
+    return;
+  }
+
+  if (message.value().get_header()->data_was_serialized()) {
+    throw Exception{"Can't handle serialized data in reductions."};
+  }
+
+  if (current_node_id() == 0) {
+    // Invoke the callback, but semantics depend on type of callback.
+    const reduction::detail::ReductionCallbackImpl callback_impl =
+        *reduction::get_callback<reduction::detail::ReductionCallbackImpl>(
+            message.value());
+    if (callback_impl.message_type_ == MessageType::Invoke) {
+      if (callback_impl.distributed_object_index_ >=
+          distributed_objects_.size()) {
+        throw Exception{
+            "Can't retrieve distributed object with index " +
+            std::to_string(callback_impl.distributed_object_index_) +
+            " in reduction Invoke broadcast because we have " +
+            std::to_string(distributed_objects_.size()) + " total objects."};
+      }
+      const int target_process =
+          std::get<1>(
+              distributed_objects_[callback_impl.distributed_object_index_]
+                  .objects)
+              .at(callback_impl.collection_index_)
+              .process_id;
+      Message_t msg = create_message(
+          message.value().get_header()->member_function_ptr(),
+          callback_impl.collection_index_,
+          callback_impl.distributed_object_index_, current_node_id(),
+          target_process, global_qd_.local_sweep_number(), false,
+          rts::MessageType::Invoke,
+          message.value().get_header()->data_alignment(),
+          reduction::get_data_size(message.value()),
+          reduction::get_data_pointer(message.value()));
+      send_data(target_process, std::move(msg));
+      return;
+    } else if (callback_impl.message_type_ == MessageType::Broadcast) {
+      Message_t msg = create_message(
+          message.value().get_header()->member_function_ptr(),
+          MessageHeader::no_collection_index(),
+          callback_impl.distributed_object_index_, current_node_id(),
+          // For broadcasts we first set the target process ID to
+          // self, then update it as we send to different processes.
+          current_node_id(), global_qd_.local_sweep_number(), false,
+          rts::MessageType::Broadcast,
+          message.value().get_header()->data_alignment(),
+          reduction::get_data_size(message.value()),
+          reduction::get_data_pointer(message.value()));
+      send_data(broadcast_process_id, std::move(msg));
+      return;
+    } else {
+      throw Exception{"Don't know how to send callback type " +
+                      detail::get_output(callback_impl.message_type_)};
+    }
+  }
+  // Set the sweep number and then initiate the inter-process send. At this
+  // stage the `message` is fully configured for transmission up the virtual
+  // spanning tree.
+  message.value().get_header()->quiescence_detection_sweep_number(
+      global_qd_.local_sweep_number());
+  send_message_impl(std::move(message.value()));
+}
+
 void DistributedTaskDriver::send_to_children(const Message_t& message) {
   const int left = parent_and_children_.left_process_id;
   const int right = parent_and_children_.right_process_id;
@@ -944,6 +1033,10 @@ void DistributedTaskDriver::initiate_sends(const int max_to_send) {
             std::move(std::get<1>(bulk_outgoing_messages[to_send])));
       } else if (msg_hdr.message_type() == MessageType::Invoke) {
         send_message_impl(
+            std::move(std::get<1>(bulk_outgoing_messages[to_send])));
+      } else if (msg_hdr.message_type() == MessageType::Reduction or
+                 msg_hdr.message_type() == MessageType::ReductionOver) {
+        send_reduction_message_impl(
             std::move(std::get<1>(bulk_outgoing_messages[to_send])));
       } else {
         throw Exception{
@@ -1190,10 +1283,13 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
         }
         number_of_message_to_enqueue += *std::next(start);
       }
+    } else if (message_header.message_type() == MessageType::Reduction or
+               message_header.message_type() == MessageType::ReductionOver) {
+      send_reduction_message_impl(std::move(message));
     } else {
-      throw Exception{
-          "BroadcastTo messages not yet supported in "
-          "clean_incoming_mpi_messages()."};
+      throw Exception{detail::get_output(message_header.message_type()) +
+                      " messages not yet supported in "
+                      "clean_incoming_mpi_messages()."};
     }
   }
 
@@ -1212,8 +1308,10 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
   const bool all_messages_are_invoke =
       std::all_of(first_received_message, incoming_mpi_messages_.end(),
                   [](const std::tuple<MPI_Request, Message_t>& msg) {
-                    const MessageHeader* header = std::get<1>(msg).get_header();
-                    return header->message_type() == MessageType::Invoke;
+                    // Reduction(Over) messages are null, so skip those.
+                    return std::get<1>(msg).message != nullptr and
+                           std::get<1>(msg).get_header()->message_type() ==
+                               MessageType::Invoke;
                   });
 
   if (all_messages_are_invoke) {
@@ -1231,6 +1329,10 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
     for (auto it = first_received_message; it != incoming_mpi_messages_.end();
          ++it) {
       Message_t& msg = std::get<1>(*it);
+      if (msg.message == nullptr) {
+        // Reduction(Over) messages are null, so skip those.
+        continue;
+      }
       MessageHeader* header = msg.get_header();
 
       if (header->message_type() == MessageType::Invoke) {
@@ -1429,9 +1531,15 @@ DistributedTaskDriver& CallbackBase::get_task_driver() const {
 
 #if defined(RTS_ENABLE_TESTING)
 
+#include <cstdint>
 #include <doctest/doctest.h>
 #include <doctest/extensions/doctest_mpi.h>
+#include <mutex>
+#include <set>
+#include <unordered_set>
+#include <vector>
 
+#include "Rts/Detail/IndexConversion.hpp"
 #include "Rts/DistributedObjectCollection.hpp"
 
 namespace rts {
@@ -2461,6 +2569,605 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionElementPid0", 2) {
     driver.barrier();
   } else {
     driver.insert_barrier();
+  }
+}
+
+namespace {
+/*!
+ * \brief Generate all non-empty subsets of the input vector up to a maximum
+ * subset size.
+ *
+ * This function returns all possible subsets (combinations) of the input vector
+ * whose size is between 1 and max_subset_size (inclusive). The order of subsets
+ * and the order of elements within each subset is not specified.
+ *
+ * \param input The input vector of `std::uint64_t` elements.
+ * \param max_subset_size The maximum size of subsets to generate.
+ * \return A vector of vectors, where each inner vector is a subset of the
+ * input.
+ *
+ * \note The empty set is excluded. The full set is included if its size does
+ * not exceed max_subset_size.
+ *
+ * Example:
+ *   input = `{1, 2, 3}`, `max_subset_size = 2`
+ *   Output: `{ {1}, {2}, {3}, {1,2}, {1,3}, {2,3} }`
+ */
+std::vector<std::vector<std::uint64_t>> generate_subsets(
+    const std::vector<std::uint64_t>& input, std::size_t max_subset_size) {
+  std::vector<std::vector<std::uint64_t>> result;
+  result.reserve(input.size() * input.size());
+  const std::size_t N = input.size();
+
+  for (std::size_t subset_size = 1; subset_size <= std::min(N, max_subset_size);
+       ++subset_size) {
+    // Create a bitmask with 'subset_size' ones at the end
+    std::vector<bool> bitmask(N - subset_size, false);
+    bitmask.resize(N, true);
+
+    do {
+      std::vector<std::uint64_t> subset;
+      subset.reserve(N);
+      for (std::size_t i = 0; i < N; ++i) {
+        if (bitmask[i]) {
+          subset.push_back(input[i]);
+        }
+      }
+      result.push_back(std::move(subset));
+    } while (std::next_permutation(bitmask.begin(), bitmask.end()));
+  }
+  result.shrink_to_fit();
+  return result;
+}
+
+void test_generate_subsets() {
+  {
+    INFO("generate_subsets with max_subset_size 2");
+    const std::vector<std::uint64_t> input = {1, 2, 3};
+    const std::size_t max_subset_size = 2;
+    const auto subsets = generate_subsets(input, max_subset_size);
+
+    std::set<std::set<std::uint64_t>> actual;
+    for (const auto& subset : subsets) {
+      actual.insert(std::set<std::uint64_t>(subset.begin(), subset.end()));
+    }
+    const std::set<std::set<std::uint64_t>> expected = {{1},    {2},    {3},
+                                                        {1, 2}, {1, 3}, {2, 3}};
+    CHECK(actual == expected);
+  }
+
+  {
+    INFO("generate_subsets includes full set if allowed");
+    const std::vector<std::uint64_t> input = {4, 5, 6};
+    const std::size_t max_subset_size = 3;
+    const auto subsets = generate_subsets(input, max_subset_size);
+
+    std::set<std::set<std::uint64_t>> actual;
+    for (const auto& subset : subsets) {
+      actual.insert(std::set<std::uint64_t>(subset.begin(), subset.end()));
+    }
+
+    const std::set<std::set<std::uint64_t>> expected = {
+        {4}, {5}, {6}, {4, 5}, {4, 6}, {5, 6}, {4, 5, 6}};
+
+    CHECK(actual == expected);
+  }
+
+  {
+    INFO("generate_subsets with max_subset_size 1");
+    const std::vector<std::uint64_t> input = {7, 8};
+    const std::size_t max_subset_size = 1;
+    const auto subsets = generate_subsets(input, max_subset_size);
+
+    std::set<std::set<std::uint64_t>> actual;
+    for (const auto& subset : subsets) {
+      actual.insert(std::set<std::uint64_t>(subset.begin(), subset.end()));
+    }
+
+    const std::set<std::set<std::uint64_t>> expected = {{7}, {8}};
+
+    CHECK(actual == expected);
+  }
+}
+
+/*!
+ * \brief Extracts all keys from a given `std::unordered_map`.
+ *
+ * Returns a vector containing all the keys present in the input map.
+ * The order of the keys in the returned vector is unspecified.
+ *
+ * \tparam Key   The type of the keys in the map.
+ * \tparam Value The type of the values in the map.
+ * \param map    The `std::unordered_map` from which to extract the keys.
+ * \return       A `std::vector` containing all keys from the input map.
+ */
+template <class Key, class Value>
+std::vector<Key> keys_of(const std::unordered_map<Key, Value>& map) {
+  std::vector<Key> result;
+  result.reserve(map.size());
+  for (const auto& k_v : map) {
+    result.push_back(k_v.first);
+  }
+  return result;
+}
+
+void test_keys_of() {
+  {
+    INFO("keys_of with int keys");
+    const std::unordered_map<int, std::string> m = {
+        {1, "a"}, {2, "b"}, {3, "c"}};
+    const auto keys = keys_of(m);
+    const std::set<int> actual(keys.begin(), keys.end());
+    const std::set<int> expected = {1, 2, 3};
+    CHECK(actual == expected);
+  }
+
+  {
+    INFO("keys_of with uint64_t keys");
+    const std::unordered_map<std::uint64_t, double> m = {{10, 1.1}, {20, 2.2}};
+    const auto keys = keys_of(m);
+    const std::set<std::uint64_t> actual(keys.begin(), keys.end());
+    const std::set<std::uint64_t> expected = {10, 20};
+    CHECK(actual == expected);
+  }
+
+  {
+    INFO("keys_of with empty map");
+    const std::unordered_map<int, int> m;
+    const auto keys = keys_of(m);
+    CHECK(keys.empty());
+  }
+}
+
+struct ReductionComponent1
+    : public rts::DistributedObjectCollection<ReductionComponent1> {
+  ReductionComponent1() = default;
+  ~ReductionComponent1() override = default;
+  using rts_collection_index = std::uint64_t;
+
+  static std::string name() { return "ReductionComponent1"; }
+
+  template <class Action, class... Args>
+  void threaded_action(rts::DistributedTaskDriver& task_driver,
+                       const rts_collection_index& my_index, Args... args) {
+    Action::apply(task_driver, my_index, std::forward<Args>(args)...);
+  }
+
+  /*!
+   * \brief Static map storing reduction results for each collection element.
+   *
+   * Maps collection indices to a pair of `(uint64_t, double)` that is set in
+   * the callback of the reduction.
+   */
+  static std::unordered_map<rts_collection_index,
+                            std::pair<std::uint64_t, double>>
+      reduction_data;
+  /// \brief Mutex for thread-safe access to reduction_data.
+  static std::mutex reduction_data_mutex;
+};
+
+std::unordered_map<typename ReductionComponent1::rts_collection_index,
+                   std::pair<std::uint64_t, double>>
+    ReductionComponent1::reduction_data{};
+std::mutex ReductionComponent1::reduction_data_mutex{};
+
+template <bool BroadcastCallback>
+struct StartReduction {
+  /*!
+   * \brief Process ID to delay during the reduction (for testing).
+   *
+   * If set to a valid process ID, that process will sleep briefly before
+   * participating in the reduction, to test try and catch race conditions.
+   */
+  static int delay_process;
+  /*!
+   * \brief Collection index to use for invoke callback reductions.
+   *
+   * Only used when BroadcastCallback is `false`. Specifies which collection
+   * element should receive the invoke callback result.
+   */
+  static std::uint64_t invoke_index;
+  /*!
+   * \brief Optional pointer to a unary predicate for filtering elements.
+   *
+   * If set, only collection elements for which the predicate returns `true`
+   * will participate in the reduction.
+   */
+  static std::optional<const std::function<bool(const std::uint64_t&)>*>
+      unary_predicate;
+  /*!
+   * \brief Counts the number of reductions.
+   */
+  static size_t number_of_reductions;
+  /// \brief The delay amount in microseconds.
+  static size_t delay_amount_us;
+
+  /// \brief Functor for performing the reduction operation.
+  struct MyOp {
+    void operator()(std::tuple<std::uint64_t, double>& data,
+                    const std::uint64_t i, const double d) {
+      std::get<0>(data) += i;
+      std::get<1>(data) += d;
+    }
+  };
+
+  struct SetResult {
+    static void apply(rts::DistributedTaskDriver& /*task_driver*/,
+                      const std::uint64_t my_index, const std::uint64_t i,
+                      const double d) {
+      std::lock_guard lock{ReductionComponent1::reduction_data_mutex};
+      ReductionComponent1::reduction_data[my_index] = std::pair{i, d};
+    }
+  };
+
+  /*!
+   * \brief Initiates the reduction operation for a given collection element.
+   *
+   * If a delay process is specified, that process sleeps briefly before
+   * participating. If a predicate is set, only elements satisfying the
+   * predicate participate. Depending on `BroadcastCallback`, either a broadcast
+   * or invoke reduction callback is used.
+   *
+   * \param task_driver Reference to the `DistributedTaskDriver`.
+   * \param my_index    The collection index of the element.
+   */
+  static void apply(rts::DistributedTaskDriver& task_driver,
+                    const std::uint64_t my_index) {
+    if (task_driver.current_node_id() == 0) {
+      number_of_reductions++;
+    }
+    if (task_driver.current_node_id() == delay_process) {
+      std::this_thread::sleep_for(std::chrono::microseconds(delay_amount_us));
+    }
+    if (unary_predicate.has_value()) {
+      if ((*(unary_predicate.value()))(my_index)) {
+        task_driver.reduction_over<ReductionComponent1, MyOp>(
+            *(unary_predicate.value()), 100,
+            BroadcastCallback
+                ? rts::reduction::ReductionCallback<SetResult,
+                                                    ReductionComponent1>{}
+                : rts::reduction::ReductionCallback<
+                      SetResult, ReductionComponent1>{invoke_index},
+            my_index, 2.0 * my_index);
+      }
+    } else {
+      task_driver.reduction<ReductionComponent1, MyOp>(
+          100,
+          BroadcastCallback
+              ? rts::reduction::ReductionCallback<SetResult,
+                                                  ReductionComponent1>{}
+              : rts::reduction::ReductionCallback<
+                    SetResult, ReductionComponent1>{invoke_index},
+          my_index, 2.0 * my_index);
+    }
+  }
+};
+
+template <bool BroadcastCallback>
+int StartReduction<BroadcastCallback>::delay_process = -1;
+template <bool BroadcastCallback>
+std::uint64_t StartReduction<BroadcastCallback>::invoke_index = 0;
+template <bool BroadcastCallback>
+std::optional<const std::function<bool(const std::uint64_t&)>*>
+    StartReduction<BroadcastCallback>::unary_predicate = std::nullopt;
+template <bool BroadcastCallback>
+size_t StartReduction<BroadcastCallback>::number_of_reductions = 0;
+template <bool BroadcastCallback>
+size_t StartReduction<BroadcastCallback>::delay_amount_us = 1000;
+
+/*!
+ * \brief Test reduction operations across multiple processes for a distributed
+ * collection.
+ *
+ * This function tests both broadcast and invoke reduction callbacks for a
+ * distributed collection component (ReductionComponent1) in a parallel
+ * environment. It verifies that reduction results are correct for all
+ * participating collection elements, optionally filtered by a predicate.
+ *
+ * The function performs the following:
+ * - Computes the expected reduction result for all collection elements that
+ *   satisfy the optional predicate.
+ * - For each process, tests broadcast reduction callbacks, ensuring all local
+ *   elements receive the correct result.
+ * - For each collection element, tests invoke reduction callbacks, ensuring
+ *   only the target element receives the result.
+ * - Synchronizes processes using barriers and clears reduction results between
+ *   tests.
+ *
+ * \param driver Reference to the DistributedTaskDriver managing the test.
+ * \param maybe_unary_predicate Optional predicate to select which collection
+ * elements participate in the reduction. If not provided, all elements
+ * participate.
+ */
+void test_reduction_n_processes_impl(
+    rts::DistributedTaskDriver& driver,
+    const std::optional<std::function<bool(const std::uint64_t&)>>&
+        maybe_unary_predicate) {
+  if (maybe_unary_predicate.has_value()) {
+    StartReduction<true>::unary_predicate = &maybe_unary_predicate.value();
+    StartReduction<false>::unary_predicate = &maybe_unary_predicate.value();
+  } else {
+    StartReduction<true>::unary_predicate = std::nullopt;
+    StartReduction<false>::unary_predicate = std::nullopt;
+  }
+
+  std::vector<std::unordered_set<std::uint64_t>> ids_on_pid_to_use(
+      static_cast<size_t>(driver.number_of_nodes()));
+  std::pair<std::uint64_t, double> expected{0, 0.0};
+  for (const auto& [id, holder] :
+       driver.collection_ids_and_locations<ReductionComponent1>()) {
+    if (not maybe_unary_predicate.has_value() or
+        (maybe_unary_predicate.has_value() and
+         maybe_unary_predicate.value()(
+             detail::from_internal<ReductionComponent1>(id)))) {
+      expected.first += id;
+      expected.second += 2.0 * id;
+      ids_on_pid_to_use[static_cast<size_t>(holder.process_id)].insert(id);
+    }
+  }
+  driver.barrier();
+
+  const auto broadcast_callback = [&driver, &expected, &ids_on_pid_to_use](
+                                      const int delay_process) {
+    StartReduction<true>::delay_process = delay_process;
+    driver.barrier();
+    if (driver.current_node_id() == 0) {
+      driver.broadcast<StartReduction<true>, ReductionComponent1>();
+    }
+    driver.run_to_quiescence();
+
+    REQUIRE(ReductionComponent1::reduction_data.size() ==
+            driver
+                .collection_ids_on_process<ReductionComponent1>(
+                    driver.current_node_id())
+                .size());
+    for (const auto& id :
+         ids_on_pid_to_use[static_cast<size_t>(driver.current_node_id())]) {
+      CAPTURE(id);
+      const bool id_found = ReductionComponent1::reduction_data.find(id) !=
+                            ReductionComponent1::reduction_data.end();
+      CHECK(id_found);
+      if (not id_found) {
+        std::cout << std::string{
+            "Failed with id " + std::to_string(id) + " on process " +
+            std::to_string(driver.current_node_id()) + "\n"};
+        break;
+      }
+      CAPTURE(ReductionComponent1::reduction_data.at(id).first);
+      CAPTURE(ReductionComponent1::reduction_data.at(id).second);
+      CHECK(ReductionComponent1::reduction_data.at(id).first == expected.first);
+      CHECK(ReductionComponent1::reduction_data.at(id).second ==
+            expected.second);
+    }
+    ReductionComponent1::reduction_data.clear();
+    driver.barrier();
+  };
+  for (int delay_process = 0; delay_process < driver.number_of_nodes();
+       ++delay_process) {
+    broadcast_callback(delay_process);
+  }
+
+  const auto invoke_callback = [&driver, &expected](const int delay_process) {
+    for (const auto& [invoke_index, holder] :
+         driver.collection_ids_and_locations<ReductionComponent1>()) {
+      StartReduction<false>::delay_process = delay_process;
+      StartReduction<false>::invoke_index = invoke_index;
+      driver.barrier();
+      if (driver.current_node_id() == 0) {
+        driver.broadcast<StartReduction<false>, ReductionComponent1>();
+      }
+      driver.run_to_quiescence();
+
+      if (holder.process_id == driver.current_node_id()) {
+        REQUIRE(ReductionComponent1::reduction_data.size() == 1);
+        CHECK(ReductionComponent1::reduction_data.at(invoke_index) == expected);
+      } else {
+        REQUIRE(ReductionComponent1::reduction_data.size() == 0);
+      }
+      ReductionComponent1::reduction_data.clear();
+      driver.barrier();
+    }
+  };
+  for (int delay_process = 0; delay_process < driver.number_of_nodes();
+       ++delay_process) {
+    invoke_callback(delay_process);
+  }
+  driver.barrier();
+}
+
+void test_reduction_over(rts::DistributedTaskDriver& driver,
+                         const std::optional<size_t> max_subset_size) {
+  // Test over all sets of up to 3 combinations of the IDs contributing to the
+  // reduction. Does not test when nobody contributes because that's just "no
+  // reduction happens".
+  for (const std::vector<std::uint64_t>& subset_over : generate_subsets(
+           keys_of(driver.collection_ids_and_locations<ReductionComponent1>()),
+           max_subset_size.value_or(
+               driver.collection_ids_and_locations<ReductionComponent1>()
+                   .size()))) {
+    test_reduction_n_processes_impl(
+        driver, [&subset_over](const std::uint64_t& id) -> bool {
+          return std::find(subset_over.begin(), subset_over.end(), id) !=
+                 subset_over.end();
+        });
+  }
+  driver.barrier();
+}
+
+void test_reduction_2_processes(rts::DistributedTaskDriver& driver) {
+  // 2 elements on both processes
+  test_reduction_n_processes_impl(driver, std::nullopt);
+  test_reduction_over(driver, std::nullopt);
+
+  // Only 1 element on process 2
+  driver.remove_parallel_component_collection<ReductionComponent1>(
+      static_cast<size_t>(3));
+  driver.insert_barrier();
+  test_reduction_n_processes_impl(driver, std::nullopt);
+  test_reduction_over(driver, std::nullopt);
+
+  // 0 elements on process 2
+  driver.remove_parallel_component_collection<ReductionComponent1>(
+      static_cast<size_t>(7));
+  driver.insert_barrier();
+  test_reduction_n_processes_impl(driver, std::nullopt);
+  test_reduction_over(driver, std::nullopt);
+
+  // 1 element on process 1
+  driver.remove_parallel_component_collection<ReductionComponent1>(
+      static_cast<size_t>(1));
+  driver.insert_barrier();
+  test_reduction_n_processes_impl(driver, std::nullopt);
+  test_reduction_over(driver, std::nullopt);
+
+  // Add 1 element back on process 2
+  driver.insert_parallel_component_collection<ReductionComponent1>(
+      static_cast<size_t>(3), 1);
+  driver.insert_barrier();
+  test_reduction_n_processes_impl(driver, std::nullopt);
+  test_reduction_over(driver, std::nullopt);
+
+  // 1 element on process 2
+  driver.remove_parallel_component_collection<ReductionComponent1>(
+      static_cast<size_t>(5));
+  driver.insert_barrier();
+  test_reduction_n_processes_impl(driver, std::nullopt);
+  test_reduction_over(driver, std::nullopt);
+}
+}  // namespace
+
+MPI_TEST_CASE("DistributedTaskDriver.Reduction1", 2) {
+  // This test checks core reduction capabilities with only 2 processes to
+  // provide an easy to debug environment.
+  rts::DistributedTaskDriver& driver =
+      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  if (driver.current_node_id() == 0) {
+    test_generate_subsets();
+    test_keys_of();
+    if (driver.number_of_nodes() < 2) {
+      throw Exception{"Must have at least 2 processes for this test."};
+    }
+  }
+  driver.barrier();
+
+  driver.insert_parallel_component_collection<ReductionComponent1>(
+      static_cast<size_t>(1), 0);
+  driver.insert_parallel_component_collection<ReductionComponent1>(
+      static_cast<size_t>(5), 0);
+
+  driver.insert_parallel_component_collection<ReductionComponent1>(
+      static_cast<size_t>(3), 1);
+  driver.insert_parallel_component_collection<ReductionComponent1>(
+      static_cast<size_t>(7), 1);
+
+  ReductionComponent1::reduction_data.clear();
+
+  driver.insert_barrier();
+  driver.launch_threads();
+
+  test_reduction_2_processes(driver);
+
+  driver.force_threads_to_stop();
+}
+
+namespace {
+template <typename T>
+std::string to_string(const std::vector<T>& vec) {
+  std::stringstream os;
+  os << "[";
+  for (size_t i = 0; i < vec.size(); ++i) {
+    os << vec[i];
+    if (i + 1 < vec.size()) {
+      os << ", ";
+    }
+  }
+  os << "]";
+  return os.str();
+}
+}  // namespace
+
+MPI_TEST_CASE("DistributedTaskDriver.ExhaustiveReductions8Processes", 8) {
+  // Tests that reductions where significant elements are missing in the tree
+  // also work. This is a very long running test that attempts to catch any
+  // and all bugs, including race conditions.
+  //
+  // With 8 processes we get the following structure:
+  //                                0
+  //                1                               2
+  //        3               4               5               6
+  //     7     8
+  //
+  // The cost of this test is set almost entirely by the delay amount since
+  // the actual reductions are ridiculously fast. We generate about 16.8
+  // million configurations, and so a delay amount of 100us means about 30 min
+  // of runtime, assuming each configuration costs the same amount. This is
+  // also not true because for each configuration we test all possible
+  // permutations of element distributions. This makes the test extremely
+  // expensive, but also extremely rigorous.
+  const size_t delay_amount_us = 10;
+  StartReduction<true>::delay_amount_us = delay_amount_us;
+  StartReduction<false>::delay_amount_us = delay_amount_us;
+  rts::DistributedTaskDriver& driver =
+      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  const std::unordered_map<std::uint64_t, int> possible_elements_and_pids{
+      {10, 0}, {11, 0}, {12, 0},           // value 0: 3 keys
+      {20, 1}, {21, 1}, {22, 1},           // value 1: 3 keys
+      {30, 2}, {31, 2},                    // value 2: 2 keys
+      {40, 3}, {41, 3}, {42, 3}, {43, 3},  // value 3: 4 keys
+      {50, 4}, {51, 4}, {52, 4},           // value 4: 3 keys
+      {60, 5}, {61, 5}, {62, 5}, {63, 5},  // value 5: 4 keys
+      {70, 6}, {71, 6}, {72, 6},           // value 6: 3 keys
+      {80, 7}, {81, 7}                     // value 7: 2 keys
+      // Total: 24
+  };
+  const std::vector<std::uint64_t> possible_elements =
+      keys_of(possible_elements_and_pids);
+  if (driver.current_node_id() == 0) {
+    std::cout << "Generating element subsets which will take a bit...\n";
+  }
+  const std::vector<std::vector<std::uint64_t>> element_subsets =
+      generate_subsets(possible_elements, possible_elements.size());
+  driver.barrier();
+  if (driver.current_node_id() == 0) {
+    std::cout << "Generated " << element_subsets.size()
+              << " element subsets.\n";
+  }
+  ReductionComponent1::reduction_data.clear();
+  driver.barrier();
+  driver.launch_threads();
+
+  for (size_t i = 0; i < element_subsets.size(); ++i) {
+    const std::vector<std::uint64_t>& elements_in_test_iteration =
+        element_subsets[i];
+    if (driver.current_node_id() == 0) {
+      std::cout << "Performing test " << (i + 1) << "/"
+                << element_subsets.size() << " over "
+                << to_string(elements_in_test_iteration) << "\n"
+                << std::flush;
+    }
+    driver.barrier();
+    for (const std::uint64_t id : elements_in_test_iteration) {
+      driver.insert_parallel_component_collection<ReductionComponent1>(
+          id, possible_elements_and_pids.at(id));
+    }
+    driver.insert_barrier();
+
+    test_reduction_n_processes_impl(driver, std::nullopt);
+    test_reduction_over(driver, std::nullopt);
+
+    driver.barrier();
+    for (const std::uint64_t id : elements_in_test_iteration) {
+      driver.remove_parallel_component_collection<ReductionComponent1>(id);
+    }
+    driver.insert_barrier();
+  }
+
+  driver.force_threads_to_stop();
+  if (driver.current_node_id() == 0) {
+    std::cout << "We performed "
+              << (StartReduction<true>::number_of_reductions +
+                  StartReduction<false>::number_of_reductions)
+              << " reductions in total.\n";
   }
 }
 }  // namespace rts

@@ -188,4 +188,12 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
     --test-case=DistributedTaskDriver.InsertError_CollectionElementPid0
     --rts-mpi-test
   )
+  add_test(
+    NAME DistributedTaskDriver.Reduction1
+    COMMAND
+    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    $<TARGET_FILE:Test>
+    --test-case=DistributedTaskDriver.Reduction1
+    --rts-mpi-test
+  )
 endif()
