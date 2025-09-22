@@ -26,6 +26,7 @@
 #include <variant>
 #include <vector>
 
+#include "findus/BindTo.hpp"
 #include "findus/Detail/ActiveObject.hpp"
 #include "findus/Detail/AllElements.hpp"
 #include "findus/Detail/DistributedObjectBase.hpp"
@@ -640,7 +641,8 @@ class DistributedTaskDriver {
  private:
   // The DistributedTaskDriver can only be created using the
   // create_distributed_task_driver() function.
-  DistributedTaskDriver(bool finalize_mpi, bool mpi_supports_multithreading);
+  DistributedTaskDriver(BindTo bind_to, int task_threads_per_process,
+                        bool finalize_mpi, bool mpi_supports_multithreading);
 
   /// \cond
   friend DistributedTaskDriver& create_distributed_task_driver(

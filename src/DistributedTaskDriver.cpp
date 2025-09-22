@@ -31,6 +31,7 @@
 #include <utility>
 #include <vector>
 
+#include "findus/BindTo.hpp"
 #include "findus/Callback.hpp"
 #include "findus/Detail/ActiveObject.hpp"
 #include "findus/Detail/DistributedObjectIndex.hpp"
@@ -49,6 +50,7 @@
 
 namespace findus {
 DistributedTaskDriver::DistributedTaskDriver(
+    const BindTo bind_to, const int task_threads_per_process,
     const bool finalize_mpi, const bool mpi_supports_multithreading)
     : finalize_mpi_(finalize_mpi),
       mpi_supports_multithreading_(mpi_supports_multithreading) {
@@ -91,7 +93,13 @@ DistributedTaskDriver::DistributedTaskDriver(
         "Failed to get the number of nodes in the ToyRTS communicator.");
   }
 
-  number_of_threads_ = 4;
+  hardware_info::print_hardware_info(findus_comm_);
+
+  if (task_threads_per_process < 0) {
+    throw Exception{
+        "The number of task threads per process must be non-negative."};
+  }
+  number_of_threads_ = task_threads_per_process;
 
   // Broadcast number of threads requested.
   if (MPI_Bcast(&number_of_threads_, 1, MPI_INT, 0, findus_comm_) !=
@@ -100,8 +108,11 @@ DistributedTaskDriver::DistributedTaskDriver(
   }
 
   thread_pool_ = std::make_unique<ThreadPool_t>(
-      static_cast<uint32_t>(number_of_threads_), 1, this);
-  hardware_info::print_hardware_info(findus_comm_);
+      static_cast<uint32_t>(number_of_threads_), bind_to,
+      (bind_to == BindTo::Core or bind_to == BindTo::HardwareThread)
+          ? std::optional<std::uint32_t>{hardware_info::cpu_info().bound_cpu_id}
+          : std::nullopt,
+      this);
 
   active_object_.resize(static_cast<size_t>(number_of_threads_ + 1),
                         detail::ActiveObject{});
@@ -1551,10 +1562,13 @@ DistributedTaskDriver& create_distributed_task_driver(
     }
   }
 
+  const BindTo bind_to = BindTo::Core;
+  const int task_threads_per_process = 3;
   // If we initialize MPI then we also finalize it on destruction.
   const_cast<std::unique_ptr<DistributedTaskDriver>&>(task_driver) =
       std::unique_ptr<DistributedTaskDriver>(new DistributedTaskDriver(
-          initialize_mpi, mpi_threading_support == MPI_THREAD_MULTIPLE));
+          bind_to, task_threads_per_process, initialize_mpi,
+          mpi_threading_support == MPI_THREAD_MULTIPLE));
   task_driver->attach_debugger();
   detail::print_process_pids(task_driver->current_node_id());
   task_driver->barrier();
