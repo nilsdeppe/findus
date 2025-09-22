@@ -1113,7 +1113,8 @@ void DistributedTaskDriver::remove_parallel_component_collection(
         ParallelComponent::name() + " because it is of type " +
         detail::get_output(static_cast<detail::DistributedObjectIndex>(
             distributed_objects_[object_index].objects.index())) +
-        " but it should be a collection."};
+        " but it should be a collection. In function "
+        "remove_parallel_component_collection()"};
   }
   const std::uint64_t collection_index = detail::to_internal(user_index);
   DistributedOjectClassHolder::Map_t& collection =
@@ -1155,7 +1156,8 @@ auto DistributedTaskDriver::collection_ids_on_processes() const
         ParallelComponent::name() + " because it is of type " +
         detail::get_output(static_cast<detail::DistributedObjectIndex>(
             distributed_objects_[object_index].objects.index())) +
-        " but it should be a collection."};
+        " but it should be a collection. In function "
+        "collection_ids_on_processes()."};
   }
   return distributed_objects_[object_index].ids_per_process;
 }
@@ -1188,7 +1190,8 @@ auto DistributedTaskDriver::collection_ids_and_locations() const
         ParallelComponent::name() + " because it is of type " +
         detail::get_output(static_cast<detail::DistributedObjectIndex>(
             distributed_objects_[object_index].objects.index())) +
-        " but it should be a collection."};
+        " but it should be a collection. In function "
+        "collection_ids_and_locations()."};
   }
   return std::get<1>(distributed_objects_[object_index].objects);
 }
@@ -1808,7 +1811,8 @@ ParallelComponent* local_parallel_component(
         detail::get_output(static_cast<detail::DistributedObjectIndex>(
             distributed_task_driver.distributed_objects_[object_index]
                 .objects.index())) +
-        " but it should be a collection."};
+        " but it should be a collection. In function "
+        "local_parallel_component()."};
   }
   auto& object_collection = std::get<1>(
       distributed_task_driver.distributed_objects_[object_index].objects);
