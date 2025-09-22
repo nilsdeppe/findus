@@ -89,16 +89,21 @@ DistributedTaskDriver::DistributedTaskDriver(bool finalize_mpi,
         "Failed to get the number of nodes in the ToyRTS communicator.");
   }
 
-  number_of_threads_ = 4;
+  number_of_threads_ = 3;
 
   // Broadcast number of threads requested.
   if (MPI_Bcast(&number_of_threads_, 1, MPI_INT, 0, rts_comm_) != MPI_SUCCESS) {
     throw MpiException("Failed to broadcast number of threads.");
   }
 
-  thread_pool_ = std::make_unique<ThreadPool_t>(
-      static_cast<uint32_t>(number_of_threads_), 1, this);
   hardware_info::print_hardware_info(rts_comm_);
+
+  // TODO: get binding more robust
+  hardware_info::bind_current_thread_to_core(
+      static_cast<size_t>(current_node_id() * 4));
+  thread_pool_ =
+      std::make_unique<ThreadPool_t>(static_cast<uint32_t>(number_of_threads_),
+                                     current_node_id() * 4 + 1, this);
 
   active_object_.resize(static_cast<size_t>(number_of_threads_ + 1),
                         detail::ActiveObject{});
