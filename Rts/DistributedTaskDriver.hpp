@@ -1621,20 +1621,28 @@ void DistributedTaskDriver::reduction_over(
             std::make_index_sequence<sizeof...(Args)>{}));
     outgoing_messages_.enqueue(std::tuple<int, Message_t>{
         reduction::reduction_process_id, std::move(message)});
-  } else {
-    // TODO: create the message.
-    //
-    // holder.reduction_handler
-    //     ->set_interprocess_message_info<ContributingParallelComponent>(
-    //         message, current_node_id(), number_of_nodes(),
-    //         holder.ids_per_process, predicate);
-    // message.get_header()->member_function_ptr(
-    //     threaded_action_relative_ptr<CallbackAction,
-    //     CallbackParallelComponent,
-    //                                  std::decay_t<Args>...>(
-    //         std::make_index_sequence<sizeof...(Args)>{}));
-    throw Exception{
-        "Reduction not implemented fully for non-collection components"};
+  } else { // per-process component case
+    using Data_t = std::tuple<std::decay_t<Args>...>;
+    Message_t message = reduction::create_message(
+        object_index, reduction_id, Data_t{std::forward<Args>(args)...},
+        std::move(reduction_callback),
+        std::is_same_v<std::decay_t<UnaryPredicate>,
+                       reduction::detail::AllElements>
+            ? MessageType::Reduction
+            : MessageType::ReductionOver);
+    holder.reduction_handler
+        ->set_interprocess_message_info<ContributingParallelComponent>(
+            message, current_node_id(), number_of_nodes(), predicate);
+    message.get_header()->member_function_ptr(
+        threaded_action_relative_ptr<CallbackAction, CallbackParallelComponent,
+                                     std::decay_t<Args>...>(
+            std::make_index_sequence<sizeof...(Args)>{}));
+    reduction::set_combine_function_pointer(
+        message,
+        &reduction::detail::combine<BinaryOp,
+                                    std::tuple<std::decay_t<Args>...>>);
+    outgoing_messages_.enqueue(std::tuple<int, Message_t>{
+        reduction::reduction_process_id, std::move(message)});
   }
 }
 
