@@ -31,6 +31,7 @@ add_library(
   Serialize/Action.cpp
   Serialize/Bytes.cpp
   Serialize/Serializer.cpp
+  Serialize/Stl/Vector.cpp
   Serialize/View.cpp
 )
 
