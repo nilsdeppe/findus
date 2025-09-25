@@ -29,6 +29,7 @@ add_library(
   QuiescenceDetection.cpp
   Reduction.cpp
   Serialize/Action.cpp
+  Serialize/Bytes.cpp
 )
 
 target_include_directories(
