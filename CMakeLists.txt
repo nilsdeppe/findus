@@ -35,6 +35,7 @@ if (RTS_BUILD_DOCS)
 endif()
 
 include(RtsFlags)
+include(CharmInterop)
 include(CTest)
 if (BUILD_TESTING)
   include(SetupDoctest)
