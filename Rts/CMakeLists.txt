@@ -28,6 +28,7 @@ add_library(
   ParentAndChildren.cpp
   QuiescenceDetection.cpp
   Reduction.cpp
+  Serialize/Action.cpp
 )
 
 target_include_directories(
