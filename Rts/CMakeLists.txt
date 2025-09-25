@@ -30,6 +30,7 @@ add_library(
   Reduction.cpp
   Serialize/Action.cpp
   Serialize/Bytes.cpp
+  Serialize/View.cpp
 )
 
 target_include_directories(
