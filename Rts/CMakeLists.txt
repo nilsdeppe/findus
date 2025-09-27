@@ -32,6 +32,7 @@ add_library(
   Serialize/Bytes.cpp
   Serialize/Serializer.cpp
   Serialize/Stl/Array.cpp
+  Serialize/Stl/Deque.cpp
   Serialize/Stl/Vector.cpp
   Serialize/View.cpp
 )
