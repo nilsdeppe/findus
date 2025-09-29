@@ -33,6 +33,7 @@ add_library(
   Serialize/Serializer.cpp
   Serialize/Stl/Array.cpp
   Serialize/Stl/Deque.cpp
+  Serialize/Stl/ForwardList.cpp
   Serialize/Stl/Vector.cpp
   Serialize/View.cpp
 )
