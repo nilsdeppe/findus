@@ -149,6 +149,8 @@ Message_t create_message(const detail::MemberFunctionPtr member_function_ptr,
  * \param destination_process_id The destination process ID for the header.
  * \param quiescence_detection_sweep_number The sweep number for the header.
  * \param was_serialized Whether the data was serialized.
+ * \param number_of_elements_on_pid The number of collection elements on the
+ *        process.
  * \param data_alignment The alignment of the underlying data.
  * \param data_size The size of the underlying data.
  * \param data_ptr Pointer to the data tuple to copy into the message.
@@ -178,6 +180,7 @@ Message_t create_broadcast_to_message(
  * \param destination_process_id The process ID of the receiver.
  * \param quiescence_detection_sweep_number The sweep number for QD.
  * \param was_serialized True if the data was serialized, false if in-place.
+ * \param message_type The type of message (e.g., Invoke, Broadcast, etc.).
  * \param data_alignment The alignment of the data to be copied.
  * \param data_size The size of the data to be copied.
  * \param data_ptr Pointer to the data to copy into the message.
@@ -188,7 +191,7 @@ Message_t create_message(
     std::uint64_t collection_index, std::uint32_t distributed_object_index,
     std::int32_t source_process_id, std::int32_t destination_process_id,
     std::uint64_t quiescence_detection_sweep_number, bool was_serialized,
-    const MessageType message_type, std::uint64_t data_alignment,
+    MessageType message_type, std::uint64_t data_alignment,
     std::uint64_t data_size, const void* data_ptr);
 
 namespace reduction {
@@ -567,7 +570,6 @@ std::int32_t get_expected_number_of_root_contributions(
  * 3. The offset of the callback relative to the MessageHeader address
  *    (`std::uint32_t`, 4 bytes). Retrieve using
  *    `rts::reduction::get_callback_offset()`.
- * ```
  *
  * The function computes the correct offsets and alignments for the data and
  * callback, constructs them in-place, and sets the appropriate metadata fields

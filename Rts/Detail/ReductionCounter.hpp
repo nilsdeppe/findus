@@ -45,7 +45,8 @@ namespace rts::reduction::detail {
  *   - If the internal container is full and cannot insert a new key, an
  *     exception is thrown.
  *
- * \thread_safety
+ * <br>
+ * \note
  *   The increment function of this class is thread-safe and intended to be used
  *   concurrently by multiple threads within a process. However, the
  *   constructor is not thread-safe.
@@ -125,10 +126,12 @@ class alignas(
    *   `true` if the reduction is complete across all local threads, `false`
    *   otherwise.
    *
-   * \thread_safety
+   * \note
    *   This function is thread-safe and is designed to be called concurrently
    *   from multiple threads. The internal counter and key are protected by
    *   atomic operations.
+   *
+   * <br>
    *
    * \note
    *   - The function uses atomic operations to minimize synchronization

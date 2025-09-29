@@ -100,7 +100,7 @@ bool tuple_equal(const std::tuple<Args...>& tuple_1,
  * - `make_broadcast_callback()`
  * - `make_broadcast_to_callback()`
  *
- * \thread_safety
+ * \note
  * Callbacks should only be created, invoked, and otherwise manipulated in a
  * thread-safe environment. Calling the `invoke()` function in parallel from
  * multiple threads is undefined behavior. Each callback object may be invoked

@@ -568,15 +568,16 @@ class Handler {
    * **Algorithm for tracking inter-process reduction information:**
    *
    * Each process in the system may contribute to a reduction. For a
-   * given process $n$, its first parent is denoted as $n_{p1}$, and
+   * given process \f$n\f$, its first parent is denoted as \f$n_{p1}\f$, and
    * higher-order parents can be found by traversing up the virtual spanning
    * tree across the processes. The algorithm finds the first parent process
-   * $p_r$ that will actually contribute to the reduction. This is also the
-   * process to which we send our reduction data. Note that  $p_r \geq n_{p1}$.
+   * \f$p_r\f$ that will actually contribute to the reduction. This is also the
+   * process to which we send our reduction data. Note that
+   * \f$p_r \geq n_{p1}\f$.
    *
-   * The parent process $p_r$ must know how many different processes will
+   * The parent process \f$p_r\f$ must know how many different processes will
    * send contributions to it directly. This is determined by searching down the
-   * subtree rooted at $p_r$ to find all "orphaned" contributors (i.e.,
+   * subtree rooted at \f$p_r\f$ to find all "orphaned" contributors (i.e.,
    * processes contribute to the reduction but whose direct do not). In a
    * balanced binary tree, each parent typically has two direct contributors:
    * its left and right children. However, since processes may not contribute,
@@ -805,4 +806,34 @@ void Handler::set_interprocess_message_info(
   reduction::set_contributed_metadata(
       message, reduction::Contribution::self_contributed);
 }
+
+template <class BroadcastToParallelComponent, class ReductionUnaryPredicate,
+          class BroadcastToUnaryPredicate>
+size_t size_for_broadcast_to(
+    const int process_id, const ReductionUnaryPredicate& reduction_predicate,
+    const std::vector<std::vector<std::uint64_t>>& ids_per_process,
+    const BroadcastToUnaryPredicate& broadcast_to_predicate) {
+  for (int i = 0; i < process_id; ++i) {
+    if (reduction_predicate(i)) {
+      return 0;
+    }
+  }
+  // None of the processes "before" me (with PID smaller than mine) are
+  // contributing to the reduction, which means I am responsible for computing
+  // the elements that the broadcast_to is going to.
+  size_t number_of_broadcast_to_elements = 0;
+  for (const std::vector<std::uint64_t>& ids_on_process : ids_per_process) {
+    for (const std::uint64_t id : ids_on_process) {
+      if (broadcast_to_predicate(
+              rts::detail::from_internal<BroadcastToParallelComponent>(id))) {
+        ++number_of_broadcast_to_elements;
+      }
+    }
+  }
+  return number_of_broadcast_to_elements;
+}
+
+// void add_broadcast_to_ids() {
+
+// }
 }  // namespace rts::reduction
