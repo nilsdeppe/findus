@@ -38,6 +38,7 @@ add_library(
   Serialize/Stl/ForwardList.cpp
   Serialize/Stl/List.cpp
   Serialize/Stl/Pair.cpp
+  Serialize/Stl/String.cpp
   Serialize/Stl/Tuple.cpp
   Serialize/Stl/Vector.cpp
   Serialize/View.cpp
