@@ -162,6 +162,117 @@ namespace serialize {
  * Serializer class can be extended to support storing an arbitrary amount of
  * custom data to support stateful allocators.
  *
+ * ### Serialization of (abstract) base classes
+ *
+ * Dynamic polymorphism and (abstract) base classes are a common development
+ * pattern in C++. Serialization is a bit trickier in this case since, given a
+ * pointer to a base class, the derived class must be serialized and the
+ * receiving process must properly deserialize the byte stream. Base classes
+ * that may be serialized must inherit from the SerializableBase class. As a
+ * first example, consider a base class that holds no data:
+ *
+ * \snippet Virtual.cpp SerializableBaseNoDataInBase
+ *
+ * The derived class needs to inherit from SerializableDerived and continuing
+ * on with our example of a base class that holds no data, the derived class
+ * is implemented as
+ *
+ * \snippet Virtual.cpp SerializableDerivedNoDataInBase
+ *
+ * A few things are worth noting:
+ * 1. The base class must virtually inherit from SerializableBase.
+ * 2. SerializableBase takes as a template parameter the user base class (this
+ * pattern is call the Curiously Recurring Template Pattern or CRTP).
+ * 3. The base class must implement a (pure) virtual
+ *    `virtual Serializer& serialize(Serializer& s) = 0;`
+ *    function or for Charm++ PUP interoperability a (pure) virtual
+ *    `virtual void pup(PUP::er& p) = 0;`
+ *    function.
+ * 4. The derived class must inherit from both the user base class and from
+ *    SerializableDerived, which takes as template parameters the current
+ *    derived class and the base class.
+ * 5. The derived class must override the virtual serialize (or pup for
+ *    Charm++ interoperability) functions.
+ *
+ * As a second example, let's look at a base class that holds data:
+ *
+ * \snippet Virtual.cpp SerializableBaseDataInBase
+ *
+ * and a derived class:
+ *
+ * \snippet Virtual.cpp SerializableDerivedDataInBase
+ *
+ * Note that:
+ * 1. The inheritance is the same as before.
+ * 2. The base class `serialize` (or `pup`) function is no longer pure virtual
+ *    and it serializes the base class data.
+ * 3. The derived class's `serialize` (and `pup`) first call the base class's
+ *    `serialize` (or `pup`) method. This order is strongly recommended for
+ *    consistency and because it follows C++'s base class construction order.
+ *
+ * The above two cases should be the most common implementations. However,
+ * sometimes you have a derived class that needs to inherit from multiple base
+ * classes, and any of the base classes could be serialized. In this example
+ * we have two base classes, `BaseLeft` and `BaseRight`, and a derived class
+ * `Derived` that inherits from both. We would like to be able to serialize
+ * both `BaseLeft*` and `BaseRight*` pointers. Here are the base classes:
+ *
+ * \snippet Virtual.cpp MultipleBase
+ *
+ * Note that:
+ * 1. Both inherit from `SerializableBase` with the respective base class as
+ *    the template parameter.
+ * 2. Both have member data, so we need to make sure all member data is
+ *    serialized.
+ * 3. Both define virtual `serialize` (or `pup`) function.
+ * 4. They both define a constructor `Base(Serializer& s)` so that no default
+ *    constructor is necessary.
+ *
+ * The derived class is:
+ *
+ * \snippet Virtual.cpp MultipleBaseDerived
+ *
+ * Note that:
+ * 1. The class inherits from both `BaseLeft` and `BaseRight`, and inherits
+ *    from the corresponding `SerializableDerived` classes.
+ * 2. The `serialize` (or `pup`) functions first call into the base class
+ *    serialization functions, and in the same order as they are inherited.
+ * 3. A `Derived(Serializer& s)` constructor is defined that forwards to the
+ *    base class constructors in the appropriate order. Note that you _cannot_
+ *    call the `serialize` (or `pup`) from the constructor since this would
+ *    cause a double deserialization of the data, and ultimately undefined
+ *    behavior.
+ *
+ * While this multiple inheritance case likely somewhat rare, it is fully
+ * supported.
+ *
+ * We briefly touched on that proper deserialization requires knowing the most
+ * derived class and constructing that before unpacking the byte stream. In
+ * order to know which derived class to construct, a registration system is
+ * used. By default, a compiler-dependent class name is hashed for
+ * registration. Since this is not portable, even if the byte stream itself
+ * is, we allow users to define a custom name for derived classes that is
+ * hashed for serialization. Classes that implement a
+ * `static std::string rts_serializable_name();`
+ * method will have that name hashed. For example,
+ *
+ * \snippet Virtual.cpp DerivedWithName
+ *
+ * It may also be the case that users have a derived class that is templated
+ * on multiple types, and some form of encoding of that information is
+ * necessary. Here is an example of how that can be achieved:
+ *
+ * \snippet Virtual.cpp DerivedTemplateWithName
+ *
+ * Note that the a unique name is only needed for each base class because we
+ * maintain a different registration system for each base class. That is, two
+ * classes can have the same registration name as long as they don't inherit
+ * from the same base class.
+ *
+ * We use FNV-1a algorithm for computing the hash and ship our own
+ * implementation. This is because `std::hash` does not guarantee portability
+ * of the hashed value across implementations.
+ *
  * ### Extra info for serialization
  *
  * The Serializer offers 64 bytes of "extra information" that can be set by

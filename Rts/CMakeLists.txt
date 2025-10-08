@@ -43,6 +43,7 @@ add_library(
   Serialize/Stl/Tuple.cpp
   Serialize/Stl/Vector.cpp
   Serialize/View.cpp
+  Serialize/Virtual.cpp
 )
 
 target_include_directories(
