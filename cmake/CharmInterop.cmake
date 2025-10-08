@@ -3,7 +3,7 @@
 # See LICENSE.txt for details.
 
 option(RTS_MIMIC_CHARM_PUPER
-  "Add -g to CMAKE_CXX_FLAGS if ON, -g0 if OFF."
+  "Add enables support for PUP::er as the serialization class."
   ON)
 
 if (RTS_MIMIC_CHARM_PUPER)
