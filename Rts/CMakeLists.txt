@@ -41,6 +41,7 @@ add_library(
   Serialize/Stl/Pair.cpp
   Serialize/Stl/String.cpp
   Serialize/Stl/Tuple.cpp
+  Serialize/Stl/UniquePtr.cpp
   Serialize/Stl/Vector.cpp
   Serialize/View.cpp
   Serialize/Virtual.cpp
