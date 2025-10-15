@@ -40,6 +40,7 @@
 #include "Rts/ParentAndChildren.hpp"
 #include "Rts/QuiescenceDetection.hpp"
 #include "Rts/Reduction.hpp"
+#include "Rts/Serialize/Serializer.hpp"
 #include "Rts/ThreadPool.hpp"
 
 namespace rts {
@@ -1272,8 +1273,16 @@ void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
             false, MessageType::Invoke,
             std::tuple<std::decay_t<Args>...>{std::forward<Args>(args)...}));
   } else {
-    throw Exception{"Serialization in invoke() is not yet implemented."};
-    // send_data(target_node, std::move(buffer));
+    send_data(target_node,
+              rts::create_message(
+                  threaded_action_relative_ptr<Action, ParallelComponent,
+                                               std::decay_t<Args>...>(
+                      std::make_index_sequence<sizeof...(Args)>{}),
+                  collection_index,
+                  detail::distributed_object_index<ParallelComponent>(),
+                  current_node_id(), target_node,
+                  global_qd_.local_sweep_number(), true, MessageType::Invoke,
+                  std::forward_as_tuple(std::forward<Args>(args)...)));
   }
 }
 
@@ -1720,13 +1729,11 @@ void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
   Data_t* args = nullptr;
   if (header->data_was_serialized()) {
     args = std::addressof(args_data);
-    (void)std::initializer_list<char>{[&args_data, &message]() {
-      (void)message;
-      [[maybe_unused]] auto& t = std::get<ArgIndexes::index>(args_data);
-      // TODO: deserialize
-      throw Exception{"Not implemented"};
-      return '0';
-    }()...};
+    serialize::Serializer unpacker{
+        serialize::Serializer::Unpacking,
+        reinterpret_cast<std::byte*>(header->data_location()),
+        header->number_of_bytes_in_message() - header->data_offset()};
+    unpacker | (*args);
   } else {
     args = data_from_message<Data_t>(*header);
   }
