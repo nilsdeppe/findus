@@ -1717,6 +1717,18 @@ struct CollectionComponent
     last_broadcast_to_args = std::make_tuple(a, d);
     last_result = static_cast<int>(a + d);
   }
+
+  // Specialization for broadcast_to (int, double, std::vector<int>)
+  template <>
+  void threaded_action<TestBroadcastToAction>(
+      rts::DistributedTaskDriver&, const rts_collection_index my_index,
+      const int a, const double d, const std::vector<int> vec) {
+    CHECK(my_index != 0);
+    CHECK(my_index != MessageHeader::no_collection_index());
+    last_broadcast_to_args = std::make_tuple(a, d);
+    last_result =
+        static_cast<int>(a + d) + std::accumulate(vec.begin(), vec.end(), 0);
+  }
 };
 
 void reset_args_on_all(DistributedTaskDriver& driver) {
@@ -2395,15 +2407,22 @@ void test_invoke(DistributedTaskDriver& driver) {
     test_broadcast(from_pid, std::bool_constant<true>{});
   }
 
-  auto test_broadcast_to = [&](const int from_process) {
+  auto test_broadcast_to = [&](const int from_process, auto use_vector) {
+    constexpr bool use_vector_v = decltype(use_vector)::value;
+    std::vector<int> vector_data{11, 13, 17, 19};
     // Test broadcast_to for collection component (only even indices)
     struct EvenPredicate {
       bool operator()(const uint64_t idx) const { return idx % 2 == 0; }
     };
 
     if (driver.current_node_id() == from_process) {
-      driver.broadcast_to<TestBroadcastToAction, CollectionComponent>(
-          EvenPredicate{}, 6 + from_process, 2.5);
+      if constexpr (use_vector_v) {
+        driver.broadcast_to<TestBroadcastToAction, CollectionComponent>(
+            EvenPredicate{}, 6 + from_process, 2.5, vector_data);
+      } else {
+        driver.broadcast_to<TestBroadcastToAction, CollectionComponent>(
+            EvenPredicate{}, 6 + from_process, 2.5);
+      }
     }
 
     driver.run_to_quiescence();
@@ -2415,7 +2434,11 @@ void test_invoke(DistributedTaskDriver& driver) {
       if (driver.current_node_id() == node) {
         REQUIRE(elem != nullptr);
         if (EvenPredicate{}(idx)) {
-          CHECK(elem->last_result == (8 + from_process));
+          CHECK(elem->last_result ==
+                (8 + from_process +
+                 (use_vector_v ? std::accumulate(vector_data.begin(),
+                                                 vector_data.end(), 0)
+                               : 0)));
           CHECK(elem->last_broadcast_args == std::tuple{0, 0, 0.0});
           CHECK(elem->last_broadcast_to_args ==
                 std::tuple{(6 + from_process), 2.5});
@@ -2436,7 +2459,11 @@ void test_invoke(DistributedTaskDriver& driver) {
   };
 
   for (int from_pid = 0; from_pid < number_of_processes; ++from_pid) {
-    test_broadcast_to(from_pid);
+    test_broadcast_to(from_pid, std::bool_constant<false>{});
+  }
+
+  for (int from_pid = 0; from_pid < number_of_processes; ++from_pid) {
+    test_broadcast_to(from_pid, std::bool_constant<true>{});
   }
 
   driver.force_threads_to_stop();
