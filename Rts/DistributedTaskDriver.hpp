@@ -1387,15 +1387,22 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
   // Always align to the tuple. This may over align but reduces code
   // duplication.
   constexpr size_t data_alignment = alignof(Data_t);
-  constexpr size_t data_size = data_is_trivially_copyable
-                                   ? sizeof(Data_t)
-                                   : std::numeric_limits<size_t>::max();
+  size_t data_size = std::numeric_limits<size_t>::max();
   if (data_is_trivially_copyable) {
+    data_size = sizeof(Data_t);
     data = std::unique_ptr<std::byte[]>{new (std::align_val_t{data_alignment})
                                             std::byte[data_size]};
     new (data.get()) Data_t{std::forward<Args>(args)...};
   } else {
-    throw Exception{"Serialization in broadcast_to() not yet implemented."};
+    auto data_tuple = std::forward_as_tuple(args...);
+    serialize::Serializer sizer{serialize::Serializer::Sizing};
+    sizer | data_tuple;
+    data_size = sizer.number_of_bytes();
+    data = std::unique_ptr<std::byte[]>{new (std::align_val_t{data_alignment})
+                                            std::byte[data_size]};
+    serialize::Serializer packer{serialize::Serializer::Packing, data.get(),
+                                 data_size};
+    packer | data_tuple;
   }
 
   // Fill the per_process_broadcast_to_number_of_elements_ vector for this
@@ -1433,9 +1440,9 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
                                      std::decay_t<Args>...>(
             std::make_index_sequence<sizeof...(Args)>{}),
         detail::distributed_object_index<ParallelComponent>(),
-        current_node_id(), pid, global_qd_.local_sweep_number(), false,
-        number_of_elements_on_pid, data_alignment, data_size,
-        reinterpret_cast<Data_t*>(data.get())));
+        current_node_id(), pid, global_qd_.local_sweep_number(),
+        not data_is_trivially_copyable, number_of_elements_on_pid,
+        data_alignment, data_size, data.get()));
   }
   if (static_cast<size_t>(number_of_nodes()) != broadcast_to_messages.size()) {
     throw Exception{"The number of BroadcastTo messages " +
@@ -1470,8 +1477,8 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
             collection_index,
             detail::distributed_object_index<ParallelComponent>(),
             current_node_id(), current_node_id(),
-            global_qd_.local_sweep_number(), false, rts::MessageType::Invoke,
-            data_alignment, data_size, data.get()));
+            global_qd_.local_sweep_number(), not data_is_trivially_copyable,
+            rts::MessageType::Invoke, data_alignment, data_size, data.get()));
       } else {
         Message_t& this_message = broadcast_to_messages[static_cast<size_t>(
             collection_holder.process_id)];
