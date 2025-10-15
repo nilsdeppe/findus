@@ -1321,8 +1321,19 @@ void DistributedTaskDriver::broadcast(Args&&... args) {
             MessageType::Broadcast,
             std::tuple<std::decay_t<Args>...>{std::forward<Args>(args)...}));
   } else {
-    throw Exception{"Serialization in broadcast() is not yet implemented."};
-    // send_data(broadcast_process_id, std::move(buffer));
+    send_data(broadcast_process_id,
+              rts::create_message(
+                  threaded_action_relative_ptr<Action, ParallelComponent,
+                                               std::decay_t<Args>...>(
+                      std::make_index_sequence<sizeof...(Args)>{}),
+                  MessageHeader::no_collection_index(),
+                  detail::distributed_object_index<ParallelComponent>(),
+                  current_node_id(),
+                  // For broadcasts we first set the target process ID to
+                  // self, then update it as we send to different processes.
+                  current_node_id(), global_qd_.local_sweep_number(), true,
+                  MessageType::Broadcast,
+                  std::forward_as_tuple(std::forward<Args>(args)...)));
   }
 }
 
