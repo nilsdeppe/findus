@@ -14,6 +14,7 @@
 
 #include "Rts/DistributedTaskDriver.hpp"
 #include "Rts/MessageHeader.hpp"
+#include "Rts/Serialize/Serializer.hpp"
 
 namespace rts {
 bool Message_t::execute(
@@ -377,6 +378,7 @@ std::int32_t get_expected_number_of_root_contributions(
 
 #include "Rts/DistributedObjectCollection.hpp"
 #include "Rts/Reduction.hpp"
+#include "Rts/Serialize/Stl/Vector.hpp"
 
 namespace rts {
 namespace {
@@ -390,6 +392,7 @@ struct alignas(rts::hardware_info::hardware_destructive_interference_size)
 
 void test_create_message_alignment_and_values() {
   INFO("Test create_message with various types and alignment");
+  using DataTuple = std::tuple<int, double, std::size_t, AlignedStruct>;
 
   // Edge case: struct with large alignment and only fundamental types
   AlignedStruct struct_value{42, 3.14, 123456, 'x'};
@@ -398,7 +401,7 @@ void test_create_message_alignment_and_values() {
   std::size_t size_t_value = 9999;
 
   // Prepare message arguments as a tuple
-  std::tuple args_tuple{int_value, double_value, size_t_value, struct_value};
+  DataTuple args_tuple{int_value, double_value, size_t_value, struct_value};
 
   // Dummy member function pointer and header fields
   const rts::detail::MemberFunctionPtr dummy_ptr{};
@@ -429,23 +432,17 @@ void test_create_message_alignment_and_values() {
 
   // Edge case: check alignment of the data
   const void* data_ptr = header->data_location();
-  CHECK(reinterpret_cast<std::uintptr_t>(data_ptr) %
-            alignof(std::tuple<int, double, std::size_t, AlignedStruct>) ==
-        0);
+  CHECK(reinterpret_cast<std::uintptr_t>(data_ptr) % alignof(DataTuple) == 0);
 
   // Edge case: check buffer size is sufficient for alignment and data
   const std::size_t expected_data_offset =
       sizeof(MessageHeader) +
-      (alignof(std::tuple<int, double, std::size_t, AlignedStruct>) -
-       sizeof(MessageHeader) %
-           alignof(std::tuple<int, double, std::size_t, AlignedStruct>));
+      (alignof(DataTuple) - sizeof(MessageHeader) % alignof(DataTuple));
   const std::size_t expected_buffer_size =
-      expected_data_offset +
-      sizeof(std::tuple<int, double, std::size_t, AlignedStruct>);
+      expected_data_offset + sizeof(DataTuple);
   CHECK(header->number_of_bytes_in_message() == expected_buffer_size);
 
   // Check that the data is correctly stored and retrievable
-  using DataTuple = std::tuple<int, double, std::size_t, AlignedStruct>;
   const DataTuple* data =
       reinterpret_cast<const DataTuple*>(header->data_location());
   CHECK(std::get<0>(*data) == int_value);
@@ -458,6 +455,86 @@ void test_create_message_alignment_and_values() {
   CHECK(struct_from_msg.b == struct_value.b);
   CHECK(struct_from_msg.c == struct_value.c);
   CHECK(struct_from_msg.d == struct_value.d);
+}
+
+void test_create_message_serialized() {
+  INFO("Test create_message with serialized data");
+  using DataTuple = std::tuple<std::vector<int>>;
+
+  // Edge case: struct with large alignment and only fundamental types
+  std::vector<int> vec_value{1, 2, 4, 6, 7, 9};
+
+  // Prepare message arguments as a tuple
+  std::tuple<std::vector<int>&> args_tuple{vec_value};
+  const size_t packed_size = [&args_tuple]() {
+    serialize::Serializer sizer{serialize::Serializer::Sizing};
+    sizer | args_tuple;
+    return sizer.number_of_bytes();
+  }();
+
+  // Dummy member function pointer and header fields
+  const rts::detail::MemberFunctionPtr dummy_ptr{};
+  const std::uint64_t target_collection_index = 0;
+  const std::uint32_t distributed_object_index = 1;
+  const std::int32_t source_process_id = 2;
+  const std::int32_t destination_process_id = 3;
+  const std::uint64_t sweep_number = 4;
+  const bool was_serialized = true;
+  const rts::MessageType message_type = rts::MessageType::Invoke;
+
+  {
+    const std::string msg =
+        "Internal error: when calling create_message with "
+        "was_serialized==false you must pass in the tuple by value "
+        "arguments, not references. That is, "
+        "std::is_same_v<std::decay_t<Args>,Args> is true for all Args.";
+    CHECK_THROWS_WITH_AS(
+        create_message(dummy_ptr, target_collection_index,
+                       distributed_object_index, source_process_id,
+                       destination_process_id, sweep_number, false,
+                       message_type, args_tuple),
+        msg.c_str(), rts::Exception);
+  }
+
+  // Create the message
+  Message_t message = create_message(
+      dummy_ptr, target_collection_index, distributed_object_index,
+      source_process_id, destination_process_id, sweep_number, was_serialized,
+      message_type, args_tuple);
+
+  // Check header fields
+  const MessageHeader* header = message.get_header();
+  CHECK(header->member_function_ptr() == dummy_ptr);
+  CHECK(header->target_collection_index() == target_collection_index);
+  CHECK(header->distributed_object_index() == distributed_object_index);
+  CHECK(header->source_process_id() == source_process_id);
+  CHECK(header->destination_process_id() == destination_process_id);
+  CHECK(header->quiescence_detection_sweep_number() == sweep_number);
+  CHECK(header->data_was_serialized() == was_serialized);
+  CHECK(header->message_type() == message_type);
+
+  // Edge case: check alignment of the data
+  const void* data_ptr = header->data_location();
+  CHECK(reinterpret_cast<std::uintptr_t>(data_ptr) %
+            alignof(std::tuple<std::vector<int>>) ==
+        0);
+
+  // Edge case: check buffer size is sufficient for alignment and data
+  const std::size_t expected_data_offset =
+      sizeof(MessageHeader) +
+      (alignof(DataTuple) - sizeof(MessageHeader) % alignof(DataTuple));
+  const std::size_t expected_buffer_size = expected_data_offset + packed_size;
+  CHECK(header->number_of_bytes_in_message() == expected_buffer_size);
+
+  // Check that the data is correctly stored and retrievable
+  serialize::Serializer unpacker{
+      serialize::Serializer::Unpacking,
+      const_cast<std::byte*>(
+          reinterpret_cast<const std::byte*>(header->data_location())),
+      header->number_of_bytes_in_message() - header->data_offset()};
+  DataTuple data{};
+  unpacker | data;
+  CHECK(vec_value == std::get<0>(data));
 }
 
 /*
@@ -984,6 +1061,7 @@ void test_reduction_contribution_counters() {
 
 TEST_CASE("Message") {
   rts::test_create_message_alignment_and_values();
+  rts::test_create_message_serialized();
   rts::test_create_broadcast_to_message();
   rts::test_create_message();
   rts::test_copy_message();

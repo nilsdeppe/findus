@@ -13,7 +13,10 @@
 #include <utility>
 #include <vector>
 
+#include "Rts/Exceptions/Exception.hpp"
 #include "Rts/MessageHeader.hpp"
+#include "Rts/Serialize/Serializer.hpp"
+#include "Rts/Serialize/Stl/Tuple.hpp"
 
 namespace rts {
 /// \cond
@@ -103,7 +106,6 @@ Message_t create_message(const detail::MemberFunctionPtr member_function_ptr,
                          const MessageType message_type,
                          std::tuple<Args...> args) {
   using Data_t = std::tuple<std::decay_t<Args>...>;
-  static_assert(std::is_same_v<Data_t, std::tuple<Args...>>);
   constexpr std::size_t data_alignment = alignof(Data_t);
 
   // Compute offset for data to ensure correct alignment after header.
@@ -118,7 +120,31 @@ Message_t create_message(const detail::MemberFunctionPtr member_function_ptr,
       + (data_alignment - header_size % data_alignment);
 
   // Total buffer size: header + padding + data
-  const std::size_t number_of_bytes_in_message = data_offset + sizeof(Data_t);
+  const std::uint64_t data_size = [was_serialized, &args]() -> std::uint64_t {
+    if (was_serialized) {
+      if constexpr ((... and serialize::is_serializable_v<Args>)) {
+        serialize::Serializer sizer{serialize::Serializer::Sizing};
+        sizer | args;
+        return sizer.number_of_bytes();
+      } else {
+        (void)args;
+        throw Exception{
+            "Attempting to serialize arguments for creating a message but one "
+            "the arguments cannot be serialized. Make sure all arguments have "
+            "rts::serialize::is_serializable_v<T> evaluate to true."};
+      }
+    } else {
+      if (not std::is_same_v<Data_t, std::tuple<Args...>>) {
+        throw Exception{
+          "Internal error: when calling create_message with "
+            "was_serialized==false you must pass in the tuple by value "
+            "arguments, not references. That is, "
+            "std::is_same_v<std::decay_t<Args>,Args> is true for all Args."};
+      }
+      return sizeof(Data_t);
+    }
+  }();
+  const std::size_t number_of_bytes_in_message = data_offset + data_size;
 
   std::unique_ptr<std::byte[]> buffer(
       new (std::align_val_t(std::max(alignof(MessageHeader), alignof(Data_t))))
@@ -130,7 +156,22 @@ Message_t create_message(const detail::MemberFunctionPtr member_function_ptr,
       distributed_object_index, data_offset, source_process_id,
       destination_process_id, quiescence_detection_sweep_number, was_serialized,
       message_type);
-  *rts::create_data_in_message<Data_t>(*header_ptr) = std::move(args);
+  if (was_serialized) {
+    if constexpr ((... and serialize::is_serializable_v<Args>)) {
+      header_ptr->set_data_alignment(alignof(Data_t));
+      serialize::Serializer packer{
+          serialize::Serializer::Packing,
+          reinterpret_cast<std::byte*>(header_ptr->data_location()), data_size};
+      packer | args;
+    } else {
+      throw Exception{
+          "Attempting to serialize arguments for creating a message but one "
+          "the arguments cannot be serialized. Make sure all arguments have "
+          "rts::serialize::is_serializable_v<T> evaluate to true."};
+    }
+  } else {
+    *rts::create_data_in_message<Data_t>(*header_ptr) = std::move(args);
+  }
 
   return {std::move(buffer)};
 }
