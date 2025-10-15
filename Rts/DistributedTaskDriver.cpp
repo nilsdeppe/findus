@@ -1634,6 +1634,17 @@ struct RegularComponent : public rts::detail::DistributedObjectBase {
     last_broadcast_args = std::make_tuple(a, b, d);
     last_result = static_cast<int>(a + b + d);
   }
+
+  // Specialization for broadcast (int, int, double, std::vector<int>)
+  template <>
+  void threaded_action<TestBroadcastAction>(rts::DistributedTaskDriver&,
+                                            const int a, const int b,
+                                            const double d,
+                                            const std::vector<int> vec) {
+    last_broadcast_args = std::make_tuple(a, b, d);
+    last_result = static_cast<int>(a + b + d) +
+                  std::accumulate(vec.begin(), vec.end(), 0);
+  }
 };
 
 // Collection parallel component
@@ -1682,6 +1693,20 @@ struct CollectionComponent
     CHECK(my_index != MessageHeader::no_collection_index());
     last_broadcast_args = std::make_tuple(a, b, d);
     last_result = static_cast<int>(a + b + d);
+  }
+
+  // Specialization for broadcast (int, int, double, std::vector<int>)
+  template <>
+  void threaded_action<TestBroadcastAction>(rts::DistributedTaskDriver&,
+                                            const rts_collection_index my_index,
+                                            const int a, const int b,
+                                            const double d,
+                                            const std::vector<int> vec) {
+    CHECK(my_index != 0);
+    CHECK(my_index != MessageHeader::no_collection_index());
+    last_broadcast_args = std::make_tuple(a, b, d);
+    last_result = static_cast<int>(a + b + d) +
+                  std::accumulate(vec.begin(), vec.end(), 0);
   }
 
   // Specialization for broadcast_to (int, double)
@@ -2307,19 +2332,32 @@ void test_invoke(DistributedTaskDriver& driver) {
 
   driver.barrier();
 
-  auto test_broadcast = [&](const int from_process) {
+  auto test_broadcast = [&](const int from_process, auto use_vector) {
+    constexpr bool use_vector_v = decltype(use_vector)::value;
+    std::vector<int> vector_data{1, 3, 7, 9};
     // Test broadcast from process 0
     if (driver.current_node_id() == from_process) {
-      driver.broadcast<TestBroadcastAction, RegularComponent>(10 + from_process,
-                                                              20, 1.5);
-      driver.broadcast<TestBroadcastAction, CollectionComponent>(
-          2 + from_process, 8, 3.5);
+      if constexpr (use_vector_v) {
+        driver.broadcast<TestBroadcastAction, RegularComponent>(
+            10 + from_process, 20, 1.5, vector_data);
+        driver.broadcast<TestBroadcastAction, CollectionComponent>(
+            2 + from_process, 8, 3.5, vector_data);
+      } else {
+        driver.broadcast<TestBroadcastAction, RegularComponent>(
+            10 + from_process, 20, 1.5);
+        driver.broadcast<TestBroadcastAction, CollectionComponent>(
+            2 + from_process, 8, 3.5);
+      }
     }
 
     driver.run_to_quiescence();
 
     // 10 + 20 + 1.5 = 31.5 -> 31
-    CHECK(reg->last_result == (31 + from_process));
+    CHECK(reg->last_result ==
+          (31 + from_process +
+           (use_vector_v
+                ? std::accumulate(vector_data.begin(), vector_data.end(), 0)
+                : 0)));
     CHECK(std::get<0>(reg->last_broadcast_args) == (10 + from_process));
     CHECK(std::get<1>(reg->last_broadcast_args) == 20);
     CHECK(std::get<2>(reg->last_broadcast_args) == 1.5);
@@ -2329,7 +2367,11 @@ void test_invoke(DistributedTaskDriver& driver) {
           rts::local_parallel_component<CollectionComponent>(driver, idx);
       if (driver.current_node_id() == node) {
         REQUIRE(elem != nullptr);
-        CHECK(elem->last_result == (13 + from_process));
+        CHECK(elem->last_result ==
+              (13 + from_process +
+               (use_vector_v
+                    ? std::accumulate(vector_data.begin(), vector_data.end(), 0)
+                    : 0)));
         CHECK(elem->last_broadcast_args ==
               std::make_tuple((2 + from_process), 8, 3.5));
         CHECK(elem->last_broadcast_to_args == std::tuple{0, 0.0});
@@ -2346,7 +2388,13 @@ void test_invoke(DistributedTaskDriver& driver) {
   };
 
   for (int from_pid = 0; from_pid < number_of_processes; ++from_pid) {
-    test_broadcast(from_pid);
+    test_broadcast(from_pid, std::bool_constant<false>{});
+  }
+
+  driver.barrier();
+
+  for (int from_pid = 0; from_pid < number_of_processes; ++from_pid) {
+    test_broadcast(from_pid, std::bool_constant<true>{});
   }
 
   auto test_broadcast_to = [&](const int from_process) {
