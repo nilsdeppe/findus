@@ -30,6 +30,7 @@ add_library(
   Reduction.cpp
   Serialize/Action.cpp
   Serialize/Bytes.cpp
+  Serialize/Exception.cpp
   Serialize/Serializer.cpp
   Serialize/Stl/Array.cpp
   Serialize/Stl/Associative.cpp
