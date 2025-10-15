@@ -1549,6 +1549,7 @@ DistributedTaskDriver& CallbackBase::get_task_driver() const {
 
 #include "Rts/Detail/IndexConversion.hpp"
 #include "Rts/DistributedObjectCollection.hpp"
+#include "Rts/Serialize/Stl/Vector.hpp"
 
 namespace rts {
 namespace {
@@ -1617,6 +1618,14 @@ struct RegularComponent : public rts::detail::DistributedObjectBase {
     last_result += static_cast<int>(a + b);
   }
 
+  template <>
+  void threaded_action<TestAction>(rts::DistributedTaskDriver&,
+                                   const std::vector<int> a) {
+    last_args =
+        std::tuple{static_cast<int>(a.size()), static_cast<int>(a.capacity())};
+    last_result = std::accumulate(a.begin(), a.end(), 0);
+  }
+
   // Specialization for broadcast (int, int, double)
   template <>
   void threaded_action<TestBroadcastAction>(rts::DistributedTaskDriver&,
@@ -1650,6 +1659,17 @@ struct CollectionComponent
     CHECK(my_index != MessageHeader::no_collection_index());
     last_args = std::make_tuple(a, b);
     last_result += static_cast<int>(a + b);
+  }
+
+  template <>
+  void threaded_action<TestAction>(rts::DistributedTaskDriver&,
+                                   const rts_collection_index my_index,
+                                   const std::vector<int> a) {
+    CHECK(my_index != 0);
+    CHECK(my_index != MessageHeader::no_collection_index());
+    last_args =
+        std::tuple{static_cast<int>(a.size()), static_cast<int>(a.capacity())};
+    last_result += std::accumulate(a.begin(), a.end(), 0);
   }
 
   // Specialization for broadcast (int, int, double)
@@ -2207,6 +2227,84 @@ void test_invoke(DistributedTaskDriver& driver) {
   }
 
   // Ensure we don't conflict with checks
+  driver.barrier();
+
+  // Test invoke for regular component with serialized data
+  {
+    std::vector vec{5, 7, 11, -1};
+    vec.reserve(20);
+    if (driver.current_node_id() == 1) {
+      driver.invoke<TestAction, RegularComponent>(0, vec);
+    }
+    if (driver.current_node_id() == 0) {
+      driver.invoke<TestAction, RegularComponent>(1, vec);
+    }
+  }
+  // Test invoke for collection component with serialized data
+  if (driver.current_node_id() == 1) {
+    std::vector vec{7, 7, 11, -1};
+    driver.invoke<TestAction, CollectionComponent>(42ul, vec);
+    vec[0] = 13;
+    driver.invoke<TestAction, CollectionComponent>(43ul, vec);
+  }
+  if (driver.current_node_id() == 0) {
+    std::vector vec{111, 7, 11, -12};
+    driver.invoke<TestAction, CollectionComponent>(44ul, vec);
+    vec[0] += 11;
+    driver.invoke<TestAction, CollectionComponent>(46ul, vec);
+  }
+
+  driver.run_to_quiescence();
+
+  CHECK(reg->last_result == 22);
+  CHECK(std::get<0>(reg->last_args) == 4);
+  CHECK(std::get<1>(reg->last_args) == 20);
+
+  // Check we invoked and got correct answer.
+  for (const auto& [idx, expected_accum] :
+       {std::tuple{42ul, 24}, {43ul, 30}, {44ul, 117}, {46ul, 128}}) {
+    const int expected_node = all_indices.at(idx);
+    auto* const elem =
+        rts::local_parallel_component<CollectionComponent>(driver, idx);
+    if (driver.current_node_id() == expected_node) {
+      REQUIRE(elem != nullptr);
+      CHECK(elem->last_result == expected_accum);
+      CHECK(std::get<0>(elem->last_args) == 4);
+      CHECK(std::get<1>(elem->last_args) == 4);
+      elem->last_result = 0;
+    } else {
+      CHECK(elem == nullptr);
+    }
+  }
+
+  // Make sure we didn't send to other indices
+  for (const uint64_t idx : {45ul, 47ul, 48ul}) {
+    const auto* const elem =
+        rts::local_parallel_component<CollectionComponent>(driver, idx);
+    if (driver.current_node_id() == all_indices.at(idx)) {
+      REQUIRE(elem != nullptr);
+      CHECK(elem->last_result == 0);
+      CHECK(elem->last_args == std::tuple{0, 0.0});
+    } else {
+      CHECK(elem == nullptr);
+    }
+  }
+  // verify no broadcast or broadcast_to was recorded.
+  for (const auto& [idx, node] : all_indices) {
+    auto* const elem =
+        rts::local_parallel_component<CollectionComponent>(driver, idx);
+    if (driver.current_node_id() == node) {
+      REQUIRE(elem != nullptr);
+      CHECK(elem->last_result == 0);  // If this fails, we missed a check and
+                                      // reset above.
+      CHECK(elem->last_broadcast_args == std::tuple{0, 0, 0.0});
+      CHECK(elem->last_broadcast_to_args == std::tuple{0, 0.0});
+      elem->last_result = 0;
+    } else {
+      CHECK(elem == nullptr);
+    }
+  }
+
   driver.barrier();
 
   auto test_broadcast = [&](const int from_process) {
