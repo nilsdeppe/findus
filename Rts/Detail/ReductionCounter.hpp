@@ -233,8 +233,8 @@ bool Counter::increment(const std::uint64_t hashed_key,
       std::uint64_t current_key_in_slot = 0;
       if (not entries_[index].key.compare_exchange_strong(
               current_key_in_slot, hashed_key,
-              std::memory_order::memory_order_acquire,
-              std::memory_order::memory_order_release) and
+              std::memory_order::memory_order_release,
+              std::memory_order::memory_order_acquire) and
           current_key_in_slot != hashed_key) {
         // Another thread just stole this slot from us. Try next slot.
         continue;
