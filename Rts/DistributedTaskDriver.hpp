@@ -1502,6 +1502,7 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
   for (int pid = 0; pid < number_of_nodes(); ++pid) {
     if (pid == current_node_id()) {
       thread_pool_->add_tasks(
+          thread_id(),
           std::make_move_iterator(
               std::next(broadcast_to_messages.begin(), number_of_nodes())),
           local_number_of_elements);

@@ -832,7 +832,7 @@ void DistributedTaskDriver::invoke(Message_t& message,
 void DistributedTaskDriver::send_data(const int target_node,
                                       Message_t message) {
   if (target_node == my_node_id_) {
-    thread_pool_->add_task(std::move(message));
+    thread_pool_->add_task(thread_id(), std::move(message));
   } else {
     outgoing_messages_.enqueue(
         std::tuple<int, Message_t>{target_node, std::move(message)});
@@ -1039,7 +1039,7 @@ void DistributedTaskDriver::initiate_sends(const int max_to_send) {
 
         add_local_broadcast_tasks(all_local_messages, message);
         thread_pool_->add_tasks(
-            std::make_move_iterator(all_local_messages.begin()),
+            thread_id(), std::make_move_iterator(all_local_messages.begin()),
             all_local_messages.size());
       } else if (msg_hdr.is_broadcast_to()) {
         send_message_impl(
@@ -1349,7 +1349,8 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
                   });
 
   if (all_messages_are_invoke) {
-    thread_pool_->add_tasks(BulkEnqueueIterator{first_received_message},
+    thread_pool_->add_tasks(thread_id(),
+                            BulkEnqueueIterator{first_received_message},
                             static_cast<size_t>(messages_to_emplace));
   } else {
     // Since we have some broadcast messages, we need to move the messages
@@ -1381,7 +1382,8 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
       }
     }
 
-    thread_pool_->add_tasks(std::make_move_iterator(all_tasks.begin()),
+    thread_pool_->add_tasks(thread_id(),
+                            std::make_move_iterator(all_tasks.begin()),
                             all_tasks.size());
   }
   incoming_mpi_messages_.erase(first_received_message,
