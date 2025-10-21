@@ -70,6 +70,20 @@ class ThreadPool {
   template <class MessageIt>
   void add_tasks(MessageIt messages, const size_t number_of_messages);
 
+  /*!
+   * \brief Adds multiple tasks.
+   *
+   * `number_of_messages` is the number of `messages` there are.
+   *
+   * `MessageIt` must be an (legacy) input iterator. I.e. is has
+   * `operator++()`, `operator++(int)` and `operator*()` defined.
+   *
+   * The `thread_id` is the ID of the _current_ thread.
+   */
+  template <class MessageIt>
+  void add_tasks(uint32_t thread_id, MessageIt messages,
+                 const size_t number_of_messages);
+
   /// \brief Launch all the threads and pin them to a core..
   void launch_threads(std::optional<uint32_t> thread_to_print_from);
 
@@ -142,7 +156,7 @@ inline ThreadPool<MessageType, ProcessLocalDataType>::ThreadPool(
       threads_(number_of_threads),
       stop_threads_{false},
       // Static size for 1024 tasks per thread.
-      task_queue_(1024, number_of_threads, 0),
+      task_queue_(1024, number_of_threads + 1, 0),
       local_qd_{},
       logging_queue_{} {
   if (const auto cpu_info = hardware_info::cpu_info();
@@ -154,9 +168,9 @@ inline ThreadPool<MessageType, ProcessLocalDataType>::ThreadPool(
                     ") and number of threads (" +
                     std::to_string(number_of_threads) + " can accommodate."};
   }
-  producer_tokens_.reserve(number_of_threads);
-  consumer_tokens_.reserve(number_of_threads);
-  for (uint32_t i = 0; i < number_of_threads; i++) {
+  producer_tokens_.reserve(number_of_threads + 1);
+  consumer_tokens_.reserve(number_of_threads + 1);
+  for (uint32_t i = 0; i < (number_of_threads + 1); i++) {
     producer_tokens_.emplace_back(task_queue_);
     consumer_tokens_.emplace_back(task_queue_);
   }
@@ -297,6 +311,20 @@ inline void ThreadPool<MessageType, ProcessLocalDataType>::add_tasks(
     local_qd_.increment_sent();
   }
   if (not task_queue_.enqueue_bulk(std::move(messages), number_of_messages)) {
+    throw std::runtime_error("Failed to enqueue a message onto the thread");
+  }
+}
+
+template <class MessageType, class ProcessLocalDataType>
+template <class MessageIt>
+inline void ThreadPool<MessageType, ProcessLocalDataType>::add_tasks(
+    const uint32_t thread_id, MessageIt messages,
+    const size_t number_of_messages) {
+  for (size_t i = 0; i < number_of_messages; ++i) {
+    local_qd_.increment_sent();
+  }
+  if (not task_queue_.enqueue_bulk(producer_tokens_[thread_id],
+                                   std::move(messages), number_of_messages)) {
     throw std::runtime_error("Failed to enqueue a message onto the thread");
   }
 }
