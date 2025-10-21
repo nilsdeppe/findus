@@ -2473,7 +2473,7 @@ void test_invoke(DistributedTaskDriver& driver) {
 }  // namespace testing
 }  // namespace
 
-MPI_TEST_CASE("DistributedTaskDriver", 2) {
+MPI_TEST_CASE("DistributedTaskDriver.2Processes", 2) {
   rts::DistributedTaskDriver& driver =
       rts::create_distributed_task_driver(nullptr, nullptr, false);
   testing::test_bulk_enequeue_iterator_exceptions();
