@@ -114,7 +114,8 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
     NAME DistributedTaskDriver.2Processes
     COMMAND
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
-    $<TARGET_FILE:Test> --test-case=DistributedTaskDriver --rts-mpi-test
+    $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.2Processes
+    --rts-mpi-test
   )
   add_test(
     NAME MpiErrorMessage
