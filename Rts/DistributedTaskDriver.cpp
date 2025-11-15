@@ -1227,6 +1227,27 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
        ++it) {
     global_qd_.increment_processed();
     Message_t& message = std::get<1>(*it);
+    {
+      // Since we just received this data off the network we really ought to
+      // do the gymnastics of in-place constructing the MessageHeader since
+      // otherwise we technically hit UB. Practically speaking, since when we
+      // create the byte stream we send the entire object, we know that for an
+      // object that is standard_layout and trivially_copyable, we are okay
+      // without it. However, to be explicitly safe, we do it anyway an hope
+      // the compiler optimizes it out as the noop that it is. No memory
+      // allocation is done, so this really just copies 64 bytes in a circle.
+      //
+      // This is the only place in the code where we first deal with a
+      // MessageHeader that came directly from the wire.
+      //
+      // Note: This works with C++17 as well.
+      MessageHeader temp_message_header{};
+      std::memcpy(&temp_message_header, message.message.get(),
+                  sizeof(MessageHeader));
+      MessageHeader* message_header = new (message.message.get()) MessageHeader;
+      std::memcpy(message_header, &temp_message_header, sizeof(MessageHeader));
+    }
+
     MessageHeader& message_header = *message.get_header();
     global_qd_.update_last_regular_message_sweep_number(
         message_header.quiescence_detection_sweep_number());
