@@ -9,6 +9,7 @@
 #include <cstring>
 #include <iosfwd>
 #include <memory>
+#include <new>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -38,10 +39,10 @@ struct Message_t {
   /// @{
   /// \brief Returns the message header.
   MessageHeader* get_header() {
-    return reinterpret_cast<MessageHeader*>(message.get());
+    return std::launder(reinterpret_cast<MessageHeader*>(message.get()));
   }
   const MessageHeader* get_header() const {
-    return reinterpret_cast<MessageHeader*>(message.get());
+    return std::launder(reinterpret_cast<MessageHeader*>(message.get()));
   }
   /// @}
 
