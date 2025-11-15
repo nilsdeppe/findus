@@ -68,6 +68,21 @@ struct alignas(hardware_info::hardware_destructive_interference_size)
                 std::uint64_t quiescence_detection_sweep_number,
                 bool was_serialized, MessageType message_type);
 
+  /// \brief You should never default construct a  MessageHeader
+  ///
+  /// This is necessary to strictly avoid undefined behavior since the byte
+  /// stream received off the network doesn't actually follow the C++ object
+  /// model in that, while the bytes represent a MessageHeader, the C++ object
+  /// model needs the object to have been created. We get around this by
+  /// copying the byte stream into a default-constructed object,
+  /// placement-new-ing a default-constructed MessageHeader in the byte
+  /// stream, and then copying the bytes back. Ideally the compilers are smart
+  /// enough to realize this is just a trick to get around the object model.
+  ///
+  /// In C++20 it should be possible to get around this by using std::memmove
+  /// since that technically creates an object.
+  MessageHeader() = default;
+
   /// \brief The value of `target_collection_index` used when the distributed
   /// object is not a collection.
   static constexpr std::uint64_t no_collection_index() {
