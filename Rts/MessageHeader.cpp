@@ -57,6 +57,12 @@ MessageHeader::MessageHeader(detail::MemberFunctionPtr member_function_ptr,
       source_process_id_(source_process_id),
       destination_process_id_(destination_process_id),
       quiescence_detection_sweep_number_(quiescence_detection_sweep_number) {
+  // Make sure the assumptions we make about MessageHeader are true, even if
+  // tests are compiled.
+  static_assert(std::is_standard_layout_v<MessageHeader>);
+  static_assert(std::is_trivially_copyable_v<MessageHeader>);
+  static_assert(sizeof(MessageHeader) == 64);
+
   // 1099511627775 is 2^40-1, the largest number we can represent with 40 bits.
   if (number_of_bytes_in_message > 1099511627775) {
     throw Exception{"Message size must be under 1099511627776 bytes but got " +
