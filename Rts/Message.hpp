@@ -393,11 +393,13 @@ const std::byte* get_callback_address(const Message_t& message);
  */
 template <class CallbackType>
 CallbackType* get_callback(Message_t& message) {
-  return reinterpret_cast<CallbackType*>(get_callback_address(message));
+  return std::launder(
+      reinterpret_cast<CallbackType*>(get_callback_address(message)));
 }
 template <class CallbackType>
 const CallbackType* get_callback(const Message_t& message) {
-  return reinterpret_cast<const CallbackType*>(get_callback_address(message));
+  return std::launder(
+      reinterpret_cast<const CallbackType*>(get_callback_address(message)));
 }
 /// @}
 
