@@ -39,7 +39,8 @@ TEST_CASE("Serialize.Bytes") {
 
   CHECK(complex_bytes.size_of_item_ == sizeof(ComplexType));
   CHECK(complex_bytes.number_of_items_ == 2);
-  ComplexType* as_complex = reinterpret_cast<ComplexType*>(complex_bytes.item_);
+  ComplexType* as_complex =
+      std::launder(reinterpret_cast<ComplexType*>(complex_bytes.item_));
   CHECK(as_complex[0].a == 5);
   // The value better be bitwise identical.
   CHECK(as_complex[1].b == 9.1);

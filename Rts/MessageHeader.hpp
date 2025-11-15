@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <iosfwd>
 #include <limits>
+#include <new>
 #include <stdexcept>
 #include <string>
 
@@ -344,7 +345,8 @@ auto data_from_message(MessageHeader& message_header) -> DataTypeReturned* {
                     ") does not match the alignment of the returned type " +
                     std::to_string(alignof(DataTypeReturned))};
   }
-  return reinterpret_cast<DataTypeReturned*>(message_header.data_location());
+  return std::launder(
+      reinterpret_cast<DataTypeReturned*>(message_header.data_location()));
 }
 
 template <class DataTypeReturned>

@@ -630,8 +630,10 @@ Serializer& Serializer::operator()(T& data) {
 template <class T>
 std::enable_if_t<std::is_enum_v<T>, Serializer&> operator|(
     Serializer& serializer, T& t) {
-  return serializer(
-      *reinterpret_cast<std::underlying_type_t<T>*>(std::addressof(t)));
+  auto t_under = static_cast<std::underlying_type_t<T>>(t);
+  serializer(t_under);
+  t = static_cast<T>(t_under);
+  return serializer;
 }
 
 /*!

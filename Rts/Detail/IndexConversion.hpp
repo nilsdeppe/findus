@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <new>
 
 #include "Rts/IsCollection.hpp"
 
@@ -111,8 +112,8 @@ std::uint64_t to_internal(const IndexType& collection_index) {
 template <class ParallelComponent>
 typename ParallelComponent::rts_collection_index from_internal(
     const std::uint64_t& collection_index) {
-  return *reinterpret_cast<
-      const typename ParallelComponent::rts_collection_index*>(
-      std::addressof(collection_index));
+  return *std::launder(
+      reinterpret_cast<const typename ParallelComponent::rts_collection_index*>(
+          std::addressof(collection_index)));
 }
 }  // namespace rts::detail
