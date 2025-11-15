@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <ostream>
 #include <string>
 #include <type_traits>
@@ -156,6 +157,8 @@ bool operator==(const TestClass& lhs, const TestClass& rhs) {
 }  // namespace
 
 TEST_CASE("MessageHeader") {
+  static_assert(std::is_standard_layout_v<MessageHeader>);
+  static_assert(std::is_trivially_copyable_v<MessageHeader>);
   static_assert(sizeof(MessageHeader) == 64);
   static_assert(alignof(TestClass) == 64);
   const auto foo_ptr = detail::to_member_function_ptr(&TestClass::foo);
@@ -235,6 +238,20 @@ TEST_CASE("MessageHeader") {
                                              message_type};
         const int expected_int = 13;
         test_impl(*message_header_int, message_type, collection_index,
+                  data_is_serialized, expected_int);
+
+        // Test that we can correctly handle data received over a
+        // network. What that means is in order to not technically hit UB, we
+        // must create the object, copy the data over, then placement-new in
+        // the buffer, and copy back. This is technically not needed since we
+        // are guaranteeing on send and receive that the object size is 64
+        // bytes, requires no padding, and if it did, we account for that by
+        // memcpy of the object into the byte stream.
+        MessageHeader temp{};
+        std::memcpy(&temp, buffer.get(), sizeof(MessageHeader));
+        MessageHeader* message_header_int2 = new (buffer.get()) MessageHeader;
+        std::memcpy(message_header_int2, &temp, sizeof(MessageHeader));
+        test_impl(*message_header_int2, message_type, collection_index,
                   data_is_serialized, expected_int);
 
         message_header_int->member_function_ptr(bar_ptr);
