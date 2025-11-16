@@ -25,11 +25,11 @@ bool Local::is_quiescent(const std::int64_t total_number_of_threads) {
         total_number_of_threads) {
       return false;
     }
-    if (const std::int64_t message_count = number_of_messages_sent_.load(
-            std::memory_order::memory_order_acquire);
+    if (const std::int64_t message_count =
+            number_of_messages_sent_.load(std::memory_order_acquire);
         // sends == receives
-        message_count == number_of_messages_processed_.load(
-                             std::memory_order::memory_order_acquire)) {
+        message_count ==
+        number_of_messages_processed_.load(std::memory_order_acquire)) {
       previous_count_ = message_count;
       phase_ = 2;
       return false;
@@ -43,11 +43,11 @@ bool Local::is_quiescent(const std::int64_t total_number_of_threads) {
       return false;
     }
 
-    if (const std::int64_t message_count = number_of_messages_sent_.load(
-            std::memory_order::memory_order_acquire);
+    if (const std::int64_t message_count =
+            number_of_messages_sent_.load(std::memory_order_acquire);
         // sends == receives
-        message_count == number_of_messages_processed_.load(
-                             std::memory_order::memory_order_acquire)
+        message_count ==
+            number_of_messages_processed_.load(std::memory_order_acquire)
         // AND previous_count_ == current_count
         and previous_count_ == message_count) {
       return true;

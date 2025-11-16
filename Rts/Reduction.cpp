@@ -38,8 +38,7 @@ Message_t DataHandler::pop(const std::uint64_t reduction_id) {
     Message_t t = std::move(entries_[reduction_id].callback_and_data);
     // Synchronizes with the insert_or_combine() operation. We need to make
     // sure the move out of the entry happens-before the clearing of the slot.
-    entries_[index.value()].reduction_id.store(
-        0, std::memory_order::memory_order_release);
+    entries_[index.value()].reduction_id.store(0, std::memory_order_release);
     return t;
   } else {
     throw Exception{"Could not find reduction ID " +
@@ -54,8 +53,8 @@ std::optional<std::uint64_t> DataHandler::index_of(
        (void)++index, (void)++counter) {  // loop for linear probing
     index = index bitand (entries_.size() - 1);
     // This does not synchronize
-    const std::uint64_t probed_reduction_id = entries_[index].reduction_id.load(
-        std::memory_order::memory_order_relaxed);
+    const std::uint64_t probed_reduction_id =
+        entries_[index].reduction_id.load(std::memory_order_relaxed);
     if (probed_reduction_id == reduction_id) {
       return index;
     }
