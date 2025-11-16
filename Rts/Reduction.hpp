@@ -357,8 +357,8 @@ InsertAction DataHandler::insert_or_combine(
        counter < entries_.size();
        (void)++index, (void)++counter) {  // loop for linear probing
     index = index bitand (entries_.size() - 1);
-    const std::uint64_t probed_reduction_id = entries_[index].reduction_id.load(
-        std::memory_order::memory_order_relaxed);
+    const std::uint64_t probed_reduction_id =
+        entries_[index].reduction_id.load(std::memory_order_relaxed);
     if (probed_reduction_id == reduction_id) {
       ReductionIdAndData& red_data = entries_[index];
 
@@ -379,8 +379,8 @@ InsertAction DataHandler::insert_or_combine(
       }
       // We need to synchronize with the `pop()` function to make sure that we
       // don't write to the data before we have acquired it.
-      entries_[index].reduction_id.fetch_add(
-          reduction_id, std::memory_order::memory_order_acquire);
+      entries_[index].reduction_id.fetch_add(reduction_id,
+                                             std::memory_order_acquire);
       entries_[index].callback_and_data = reduction::create_message(
           distributed_object_index, reduction_id,
           Data_t{std::forward<Args>(args)...}, std::move(reduction_callback),

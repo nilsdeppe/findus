@@ -60,26 +60,22 @@ class Local {
  public:
   /// Increment the number of idle threads
   void increment_idle_thread_count() {
-    number_of_idle_threads_.fetch_add(1,
-                                      std::memory_order::memory_order_acq_rel);
+    number_of_idle_threads_.fetch_add(1, std::memory_order_acq_rel);
   }
 
   /// Decrement the number of idle threads
   void decrement_idle_thread_count() {
-    number_of_idle_threads_.fetch_sub(1,
-                                      std::memory_order::memory_order_acq_rel);
+    number_of_idle_threads_.fetch_sub(1, std::memory_order_acq_rel);
   }
 
   /// Increment the number of messages sent
   void increment_sent() {
-    number_of_messages_sent_.fetch_add(1,
-                                       std::memory_order::memory_order_acq_rel);
+    number_of_messages_sent_.fetch_add(1, std::memory_order_acq_rel);
   }
 
   /// Increment the number of messages processed
   void increment_processed() {
-    number_of_messages_processed_.fetch_add(
-        1, std::memory_order::memory_order_acq_rel);
+    number_of_messages_processed_.fetch_add(1, std::memory_order_acq_rel);
   }
 
   /// Applies the SKR check for quiescence. Returns `true` if the system is

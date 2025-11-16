@@ -2030,7 +2030,7 @@ void test_invoke(DistributedTaskDriver& driver) {
       {42ul, 0}, {43ul, 1}, {44ul, 1}, {45ul, 1},
       {46ul, 0}, {47ul, 0}, {48ul, 0}};
 
-  for (const auto [id, pid] : all_indices) {
+  for (const auto& [id, pid] : all_indices) {
     driver.insert_parallel_component_collection<CollectionComponent>(id, pid);
   }
 
@@ -2040,7 +2040,7 @@ void test_invoke(DistributedTaskDriver& driver) {
           driver.number_of_nodes());
 
   //! [collection_ids_and_locations_usage]
-  for (const auto [id, pid] : all_indices) {
+  for (const auto& [id, pid] : all_indices) {
     const auto it =
         driver.collection_ids_and_locations<CollectionComponent>().find(id);
     REQUIRE(it !=
@@ -2050,7 +2050,7 @@ void test_invoke(DistributedTaskDriver& driver) {
   //! [collection_ids_and_locations_usage]
 
   //! [collection_ids_on_processes_usage]
-  for (const auto [id, pid] : all_indices) {
+  for (const auto& [id, pid] : all_indices) {
     const std::vector<std::uint64_t>& elements_on_pid =
         driver.collection_ids_on_process<CollectionComponent>(pid);
     CHECK(std::count(elements_on_pid.begin(), elements_on_pid.end(), id) == 1);

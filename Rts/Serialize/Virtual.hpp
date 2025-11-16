@@ -15,14 +15,16 @@
 #include "Rts/Serialize/Serializer.hpp"
 
 namespace rts::serialize {
+#if defined(__cpp_lib_constexpr_string) and \
+    (__cpp_lib_constexpr_string >= 201907L)
 #if not defined(RTS_CONSTEXPR_CXX20)
-#if __cplusplus >= 202002L
 #define RTS_CONSTEXPR_CXX20 constexpr
 #define RTS_USE_CONSTEXPR_HASH
-#else
+#endif
+#else  // __cpp_lib_constexpr_string
+#undef RTS_CONSTEXPR_CXX20
 #define RTS_CONSTEXPR_CXX20
 #undef RTS_USE_CONSTEXPR_HASH
-#endif
 #endif
 
 namespace detail {

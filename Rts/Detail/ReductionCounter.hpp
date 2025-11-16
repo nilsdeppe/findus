@@ -224,7 +224,7 @@ bool Counter::increment(const std::uint64_t hashed_key,
        ++index) {  // loop for linear probing
     index = index bitand (entries_.size() - 1);
     const std::uint64_t probed_key =
-        entries_[index].key.load(std::memory_order::memory_order_relaxed);
+        entries_[index].key.load(std::memory_order_relaxed);
     if (probed_key != hashed_key) {
       if (probed_key != 0) {
         // The entry is used by another key.
@@ -232,9 +232,8 @@ bool Counter::increment(const std::uint64_t hashed_key,
       }
       std::uint64_t current_key_in_slot = 0;
       if (not entries_[index].key.compare_exchange_strong(
-              current_key_in_slot, hashed_key,
-              std::memory_order::memory_order_release,
-              std::memory_order::memory_order_acquire) and
+              current_key_in_slot, hashed_key, std::memory_order_release,
+              std::memory_order_acquire) and
           current_key_in_slot != hashed_key) {
         // Another thread just stole this slot from us. Try next slot.
         continue;
