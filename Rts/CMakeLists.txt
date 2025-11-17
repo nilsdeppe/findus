@@ -94,12 +94,15 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
     PRIVATE
     RtsFlags
     ToyRTS
+    _RtsDoctestImpl
     doctest::doctest
   )
   # There are issues with self-registering Test when using static libraries.
   # This is a common issue across all testing libraries that have
   # self-registering Test. doctest provides a nice workaround for it.
-  doctest_force_link_static_lib_in_target(Test ToyRTS)
+  if (NOT BUILD_SHARED_LIBS)
+    doctest_force_link_static_lib_in_target(Test ToyRTS)
+  endif()
   # Discover the Test and add them to CTest so we don't have to.
   doctest_discover_tests(Test)
 
