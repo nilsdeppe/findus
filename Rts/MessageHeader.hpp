@@ -145,6 +145,9 @@ struct alignas(hardware_info::hardware_destructive_interference_size)
                              number_of_bytes_in_message_);
   }
 
+  /// \brief Sets whether the data was serialized.
+  void data_was_serialized(bool was_serialized);
+
   /// @{
   /*!
    * \brief Returns the address of the data/byte stream in a message.

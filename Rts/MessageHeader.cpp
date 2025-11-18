@@ -74,6 +74,10 @@ MessageHeader::MessageHeader(detail::MemberFunctionPtr member_function_ptr,
   set_message_type(number_of_bytes_in_message_, message_type);
 }
 
+void MessageHeader::data_was_serialized(const bool was_serialized) {
+  set_data_was_serialized(number_of_bytes_in_message_, was_serialized);
+}
+
 void MessageHeader::change_destination_process_id(
     const std::int32_t destination_process_id) {
   destination_process_id_ = destination_process_id;
@@ -278,6 +282,12 @@ TEST_CASE("MessageHeader") {
         CHECK(message_header_int->source_process_id() == 111);
         message_header_int->change_source_process_id(2);
         CHECK(message_header_int->source_process_id() == 2);
+
+        CHECK(message_header_int->data_was_serialized() == data_is_serialized);
+        message_header_int->data_was_serialized(not data_is_serialized);
+        CHECK(message_header_int->data_was_serialized() ==
+              not data_is_serialized);
+        message_header_int->data_was_serialized(data_is_serialized);
 
         MessageHeader* message_header_test_class =
             new (buffer.get()) MessageHeader{foo_ptr,
