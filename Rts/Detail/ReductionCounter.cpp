@@ -54,6 +54,7 @@ Counter::~Counter() = default;
 #include "Rts/Detail/ReductionCounter.hpp"
 
 namespace rts::reduction::detail {
+namespace {
 template <size_t NumThreads>
 void test_counter_parallel(const size_t num_reductions,
                            const size_t max_entries = 0) {
@@ -171,6 +172,7 @@ void test_counter_full_exception() {
                        "full. Max entries is 4",
                        rts::Exception);
 }
+}  // namespace
 }  // namespace rts::reduction::detail
 
 TEST_CASE("ReductionCounter") {

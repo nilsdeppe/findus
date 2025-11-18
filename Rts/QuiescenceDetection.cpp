@@ -597,6 +597,7 @@ void Global::send_quiescence_broadcast_to(
 #include <doctest/doctest.h>
 
 namespace rts::qd {
+namespace {
 void test_local_qd() {
   // Note: Testing for race conditions is inherently difficult, since they
   // involve undefined behavior and non-deterministic thread interleavings.
@@ -683,6 +684,7 @@ void test_safe_add() {
   constexpr auto min = std::numeric_limits<std::int64_t>::min();
   CHECK(safe_add(min, 1) == min + 1);
 }
+}  // namespace
 
 TEST_CASE("QuiescenceDetection") {
   test_local_qd();

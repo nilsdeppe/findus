@@ -60,6 +60,7 @@ target_link_libraries(
   ${LIBRARY}
   PUBLIC
   MPI::MPI_CXX
+  ToyRts::CacheLineSize
   PRIVATE
   RtsFlags
   hwloc::hwloc

@@ -1052,7 +1052,7 @@ void DistributedTaskDriver::initiate_sends(const int max_to_send) {
                                    ->message_type())};
       }
     }
-    i += messages_retrieved;
+    i += static_cast<int>(messages_retrieved);
   }
 }
 
@@ -1308,7 +1308,7 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
               std::to_string(distributed_object.number_of_local_objects) +
               " local objects."};
         }
-        number_of_message_to_enqueue += *std::next(start);
+        number_of_message_to_enqueue += static_cast<int>(*std::next(start));
       }
     } else if (message_header.message_type() == MessageType::Reduction or
                message_header.message_type() == MessageType::ReductionOver) {
@@ -1629,42 +1629,40 @@ struct RegularComponent : public rts::detail::DistributedObjectBase {
 
   template <class Action, class... Args>
   void threaded_action(rts::DistributedTaskDriver&, Args... args);
-
-  template <>
-  void threaded_action<TestAction>(rts::DistributedTaskDriver&,
-                                   const int a, const int b) {
-    last_args = std::make_tuple(a, b);
-    last_result += static_cast<int>(a + b);
-  }
-
-  template <>
-  void threaded_action<TestAction>(rts::DistributedTaskDriver&,
-                                   const std::vector<int> a) {
-    last_args =
-        std::tuple{static_cast<int>(a.size()), static_cast<int>(a.capacity())};
-    last_result = std::accumulate(a.begin(), a.end(), 0);
-  }
-
-  // Specialization for broadcast (int, int, double)
-  template <>
-  void threaded_action<TestBroadcastAction>(rts::DistributedTaskDriver&,
-                                            const int a, const int b,
-                                            const double d) {
-    last_broadcast_args = std::make_tuple(a, b, d);
-    last_result = static_cast<int>(a + b + d);
-  }
-
-  // Specialization for broadcast (int, int, double, std::vector<int>)
-  template <>
-  void threaded_action<TestBroadcastAction>(rts::DistributedTaskDriver&,
-                                            const int a, const int b,
-                                            const double d,
-                                            const std::vector<int> vec) {
-    last_broadcast_args = std::make_tuple(a, b, d);
-    last_result = static_cast<int>(a + b + d) +
-                  std::accumulate(vec.begin(), vec.end(), 0);
-  }
 };
+
+template <>
+void RegularComponent::threaded_action<TestAction>(rts::DistributedTaskDriver&,
+                                                   const int a, const int b) {
+  last_args = std::make_tuple(a, b);
+  last_result += static_cast<int>(a + b);
+}
+
+template <>
+void RegularComponent::threaded_action<TestAction>(rts::DistributedTaskDriver&,
+                                                   const std::vector<int> a) {
+  last_args =
+      std::tuple{static_cast<int>(a.size()), static_cast<int>(a.capacity())};
+  last_result = std::accumulate(a.begin(), a.end(), 0);
+}
+
+// Specialization for broadcast (int, int, double)
+template <>
+void RegularComponent::threaded_action<TestBroadcastAction>(
+    rts::DistributedTaskDriver&, const int a, const int b, const double d) {
+  last_broadcast_args = std::make_tuple(a, b, d);
+  last_result = static_cast<int>(a + b + d);
+}
+
+// Specialization for broadcast (int, int, double, std::vector<int>)
+template <>
+void RegularComponent::threaded_action<TestBroadcastAction>(
+    rts::DistributedTaskDriver&, const int a, const int b, const double d,
+    const std::vector<int> vec) {
+  last_broadcast_args = std::make_tuple(a, b, d);
+  last_result =
+      static_cast<int>(a + b + d) + std::accumulate(vec.begin(), vec.end(), 0);
+}
 
 // Collection parallel component
 struct CollectionComponent
@@ -1680,77 +1678,74 @@ struct CollectionComponent
   template <class Action, class... Args>
   void threaded_action(rts::DistributedTaskDriver&,
                        rts_collection_index my_index, Args... args);
-
-  template <>
-  void threaded_action<TestAction>(rts::DistributedTaskDriver&,
-                                   const rts_collection_index my_index,
-                                   const int a, const int b) {
-    CHECK(my_index != 0);
-    CHECK(my_index != MessageHeader::no_collection_index());
-    last_args = std::make_tuple(a, b);
-    last_result += static_cast<int>(a + b);
-  }
-
-  template <>
-  void threaded_action<TestAction>(rts::DistributedTaskDriver&,
-                                   const rts_collection_index my_index,
-                                   const std::vector<int> a) {
-    CHECK(my_index != 0);
-    CHECK(my_index != MessageHeader::no_collection_index());
-    last_args =
-        std::tuple{static_cast<int>(a.size()), static_cast<int>(a.capacity())};
-    last_result += std::accumulate(a.begin(), a.end(), 0);
-  }
-
-  // Specialization for broadcast (int, int, double)
-  template <>
-  void threaded_action<TestBroadcastAction>(rts::DistributedTaskDriver&,
-                                            const rts_collection_index my_index,
-                                            const int a, const int b,
-                                            const double d) {
-    CHECK(my_index != 0);
-    CHECK(my_index != MessageHeader::no_collection_index());
-    last_broadcast_args = std::make_tuple(a, b, d);
-    last_result = static_cast<int>(a + b + d);
-  }
-
-  // Specialization for broadcast (int, int, double, std::vector<int>)
-  template <>
-  void threaded_action<TestBroadcastAction>(rts::DistributedTaskDriver&,
-                                            const rts_collection_index my_index,
-                                            const int a, const int b,
-                                            const double d,
-                                            const std::vector<int> vec) {
-    CHECK(my_index != 0);
-    CHECK(my_index != MessageHeader::no_collection_index());
-    last_broadcast_args = std::make_tuple(a, b, d);
-    last_result = static_cast<int>(a + b + d) +
-                  std::accumulate(vec.begin(), vec.end(), 0);
-  }
-
-  // Specialization for broadcast_to (int, double)
-  template <>
-  void threaded_action<TestBroadcastToAction>(
-      rts::DistributedTaskDriver&, const rts_collection_index my_index,
-      const int a, const double d) {
-    CHECK(my_index != 0);
-    CHECK(my_index != MessageHeader::no_collection_index());
-    last_broadcast_to_args = std::make_tuple(a, d);
-    last_result = static_cast<int>(a + d);
-  }
-
-  // Specialization for broadcast_to (int, double, std::vector<int>)
-  template <>
-  void threaded_action<TestBroadcastToAction>(
-      rts::DistributedTaskDriver&, const rts_collection_index my_index,
-      const int a, const double d, const std::vector<int> vec) {
-    CHECK(my_index != 0);
-    CHECK(my_index != MessageHeader::no_collection_index());
-    last_broadcast_to_args = std::make_tuple(a, d);
-    last_result =
-        static_cast<int>(a + d) + std::accumulate(vec.begin(), vec.end(), 0);
-  }
 };
+
+template <>
+void CollectionComponent::threaded_action<TestAction>(
+    rts::DistributedTaskDriver&, const rts_collection_index my_index,
+    const int a, const int b) {
+  CHECK(my_index != 0);
+  CHECK(my_index != MessageHeader::no_collection_index());
+  last_args = std::make_tuple(a, b);
+  last_result += static_cast<int>(a + b);
+}
+
+template <>
+void CollectionComponent::threaded_action<TestAction>(
+    rts::DistributedTaskDriver&, const rts_collection_index my_index,
+    const std::vector<int> a) {
+  CHECK(my_index != 0);
+  CHECK(my_index != MessageHeader::no_collection_index());
+  last_args =
+      std::tuple{static_cast<int>(a.size()), static_cast<int>(a.capacity())};
+  last_result += std::accumulate(a.begin(), a.end(), 0);
+}
+
+// Specialization for broadcast (int, int, double)
+template <>
+void CollectionComponent::threaded_action<TestBroadcastAction>(
+    rts::DistributedTaskDriver&, const rts_collection_index my_index,
+    const int a, const int b, const double d) {
+  CHECK(my_index != 0);
+  CHECK(my_index != MessageHeader::no_collection_index());
+  last_broadcast_args = std::make_tuple(a, b, d);
+  last_result = static_cast<int>(a + b + d);
+}
+
+// Specialization for broadcast (int, int, double, std::vector<int>)
+template <>
+void CollectionComponent::threaded_action<TestBroadcastAction>(
+    rts::DistributedTaskDriver&, const rts_collection_index my_index,
+    const int a, const int b, const double d, const std::vector<int> vec) {
+  CHECK(my_index != 0);
+  CHECK(my_index != MessageHeader::no_collection_index());
+  last_broadcast_args = std::make_tuple(a, b, d);
+  last_result =
+      static_cast<int>(a + b + d) + std::accumulate(vec.begin(), vec.end(), 0);
+}
+
+// Specialization for broadcast_to (int, double)
+template <>
+void CollectionComponent::threaded_action<TestBroadcastToAction>(
+    rts::DistributedTaskDriver&, const rts_collection_index my_index,
+    const int a, const double d) {
+  CHECK(my_index != 0);
+  CHECK(my_index != MessageHeader::no_collection_index());
+  last_broadcast_to_args = std::make_tuple(a, d);
+  last_result = static_cast<int>(a + d);
+}
+
+// Specialization for broadcast_to (int, double, std::vector<int>)
+template <>
+void CollectionComponent::threaded_action<TestBroadcastToAction>(
+    rts::DistributedTaskDriver&, const rts_collection_index my_index,
+    const int a, const double d, const std::vector<int> vec) {
+  CHECK(my_index != 0);
+  CHECK(my_index != MessageHeader::no_collection_index());
+  last_broadcast_to_args = std::make_tuple(a, d);
+  last_result =
+      static_cast<int>(a + d) + std::accumulate(vec.begin(), vec.end(), 0);
+}
 
 void reset_args_on_all(DistributedTaskDriver& driver) {
   driver.insert_barrier();

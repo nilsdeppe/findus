@@ -21,7 +21,6 @@ static_assert(is_serializable_v<std::array<int, 3>>);
 static_assert(is_serializable_v<int>);
 static_assert(not is_serializable_v<NoSerialize>);
 static_assert(not is_serializable_v<std::array<NoSerialize, 3>>);
-}  // namespace
 
 void test_array_of_vector_of_array() {
   struct SimpleStruct {
@@ -69,6 +68,7 @@ void test_array_of_vector_of_array() {
     CHECK(arr_unpacked[i].capacity() == 10 + i);
   }
 }
+}  // namespace
 
 TEST_CASE("Serialize.Array") {
   // Test with fundamental type

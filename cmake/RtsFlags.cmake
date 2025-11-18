@@ -79,9 +79,38 @@ if (KEEP_FRAME_POINTER OR ENABLE_PROFILING)
   )
 endif()
 
+# Try to detect cache line size on Linux and macOS
+if(APPLE)
+  # On macOS, sysctl can be used
+  execute_process(
+    COMMAND sysctl -n hw.cachelinesize
+    OUTPUT_VARIABLE CACHE_LINE_SIZE
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+elseif(UNIX)
+  # On Linux, getconf is usually available
+  execute_process(
+    COMMAND getconf LEVEL1_DCACHE_LINESIZE
+    OUTPUT_VARIABLE CACHE_LINE_SIZE
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+endif()
+
+# Fallback to 64 if detection failed or result is empty
+if(NOT CACHE_LINE_SIZE OR CACHE_LINE_SIZE STREQUAL "")
+  set(CACHE_LINE_SIZE 64)
+endif()
+message(STATUS "Detected cache line size: ${CACHE_LINE_SIZE}")
+add_library(ToyRts::CacheLineSize IMPORTED INTERFACE)
+target_compile_definitions(ToyRts::CacheLineSize
+  INTERFACE
+  RTS_CACHE_LINE_SIZE=${CACHE_LINE_SIZE})
+
+
 target_link_libraries(
   RtsFlags
   INTERFACE
   Profiling::EnableProfiling
   Profiling::KeepFramePointer
+  ToyRts::CacheLineSize
 )

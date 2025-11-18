@@ -11,20 +11,15 @@
 #include <new>  // for hardware_destructive_interference_size
 
 namespace rts::hardware_info {
-#ifdef __cpp_lib_hardware_interference_size
 /// \brief Minimum offset between two objects to avoid false sharing.
 ///
 /// Set to 64 bytes if `std::hardware_destructive_interference_size` is not
 /// defined. This can be refined for different hardware if necessary.
+///
+/// \warning std::hardware_destructive_interference_size is not actually
+/// portably implemented by GCC so we have to roll our own.
 static constexpr std::size_t hardware_destructive_interference_size =
-    std::hardware_destructive_interference_size;
-#else
-/// \brief Minimum offset between two objects to avoid false sharing.
-///
-/// Set to 64 bytes if `std::hardware_destructive_interference_size` is not
-/// defined. This can be refined for different hardware if necessary.
-static constexpr std::size_t hardware_destructive_interference_size = 64;
-#endif
+    RTS_CACHE_LINE_SIZE;
 
 /*!
  * \brief Info about the cache.

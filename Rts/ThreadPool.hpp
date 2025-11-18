@@ -115,12 +115,8 @@ class ThreadPool {
   }
 
  private:
-#ifdef __cpp_lib_hardware_interference_size
   static constexpr std::size_t hardware_destructive_interference_size =
-      std::hardware_destructive_interference_size;
-#else
-  static constexpr std::size_t hardware_destructive_interference_size = 64;
-#endif
+      RTS_CACHE_LINE_SIZE;
 
   // Task design:
   // - We have a list of tasks for each thread. Another design is to have one
