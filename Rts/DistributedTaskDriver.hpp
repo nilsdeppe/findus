@@ -1381,25 +1381,28 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
       (std::is_trivially_copyable_v<std::decay_t<Args>> && ...);
   using Data_t = std::tuple<std::decay_t<Args>...>;
 
-  // Create one copy of the data that we can then copy into each message to
-  // each process.
-  std::unique_ptr<std::byte[]> data{nullptr};
   // Always align to the tuple. This may over align but reduces code
   // duplication.
   constexpr size_t data_alignment = alignof(Data_t);
   size_t data_size = std::numeric_limits<size_t>::max();
+  // Create one copy of the data that we can then copy into each message to
+  // each process.
+  const auto deleter = [data_alignment](std::byte* ptr) {
+    (void)data_alignment;  // GCC and clang versions disagree on if capture is
+                           // needed
+    ::operator delete[](ptr, (std::align_val_t{data_alignment}));
+  };
+  std::unique_ptr<std::byte[], decltype(deleter)> data{nullptr, deleter};
   if (data_is_trivially_copyable) {
     data_size = sizeof(Data_t);
-    data = std::unique_ptr<std::byte[]>{new (std::align_val_t{data_alignment})
-                                            std::byte[data_size]};
+    data.reset(new (std::align_val_t{data_alignment}) std::byte[data_size]);
     new (data.get()) Data_t{std::forward<Args>(args)...};
   } else {
     auto data_tuple = std::forward_as_tuple(args...);
     serialize::Serializer sizer{serialize::Serializer::Sizing};
     sizer | data_tuple;
     data_size = sizer.number_of_bytes();
-    data = std::unique_ptr<std::byte[]>{new (std::align_val_t{data_alignment})
-                                            std::byte[data_size]};
+    data.reset(new (std::align_val_t{data_alignment}) std::byte[data_size]);
     serialize::Serializer packer{serialize::Serializer::Packing, data.get(),
                                  data_size};
     packer | data_tuple;

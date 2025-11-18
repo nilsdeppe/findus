@@ -254,8 +254,16 @@ class Global {
       return not up_traversal(message);
     }
 
-    static std::uint64_t sweep_number(const Message& message) {
-      // Zero highest bit by shifting it left and then right.
+    __attribute__((no_sanitize("undefined"
+#if defined(__clang__)
+                               ,
+                               "integer"
+#endif
+                               ))) static std::uint64_t
+    sweep_number(const Message& message) {
+      // Zero highest bits by using the a mask. This mask has zero only in the
+      // highest bit. We need to ignore this in sanitizers since this is
+      // intentional.
       return ((message.direction_and_sweep_number << 1) >> 1);
     }
   };

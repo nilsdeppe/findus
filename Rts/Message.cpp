@@ -226,6 +226,22 @@ namespace {
 void combine_anchor(Message_t&, const Message_t&) {}
 
 using combine_function_ptr_t = void (*)(Message_t&, const Message_t&);
+
+// helper function used to silence acceptable integer overflow.
+template <bool Add>
+__attribute__((no_sanitize("undefined"
+#if defined(__clang__)
+                           ,
+                           "integer"
+#endif
+                           ))) std::uint64_t
+combine_uint64(const std::uint64_t lhs, const std::uint64_t rhs) noexcept {
+  if constexpr (Add) {
+    return lhs + rhs;
+  } else {
+    return lhs - rhs;
+  }
+}
 }  // namespace
 
 void set_combine_function_pointer(Message_t& message,
@@ -241,7 +257,8 @@ void set_combine_function_pointer(Message_t& message,
   PtrConversionUnion anchor_ptr{&combine_anchor};
   *reinterpret_cast<std::uint64_t*>(
       std::next(reinterpret_cast<std::byte*>(message.get_header()),
-                combine_offset_jump_in_bytes)) = (f_ptr.bits - anchor_ptr.bits);
+                combine_offset_jump_in_bytes)) =
+      combine_uint64<false>(f_ptr.bits, anchor_ptr.bits);
 }
 
 auto get_combine_function_pointer(const Message_t& message)
@@ -252,10 +269,11 @@ auto get_combine_function_pointer(const Message_t& message)
   };
   PtrConversionUnion anchor_ptr{&combine_anchor};
   PtrConversionUnion f_ptr{};
-  f_ptr.bits = *reinterpret_cast<const std::uint64_t*>(std::next(
-                   reinterpret_cast<const std::byte*>(message.get_header()),
-                   combine_offset_jump_in_bytes)) +
-               anchor_ptr.bits;
+  f_ptr.bits = combine_uint64<true>(
+      *reinterpret_cast<const std::uint64_t*>(
+          std::next(reinterpret_cast<const std::byte*>(message.get_header()),
+                    combine_offset_jump_in_bytes)),
+      anchor_ptr.bits);
   return f_ptr.f;
 }
 
@@ -672,7 +690,8 @@ void test_copy_message() {
   const rts::MessageType type = rts::MessageType::Invoke;
 
   // Allocate buffer for message
-  std::unique_ptr<std::byte[]> buffer(new std::byte[num_bytes]);
+  std::unique_ptr<std::byte[]> buffer(
+      new (std::align_val_t(alignof(MessageHeader))) std::byte[num_bytes]);
   // Placement new for header
   const MessageHeader* header = new (buffer.get()) rts::MessageHeader(
       dummy_ptr, target_collection_index, num_bytes, distributed_object_index,
@@ -705,44 +724,6 @@ void test_copy_message() {
 
 namespace reduction {
 namespace {
-void test_set_and_get_id() {
-  INFO("Test set_id and get_id");
-  // Use a base-10 integer for the dummy reduction ID
-  const std::uint64_t dummy_id = 1234567890123456789;
-  Message_t message =
-      create_message(rts::detail::MemberFunctionPtr{}, 0, 0, 0, 0, 0, false,
-                     MessageType::Reduction, std::tuple<>{});
-  set_id(message, dummy_id);
-  CHECK(get_id(message) == dummy_id);
-}
-
-void test_set_and_get_data_offset() {
-  INFO("Test set_data_offset and get_data_offset");
-  const std::uint32_t dummy_offset = 305419896;  // Example: 123456789
-  const std::uint32_t dummy_size = 182739;
-  Message_t message =
-      create_message(rts::detail::MemberFunctionPtr{}, 0, 0, 0, 0, 0, false,
-                     MessageType::Reduction, std::tuple<>{});
-  set_data_offset(message, dummy_offset);
-  CHECK(get_data_offset(message) == dummy_offset);
-  CHECK(get_data_pointer(message) == get_data_pointer(std::as_const(message)));
-  CHECK(get_data_pointer(message) ==
-        std::next(reinterpret_cast<std::byte*>(message.get_header()),
-                  dummy_offset));
-  set_data_size(message, dummy_size);
-  CHECK(get_data_size(message) == dummy_size);
-}
-
-void test_set_and_get_callback_offset() {
-  INFO("Test set_callback_offset and get_callback_offset");
-  const std::uint32_t dummy_offset = 987654321;
-  Message_t message =
-      create_message(rts::detail::MemberFunctionPtr{}, 0, 0, 0, 0, 0, false,
-                     MessageType::Reduction, std::tuple<>{});
-  set_callback_offset(message, dummy_offset);
-  CHECK(get_callback_offset(message) == dummy_offset);
-}
-
 struct DummyAction {};
 
 struct DummyComponent
@@ -758,6 +739,68 @@ struct DummyCallback {
     return value == other.value;
   }
 };
+
+void test_set_and_get_id() {
+  INFO("Test set_id and get_id");
+  using DataTuple = std::tuple<int, double>;
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
+
+  const std::uint32_t distributed_object_index = 42;
+  const std::uint64_t reduction_id = 123456789;
+  const DataTuple data_tuple{7, 3.14};
+  const CallbackType callback{99};
+
+  Message_t message = create_message<DummyAction, DummyComponent>(
+      distributed_object_index, reduction_id, data_tuple, callback,
+      MessageType::Reduction);
+  // Use a base-10 integer for the dummy reduction ID
+  const std::uint64_t dummy_id = 1234567890123456789;
+  set_id(message, dummy_id);
+  CHECK(get_id(message) == dummy_id);
+}
+
+void test_set_and_get_data_offset() {
+  INFO("Test set_data_offset and get_data_offset");
+  using DataTuple = std::tuple<int, double>;
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
+
+  const std::uint32_t distributed_object_index = 42;
+  const std::uint64_t reduction_id = 123456789;
+  const DataTuple data_tuple{7, 3.14};
+  const CallbackType callback{99};
+
+  Message_t message = create_message<DummyAction, DummyComponent>(
+      distributed_object_index, reduction_id, data_tuple, callback,
+      MessageType::Reduction);
+  const std::uint32_t dummy_offset = 305419896;  // Example: 123456789
+  const std::uint32_t dummy_size = 182739;
+  set_data_offset(message, dummy_offset);
+  CHECK(get_data_offset(message) == dummy_offset);
+  CHECK(get_data_pointer(message) == get_data_pointer(std::as_const(message)));
+  CHECK(get_data_pointer(message) ==
+        std::next(reinterpret_cast<std::byte*>(message.get_header()),
+                  dummy_offset));
+  set_data_size(message, dummy_size);
+  CHECK(get_data_size(message) == dummy_size);
+}
+
+void test_set_and_get_callback_offset() {
+  INFO("Test set_callback_offset and get_callback_offset");
+  using DataTuple = std::tuple<int, double>;
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
+
+  const std::uint32_t distributed_object_index = 42;
+  const std::uint64_t reduction_id = 123456789;
+  const DataTuple data_tuple{7, 3.14};
+  const CallbackType callback{99};
+
+  Message_t message = create_message<DummyAction, DummyComponent>(
+      distributed_object_index, reduction_id, data_tuple, callback,
+      MessageType::Reduction);
+  const std::uint32_t dummy_offset = 987654321;
+  set_callback_offset(message, dummy_offset);
+  CHECK(get_callback_offset(message) == dummy_offset);
+}
 
 void test_create_message() {
   using DataTuple = std::tuple<int, double>;

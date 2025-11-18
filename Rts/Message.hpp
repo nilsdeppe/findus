@@ -16,6 +16,7 @@
 
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/MessageHeader.hpp"
+#include "Rts/MessageType.hpp"
 #include "Rts/Serialize/Serializer.hpp"
 #include "Rts/Serialize/Stl/Tuple.hpp"
 
@@ -35,6 +36,31 @@ class ThreadPool;
  */
 struct Message_t {
   std::unique_ptr<std::byte[]> message{nullptr};
+
+  Message_t(std::unique_ptr<std::byte[]> buffer) : message(std::move(buffer)) {}
+  Message_t() = default;
+  Message_t(const Message_t&) = delete;
+  Message_t& operator=(const Message_t&) = delete;
+  Message_t(Message_t&& rhs) noexcept { message.reset(rhs.message.release()); }
+  Message_t& operator=(Message_t&& rhs) noexcept {
+    if (this == &rhs) {
+      return *this;
+    }
+    free_message();
+    message.reset(rhs.message.release());
+    return *this;
+  }
+  ~Message_t() noexcept { free_message(); }
+
+  void free_message() noexcept {
+    if (message != nullptr) {
+      const auto data_alignment =
+          static_cast<size_t>(get_header()->data_alignment());
+      std::byte* ptr = message.release();
+      ::operator delete[](ptr, std::align_val_t(std::max(alignof(MessageHeader),
+                                                         data_alignment)));
+    }
+  }
 
   /// @{
   /// \brief Returns the message header.
@@ -106,6 +132,11 @@ Message_t create_message(const detail::MemberFunctionPtr member_function_ptr,
                          const bool was_serialized,
                          const MessageType message_type,
                          std::tuple<Args...> args) {
+  if (message_type == MessageType::ReductionOver or
+      message_type == MessageType::Reduction) {
+    throw Exception{
+        "This create_message overload cannot be used with reduction messages"};
+  }
   using Data_t = std::tuple<std::decay_t<Args>...>;
   constexpr std::size_t data_alignment = alignof(Data_t);
 
@@ -658,6 +689,9 @@ Message_t create_message(
     const std::uint64_t reduction_id, std::tuple<Args...> args,
     ReductionCallback<BroadcastAction, BroadcastParallelComponent> callback,
     const MessageType message_type) {
+  static_assert(callback_alignment == alignof(MessageHeader),
+                "If this fails then we need to add special handling for the "
+                "callback alignment into the Message_t destructor.");
   using DataTuple = std::tuple<Args...>;
   using CallbackType =
       ReductionCallback<BroadcastAction, BroadcastParallelComponent>;

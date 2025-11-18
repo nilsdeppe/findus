@@ -19,6 +19,7 @@
 #include <limits>
 #include <memory>
 #include <mpi.h>
+#include <new>
 #include <numeric>
 #include <optional>
 #include <sstream>
@@ -1138,7 +1139,8 @@ void DistributedTaskDriver::initiate_receives(const int max_to_receive) {
     incoming_mpi_messages_.emplace_back(
         MPI_Request{},
         Message_t{std::unique_ptr<std::byte[]>{
-            new std::byte[static_cast<unsigned long>(message_size)]}});
+            new (std::align_val_t(alignof(MessageHeader)))
+                std::byte[static_cast<unsigned long>(message_size)]}});
     auto& [request, message] = incoming_mpi_messages_.back();
     MPI_Irecv(message.message.get(), message_size, MPI_BYTE,
               node_id_for_receive_, message_tags::regular, rts_comm_, &request);
@@ -1579,7 +1581,8 @@ void test_bulk_enequeue_iterator_exceptions() {
   // Helper to create a Message_t with a given MessageType
   auto make_message = [](rts::MessageType type) -> Message_t {
     const std::uint64_t num_bytes = sizeof(rts::MessageHeader);
-    std::unique_ptr<std::byte[]> buffer(new std::byte[num_bytes]);
+    std::unique_ptr<std::byte[]> buffer(
+        new (std::align_val_t(alignof(MessageHeader))) std::byte[num_bytes]);
     new (buffer.get())
         rts::MessageHeader(rts::detail::MemberFunctionPtr{}, 0, num_bytes, 0, 0,
                            0, 0, 0, false, type);

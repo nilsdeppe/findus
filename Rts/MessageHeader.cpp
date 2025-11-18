@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <new>
 #include <ostream>
 #include <string>
 #include <type_traits>
@@ -220,9 +221,16 @@ TEST_CASE("MessageHeader") {
            {static_cast<std::uint64_t>(5),
             MessageHeader::no_collection_index()}) {
         constexpr size_t bytes_in_message = 256;
-        std::unique_ptr<char[]> buffer{new (std::align_val_t(
-            std::max(alignof(MessageHeader),
-                     alignof(TestClass)))) char[bytes_in_message]};
+        const auto deleter = [](std::byte* ptr) {
+          ::operator delete[](
+              ptr, std::align_val_t(
+                       std::max(alignof(MessageHeader), alignof(TestClass))));
+        };
+        std::unique_ptr<std::byte[], decltype(deleter)> buffer{
+            new (std::align_val_t(
+                std::max(alignof(MessageHeader), alignof(TestClass))))
+                std::byte[bytes_in_message],
+            deleter};
         constexpr std::uint64_t expected_data_offset = 128;
         REQUIRE(sizeof(MessageHeader) <= expected_data_offset);
         MessageHeader* message_header_int =
@@ -433,16 +441,24 @@ TEST_CASE("MessageHeader") {
   }
   {
     // data_alignment
-    auto buffer1 =
-        std::make_unique<char[]>(sizeof(rts::MessageHeader) + alignof(double));
+    const auto deleter = [](std::byte* ptr) {
+      ::operator delete[](ptr, std::align_val_t(alignof(MessageHeader)));
+    };
+    std::unique_ptr<std::byte[], decltype(deleter)> buffer1{
+        new (std::align_val_t(alignof(MessageHeader)))
+            std::byte[sizeof(rts::MessageHeader) + sizeof(double)],
+        deleter};
+    // std::make_unique<char[]>(sizeof(rts::MessageHeader) + alignof(double));
     auto* header1 = new (buffer1.get())
         rts::MessageHeader(dummy_ptr1, target_collection_index, num_bytes,
                            distributed_object_index, data_offset, source_id,
                            dest_id, sweep, was_serialized, type);
     rts::create_data_in_message<double>(*header1);
 
-    auto buffer2 =
-        std::make_unique<char[]>(sizeof(rts::MessageHeader) + alignof(int));
+    std::unique_ptr<std::byte[], decltype(deleter)> buffer2{
+        new (std::align_val_t(alignof(MessageHeader)))
+            std::byte[sizeof(rts::MessageHeader) + sizeof(int)],
+        deleter};
     auto* header2 = new (buffer2.get())
         rts::MessageHeader(dummy_ptr1, target_collection_index, num_bytes,
                            distributed_object_index, data_offset, source_id,
