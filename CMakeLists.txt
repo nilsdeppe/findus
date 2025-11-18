@@ -40,6 +40,7 @@ include(CTest)
 if (BUILD_TESTING)
   include(SetupDoctest)
 endif(BUILD_TESTING)
+include(Sanitizers)
 
 find_package(MPI REQUIRED COMPONENTS CXX)
 find_package(hwloc REQUIRED)
