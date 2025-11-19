@@ -1551,6 +1551,8 @@ void DistributedTaskDriver::reduction_over(
     reduction::ReductionCallback<CallbackAction, CallbackParallelComponent>
         reduction_callback,
     Args&&... args) {
+  constexpr bool data_is_trivially_copyable =
+      (std::is_trivially_copyable_v<std::decay_t<Args>> && ...);
   const std::uint32_t object_index =
       active_object_[thread_id()].distributed_object_index;
   if (object_index >= distributed_objects_.size()) {
@@ -1653,6 +1655,7 @@ void DistributedTaskDriver::reduction_over(
         reduction::reduction_process_id, std::move(message)});
   } else { // per-process component case
     using Data_t = std::tuple<std::decay_t<Args>...>;
+    static_assert(data_is_trivially_copyable);
     Message_t message = reduction::create_message(
         object_index, reduction_id, Data_t{std::forward<Args>(args)...},
         std::move(reduction_callback),

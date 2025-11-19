@@ -900,7 +900,9 @@ void DistributedTaskDriver::send_reduction_message_impl(Message_t in_message) {
     return;
   }
 
-  if (message.value().get_header()->data_was_serialized()) {
+  const bool was_serialized =
+      message.value().get_header()->data_was_serialized();
+  if (was_serialized) {
     throw Exception{"Can't handle serialized data in reductions."};
   }
 
@@ -932,7 +934,7 @@ void DistributedTaskDriver::send_reduction_message_impl(Message_t in_message) {
               ? callback_impl.collection_index_
               : MessageHeader::no_collection_index(),
           callback_impl.distributed_object_index_, current_node_id(),
-          target_process, global_qd_.local_sweep_number(), false,
+          target_process, global_qd_.local_sweep_number(), was_serialized,
           rts::MessageType::Invoke,
           message.value().get_header()->data_alignment(),
           reduction::get_data_size(message.value()),
@@ -946,7 +948,7 @@ void DistributedTaskDriver::send_reduction_message_impl(Message_t in_message) {
           callback_impl.distributed_object_index_, current_node_id(),
           // For broadcasts we first set the target process ID to
           // self, then update it as we send to different processes.
-          current_node_id(), global_qd_.local_sweep_number(), false,
+          current_node_id(), global_qd_.local_sweep_number(), was_serialized,
           rts::MessageType::Broadcast,
           message.value().get_header()->data_alignment(),
           reduction::get_data_size(message.value()),
