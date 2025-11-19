@@ -12,6 +12,7 @@ add_library(
   Detail/DistributedObjectBase.cpp
   Detail/DistributedObjectIndex.cpp
   Detail/IndexConversion.cpp
+  Detail/IsTuple.cpp
   Detail/MpiErrorMessage.cpp
   Detail/PrintProcessPids.cpp
   Detail/ReductionCounter.cpp
