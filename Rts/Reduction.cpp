@@ -9,9 +9,11 @@
 #include <cstdint>
 #include <string>
 
+#include "Rts/Detail/ActiveObject.hpp"
 #include "Rts/Detail/GetOutput.hpp"
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/MessageType.hpp"
+#include "Rts/Serialize/Serializer.hpp"
 
 namespace rts::reduction {
 std::ostream& operator<<(std::ostream& os, const InsertAction action) {
@@ -164,11 +166,14 @@ std::optional<Message_t> Handler::combine_inter_process(
 #include <doctest/doctest.h>
 #include <random>
 #include <thread>
+#include <tuple>
+#include <vector>
 
 #include "Rts/Detail/GetOutput.hpp"
 #include "Rts/DistributedObjectCollection.hpp"
 #include "Rts/Message.hpp"
 #include "Rts/Reduction.hpp"
+#include "Rts/Serialize/Stl/Vector.hpp"
 
 namespace rts::reduction {
 namespace {
@@ -199,6 +204,7 @@ struct DummyCallback {
 void test_combine_function() {
   using namespace rts::reduction;
   using DataTuple = std::tuple<int, double>;
+  using DataTupleVector = std::tuple<std::vector<int>, std::vector<double>>;
 
   // Simple binary op: sum for int, product for double
   struct SumProductOp {
@@ -207,40 +213,97 @@ void test_combine_function() {
       std::get<0>(lhs) += rhs_int;
       std::get<1>(lhs) *= rhs_double;
     }
+
+    void operator()(DataTupleVector& lhs, const std::vector<int>& rhs_int,
+                    const std::vector<double>& rhs_double) const {
+      auto& lhs0 = std::get<0>(lhs);
+      auto& lhs1 = std::get<1>(lhs);
+
+      if (lhs0.size() != rhs_int.size()) {
+        throw Exception{"Different sizes!"};
+      }
+      if (lhs1.size() != rhs_double.size()) {
+        throw Exception{"Different sizes!"};
+      }
+
+      for (size_t i = 0; i < lhs0.size(); ++i) {
+        lhs0[i] += rhs_int[i];
+      }
+      for (size_t i = 0; i < lhs1.size(); ++i) {
+        lhs1[i] *= rhs_double[i];
+      }
+    }
   };
 
   // Prepare two messages with the same reduction id
   const std::uint32_t distributed_object_index = 1;
   const std::uint64_t reduction_id = 1234;
-  DataTuple data0{2, 3.0};
-  DataTuple data1{5, 4.0};
+  {
+    DataTuple data0{2, 3.0};
+    DataTuple data1{5, 4.0};
 
-  // Dummy callback (not used in combine)
-  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
-  CallbackType callback{0};
+    // Dummy callback (not used in combine)
+    using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
+    CallbackType callback{0};
 
-  // Create two messages
-  Message_t msg0 = create_message(distributed_object_index, reduction_id, data0,
-                                  callback, MessageType::Reduction);
-  Message_t msg1 = create_message(distributed_object_index, reduction_id, data1,
-                                  callback, MessageType::Reduction);
+    // Create two messages
+    Message_t msg0 = create_message(distributed_object_index, reduction_id,
+                                    data0, callback, MessageType::Reduction);
+    Message_t msg1 = create_message(distributed_object_index, reduction_id,
+                                    data1, callback, MessageType::Reduction);
 
-  // Combine msg1 into msg0
-  detail::combine<SumProductOp, DataTuple>(msg0, msg1);
+    // Combine msg1 into msg0
+    detail::combine<SumProductOp, DataTuple>(msg0, msg1);
 
-  // Check result: (2+5, 3.0*4.0) = (7, 12.0)
-  const DataTuple* result =
-      rts::data_from_message<DataTuple>(*msg0.get_header());
-  CHECK(std::get<0>(*result) == 7);
-  CHECK(std::get<1>(*result) == 12.0);
+    // Check result: (2+5, 3.0*4.0) = (7, 12.0)
+    const DataTuple* result =
+        rts::data_from_message<DataTuple>(*msg0.get_header());
+    CHECK(std::get<0>(*result) == 7);
+    CHECK(std::get<1>(*result) == 12.0);
 
-  // Test error: mismatched reduction id
-  Message_t msg2 = create_message(distributed_object_index, reduction_id + 1,
-                                  data1, callback, MessageType::Reduction);
-  CHECK_THROWS_WITH_AS((detail::combine<SumProductOp, DataTuple>(msg0, msg2)),
-                       "The reduction id in the two reduction messages must "
-                       "match but message0 has: 1234 and message1 has: 1235",
-                       rts::Exception);
+    // Test error: mismatched reduction id
+    Message_t msg2 = create_message(distributed_object_index, reduction_id + 1,
+                                    data1, callback, MessageType::Reduction);
+    CHECK_THROWS_WITH_AS((detail::combine<SumProductOp, DataTuple>(msg0, msg2)),
+                         "The reduction id in the two reduction messages must "
+                         "match but message0 has: 1234 and message1 has: 1235",
+                         rts::Exception);
+  }
+
+  {
+    DataTupleVector data0{std::vector<int>{2, 3, 4, 5},
+                          std::vector<double>{3.0, 4.0, 5.0}};
+    DataTupleVector data1{std::vector<int>{5, 6, 7, 8},
+                          std::vector<double>{4.0, 6.0, 8.0}};
+
+    // Dummy callback (not used in combine)
+    using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
+    CallbackType callback{0};
+
+    Message_t msg0 =
+        create_message(distributed_object_index, reduction_id, data0, callback,
+                       MessageType::Reduction, true);
+    CHECK(msg0.get_header()->data_was_serialized());
+    Message_t msg1 =
+        create_message(distributed_object_index, reduction_id, data1, callback,
+                       MessageType::Reduction, true);
+    CHECK(msg1.get_header()->data_was_serialized());
+
+    detail::combine<SumProductOp, DataTupleVector>(msg0, msg1);
+    CHECK(msg0.get_header()->data_was_serialized());
+
+    DataTupleVector result{};
+    {
+      serialize::Serializer unpacker{
+          serialize::Serializer::Unpacking,
+          rts::reduction::get_data_pointer<std::byte>(msg0),
+          rts::reduction::get_data_size(msg0)};
+      unpacker | result;
+    }
+
+    CHECK(std::get<0>(result) == std::vector<int>{7, 9, 11, 13});
+    CHECK(std::get<1>(result) == std::vector<double>{12.0, 24.0, 40.0});
+  }
 }
 
 /// [rts_reduction_sump_op_functor]

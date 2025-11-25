@@ -27,6 +27,7 @@
 #include "Rts/MessageHeader.hpp"
 #include "Rts/MessageType.hpp"
 #include "Rts/ParentAndChildren.hpp"
+#include "Rts/Serialize/Serializer.hpp"
 
 namespace rts::reduction {
 namespace detail {
@@ -161,10 +162,33 @@ namespace detail {
 template <class BinaryOp, class Data_t, size_t... Is>
 void combine_impl(Message_t& message0, const Message_t& message1,
                   std::index_sequence<Is...> /*meta*/) {
-  const Data_t& message1_data =
-      *data_from_message<Data_t>(*message1.get_header());
-  Data_t& message0_data = *data_from_message<Data_t>(*message0.get_header());
-  BinaryOp{}(message0_data, std::get<Is>(message1_data)...);
+  const auto get_data = [](const Message_t& message) {
+    if (message.get_header()->data_was_serialized()) {
+      Data_t data{};
+      rts::serialize::Serializer unpacker{
+          rts::serialize::Serializer::Unpacking,
+          const_cast<std::byte*>(
+              reduction::get_data_pointer<std::byte>(message)),
+          reduction::get_data_size(message)};
+      unpacker | data;
+      return data;
+    } else {
+      return *data_from_message<Data_t>(*message.get_header());
+    }
+  };
+  const Data_t& message1_data = get_data(message1);
+  if (message0.get_header()->data_was_serialized()) {
+    Data_t message0_data = get_data(message0);
+    BinaryOp{}(message0_data, std::get<Is>(message1_data)...);
+    rts::serialize::Serializer packer{
+        rts::serialize::Serializer::Packing,
+        reduction::get_data_pointer<std::byte>(message0),
+        reduction::get_data_size(message0)};
+    packer | message0_data;
+  } else {
+    Data_t& message0_data = *data_from_message<Data_t>(*message0.get_header());
+    BinaryOp{}(message0_data, std::get<Is>(message1_data)...);
+  }
 }
 
 /*!
@@ -186,10 +210,6 @@ void combine_impl(Message_t& message0, const Message_t& message1,
  */
 template <class BinaryOp, class Data_t>
 void combine(Message_t& message0, const Message_t& message1) {
-  if (message0.get_header()->data_was_serialized() or
-      message1.get_header()->data_was_serialized()) {
-    throw Exception{"Cannot currently combine data that was serialized."};
-  }
   const std::uint64_t reduction_id0 = get_id(message0);
   const std::uint64_t reduction_id1 = get_id(message1);
   if (reduction_id0 != reduction_id1) {
