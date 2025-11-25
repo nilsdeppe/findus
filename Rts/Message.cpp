@@ -283,7 +283,7 @@ void set_data_size(Message_t& message, const std::uint32_t data_size) {
                 data_size_jump_in_bytes)) = data_size;
 }
 
-std::uint32_t get_data_size(Message_t& message) {
+std::uint32_t get_data_size(const Message_t& message) {
   return *reinterpret_cast<const std::uint32_t*>(
       std::next(reinterpret_cast<const std::byte*>(message.get_header()),
                 data_size_jump_in_bytes));

@@ -373,7 +373,7 @@ void set_data_size(Message_t& message, std::uint32_t data_size);
  * \param message The reduction message from which to retrieve the data size.
  * \return The size of the reduction data in bytes.
  */
-std::uint32_t get_data_size(Message_t& message);
+std::uint32_t get_data_size(const Message_t& message);
 
 /*!
  * \brief Sets the callback offset in the data portion of a reduction message.
