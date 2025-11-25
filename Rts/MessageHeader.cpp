@@ -210,6 +210,12 @@ TEST_CASE("MessageHeader") {
           expected_data);
     CHECK(alignof(T) == message_header.data_alignment());
 
+    CHECK(message_header.number_of_bytes_in_message() == 256);
+    message_header.number_of_bytes_in_message(100);
+    CHECK(message_header.number_of_bytes_in_message() == 100);
+    message_header.number_of_bytes_in_message(256);
+    CHECK(message_header.number_of_bytes_in_message() == 256);
+
     const std::string expected_message =
         std::string{"The data alignment in the message ("} +
         std::to_string(alignof(T)) +

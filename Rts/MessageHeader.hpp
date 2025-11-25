@@ -124,6 +124,20 @@ struct alignas(hardware_info::hardware_destructive_interference_size)
   }
 
   /*!
+   * \brief Set the number of bytes in the message.
+   *
+   * Note: this is the total bytes in the message, counting the
+   * `MessageHeader`, padding, and the serialized data.
+   */
+  void number_of_bytes_in_message(const std::uint64_t value) {
+    // Zero out bits.
+    number_of_bytes_in_message_ = (compl number_of_bytes_in_message_mask) bitand
+                                  number_of_bytes_in_message_;
+    // Set number of bytes in message.
+    number_of_bytes_in_message_ = number_of_bytes_in_message_ bitor value;
+  }
+
+  /*!
    * \brief Retrieves the type of message, `MessageType`.
    */
   MessageType message_type() const {
