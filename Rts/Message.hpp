@@ -10,10 +10,12 @@
 #include <iosfwd>
 #include <memory>
 #include <new>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "Rts/Detail/IsTuple.hpp"
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/MessageHeader.hpp"
 #include "Rts/MessageType.hpp"
@@ -335,22 +337,6 @@ void set_data_offset(Message_t& message, std::uint32_t data_offset);
  */
 std::uint32_t get_data_offset(const Message_t& message);
 
-/// @{
-/*!
- * \brief Returns a pointer to the reduction data in a reduction message.
- *
- * This function computes and returns a pointer to the start of the reduction
- * data within the message buffer. The pointer can be used to access or
- * manipulate the reduction data directly.
- *
- * \param message The reduction message containing the data.
- * \return Pointer to the start of the reduction data.
- */
-std::byte* get_data_pointer(Message_t& message);
-
-const std::byte* get_data_pointer(const Message_t& message);
-/// @}
-
 /*!
  * \brief Sets the size of the reduction data in a reduction message.
  *
@@ -374,6 +360,49 @@ void set_data_size(Message_t& message, std::uint32_t data_size);
  * \return The size of the reduction data in bytes.
  */
 std::uint32_t get_data_size(const Message_t& message);
+
+/// @{
+/*!
+ * \brief Returns a pointer to the reduction data in a reduction message.
+ *
+ * This function computes and returns a pointer to the start of the reduction
+ * data within the message buffer. The pointer can be used to access or
+ * manipulate the reduction data directly. If a `std::tuple<...>` of the known
+ * data type is passed as `T` and the message was not serialized, then a
+ * pointer of type `T` is returned directly.
+ *
+ * \param message The reduction message containing the data.
+ * \return Pointer to the start of the reduction data.
+ */
+template <class T>
+T* get_data_pointer(Message_t& message) {
+  std::byte* ptr =
+      std::next(message.message.get(), reduction::get_data_offset(message));
+  if constexpr (std::is_same_v<std::byte, T>) {
+    return ptr;
+  } else {
+    if (sizeof(T) != get_data_size(message)) {
+      throw Exception{
+        "Cannot convert the data to the requested type because the internal "
+          "size " +
+          std::to_string(get_data_size(message)) +
+          " does not match the size of the type " + std::to_string(sizeof(T))};
+    }
+    if (message.get_header()->data_was_serialized()) {
+      throw Exception{
+        "Cannot retrieve the data pointer with a type other than std::byte "
+          "for a serialized message."};
+    }
+    static_assert(::rts::detail::is_std_tuple_v<T>);
+    return reinterpret_cast<T*>(ptr);
+  }
+}
+
+template <class T>
+const T* get_data_pointer(const Message_t& message) {
+  return get_data_pointer<T>(const_cast<Message_t&>(message));
+}
+/// @}
 
 /*!
  * \brief Sets the callback offset in the data portion of a reduction message.

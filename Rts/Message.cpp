@@ -189,14 +189,6 @@ std::uint32_t get_data_offset(const Message_t& message) {
                 data_offset_jump_in_bytes));
 }
 
-std::byte* get_data_pointer(Message_t& message) {
-  return std::next(message.message.get(), get_data_offset(message));
-}
-
-const std::byte* get_data_pointer(const Message_t& message) {
-  return std::next(message.message.get(), get_data_offset(message));
-}
-
 void set_callback_offset(Message_t& message,
                          const std::uint32_t callback_offset) {
   static_assert(callback_offset_jump_in_bytes + alignof(MessageHeader) >=
@@ -772,12 +764,30 @@ void test_set_and_get_data_offset() {
   Message_t message = create_message<DummyAction, DummyComponent>(
       distributed_object_index, reduction_id, data_tuple, callback,
       MessageType::Reduction);
-  const std::uint32_t dummy_offset = 305419896;  // Example: 123456789
+  CHECK(get_data_pointer<DataTuple>(message) ==
+        get_data_pointer<DataTuple>(std::as_const(message)));
+  CHECK(*get_data_pointer<DataTuple>(message) ==
+        *get_data_pointer<DataTuple>(std::as_const(message)));
+  CHECK_THROWS_WITH_AS(
+      get_data_pointer<std::tuple<int>>(message),
+      "Cannot convert the data to the requested type because the internal "
+      "size 16 does not match the size of the type 4",
+      rts::Exception);
+  message.get_header()->data_was_serialized(true);
+  CHECK_THROWS_WITH_AS(
+      get_data_pointer<DataTuple>(message),
+      "Cannot retrieve the data pointer with a type other than std::byte "
+      "for a serialized message.",
+      rts::Exception);
+  message.get_header()->data_was_serialized(false);
+
+  const std::uint32_t dummy_offset = 305419896;
   const std::uint32_t dummy_size = 182739;
   set_data_offset(message, dummy_offset);
   CHECK(get_data_offset(message) == dummy_offset);
-  CHECK(get_data_pointer(message) == get_data_pointer(std::as_const(message)));
-  CHECK(get_data_pointer(message) ==
+  CHECK(get_data_pointer<std::byte>(message) ==
+        get_data_pointer<std::byte>(std::as_const(message)));
+  CHECK(get_data_pointer<std::byte>(message) ==
         std::next(reinterpret_cast<std::byte*>(message.get_header()),
                   dummy_offset));
   set_data_size(message, dummy_size);
@@ -954,6 +964,7 @@ void test_set_and_get_combine_function_pointer() {
 
   // Check that the retrieved pointer matches the original function pointer
   // (function pointers to lambdas may not compare equal, so this is optional)
+  CHECK(retrieved_ptr == +dummy_combine);
 }
 
 void test_contribution_metadata() {

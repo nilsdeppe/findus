@@ -938,7 +938,7 @@ void DistributedTaskDriver::send_reduction_message_impl(Message_t in_message) {
           rts::MessageType::Invoke,
           message.value().get_header()->data_alignment(),
           reduction::get_data_size(message.value()),
-          reduction::get_data_pointer(message.value()));
+          reduction::get_data_pointer<std::byte>(message.value()));
       send_data(target_process, std::move(msg));
       return;
     } else if (callback_impl.message_type_ == MessageType::Broadcast) {
@@ -952,7 +952,7 @@ void DistributedTaskDriver::send_reduction_message_impl(Message_t in_message) {
           rts::MessageType::Broadcast,
           message.value().get_header()->data_alignment(),
           reduction::get_data_size(message.value()),
-          reduction::get_data_pointer(message.value()));
+          reduction::get_data_pointer<std::byte>(message.value()));
       send_data(broadcast_process_id, std::move(msg));
       return;
     } else {
