@@ -2046,7 +2046,6 @@ void test_callbacks(DistributedTaskDriver& driver) {
 void test_invoke(DistributedTaskDriver& driver) {
   const int number_of_processes = driver.number_of_nodes();
   // Insert regular and collection components
-  driver.insert_parallel_component<RegularComponent>();
   const std::unordered_map<uint64_t, int> all_indices{
       {42ul, 0}, {43ul, 1}, {44ul, 1}, {45ul, 1},
       {46ul, 0}, {47ul, 0}, {48ul, 0}};
@@ -2077,6 +2076,14 @@ void test_invoke(DistributedTaskDriver& driver) {
     CHECK(std::count(elements_on_pid.begin(), elements_on_pid.end(), id) == 1);
   }
   //! [collection_ids_on_processes_usage]
+
+  driver.insert_parallel_component<RegularComponent>();
+
+  // Now remove and re-add the first element and make sure that works.
+  driver.remove_parallel_component_collection<CollectionComponent>(
+      all_indices.begin()->first);
+  driver.insert_parallel_component_collection<CollectionComponent>(
+      all_indices.begin()->first, all_indices.begin()->second);
 
   // Check exceptions that should be thrown before we call insert_barrier()
   CHECK_THROWS_WITH_AS(

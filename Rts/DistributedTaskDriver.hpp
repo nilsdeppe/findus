@@ -1005,13 +1005,16 @@ void DistributedTaskDriver::insert_parallel_component(Args&&... args) {
       max_simultaneous_reductions_);
   distributed_objects_.back().number_of_local_objects = 1;
   if (index + 1 != distributed_objects_.size()) {
-    throw Exception("The index " + std::to_string(index) +
-                    " of the parallel component " + ParallelComponent::name() +
-                    " that was computed by the function "
-                    "distributed_object_index does not match the entry of the "
-                    "distributed_objects_ vector " +
-                    std::to_string(distributed_objects_.size() - 1) +
-                    " on MPI rank " + std::to_string(my_node_id_));
+    throw Exception(
+        "Error while inserting a per-process parallel component: the index " +
+        std::to_string(index) + " of the parallel component " +
+        ParallelComponent::name() +
+        " that was computed by the function "
+        "distributed_object_index does not match the entry of the "
+        "distributed_objects_ vector " +
+        std::to_string(distributed_objects_.size() - 1) + " on MPI rank " +
+        std::to_string(my_node_id_) +
+        ". Are you trying to insert a component you already inserted?");
   }
 }
 
@@ -1040,15 +1043,17 @@ void DistributedTaskDriver::insert_parallel_component_collection(
                                       number_of_nodes(), number_of_threads_ + 1,
                                       max_simultaneous_reductions_);
     distributed_objects_.back().number_of_local_objects = 0;
-  }
-  if (index + 1 != distributed_objects_.size()) {
-    throw Exception("The index " + std::to_string(index) +
-                    " of the parallel component " + ParallelComponent::name() +
-                    " that was computed by the function "
-                    "distributed_object_index does not match the entry of the "
-                    "distributed_objects_ vector " +
-                    std::to_string(distributed_objects_.size() - 1) +
-                    " on MPI rank " + std::to_string(my_node_id_));
+    if (index + 1 != distributed_objects_.size()) {
+      throw Exception(
+          "Error while inserting a collection parallel component: the index " +
+          std::to_string(index) + " of the parallel component " +
+          ParallelComponent::name() +
+          " that was computed by the function "
+          "distributed_object_index does not match the entry of the "
+          "distributed_objects_ vector " +
+          std::to_string(distributed_objects_.size() - 1) + " on MPI rank " +
+          std::to_string(my_node_id_));
+    }
   }
   Map& collection = std::get<1>(distributed_objects_[index].objects);
   const std::uint64_t collection_index = detail::to_internal(user_index);
