@@ -744,7 +744,7 @@ void test_set_and_get_id() {
 
   Message_t message = create_message<DummyAction, DummyComponent>(
       distributed_object_index, reduction_id, data_tuple, callback,
-      MessageType::Reduction);
+      MessageType::Reduction, false);
   // Use a base-10 integer for the dummy reduction ID
   const std::uint64_t dummy_id = 1234567890123456789;
   set_id(message, dummy_id);
@@ -763,7 +763,7 @@ void test_set_and_get_data_offset() {
 
   Message_t message = create_message<DummyAction, DummyComponent>(
       distributed_object_index, reduction_id, data_tuple, callback,
-      MessageType::Reduction);
+      MessageType::Reduction, false);
   CHECK(get_data_pointer<DataTuple>(message) ==
         get_data_pointer<DataTuple>(std::as_const(message)));
   CHECK(*get_data_pointer<DataTuple>(message) ==
@@ -806,76 +806,95 @@ void test_set_and_get_callback_offset() {
 
   Message_t message = create_message<DummyAction, DummyComponent>(
       distributed_object_index, reduction_id, data_tuple, callback,
-      MessageType::Reduction);
+      MessageType::Reduction, false);
   const std::uint32_t dummy_offset = 987654321;
   set_callback_offset(message, dummy_offset);
   CHECK(get_callback_offset(message) == dummy_offset);
 }
 
 void test_create_message() {
-  using DataTuple = std::tuple<int, double>;
+  using DataTuple = std::tuple<std::vector<int>, std::vector<double>>;
   using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
 
   const std::uint32_t distributed_object_index = 42;
   const std::uint64_t reduction_id = 123456789;
-  const DataTuple data_tuple{7, 3.14};
+  const DataTuple data_tuple{std::vector<int>{7},
+                             std::vector<double>{3.14, 2.03}};
   const CallbackType callback{99};
 
-  // Create the message
-  const Message_t message =
-      create_message(distributed_object_index, reduction_id, data_tuple,
-                     callback, MessageType::Reduction);
+  for (const bool serialize : {false, true}) {
+    CAPTURE(serialize);
+    // Create the message
+    const Message_t message =
+        create_message(distributed_object_index, reduction_id, data_tuple,
+                       callback, MessageType::Reduction, serialize);
+    CHECK(message.get_header()->data_was_serialized() == serialize);
 
-  // Check metadata was set correctly.
-  CHECK(get_id(message) == reduction_id);
-  CHECK(get_data_offset(message) ==
-        (message.get_header()->data_location() -
-         reinterpret_cast<const char*>(message.get_header())));
-  CHECK(get_callback_offset(message) > get_data_offset(message));
-  // Strictly less than because zero-size objects aren't allowed in C++
-  CHECK(get_callback_offset(message) <
-        message.get_header()->number_of_bytes_in_message());
+    // Check metadata was set correctly.
+    CHECK(get_id(message) == reduction_id);
+    CHECK(get_data_offset(message) ==
+          (message.get_header()->data_location() -
+           reinterpret_cast<const char*>(message.get_header())));
+    CHECK(get_callback_offset(message) > get_data_offset(message));
+    // Strictly less than because zero-size objects aren't allowed in C++
+    CHECK(get_callback_offset(message) <
+          message.get_header()->number_of_bytes_in_message());
 
-  // Check header
-  const MessageHeader* header = message.get_header();
-  CHECK(header != nullptr);
-  CHECK(header->distributed_object_index() == distributed_object_index);
-  CHECK(header->message_type() == MessageType::Reduction);
-  CHECK(header->data_alignment() == alignof(DataTuple));
+    // Check header
+    const MessageHeader* header = message.get_header();
+    CHECK(header != nullptr);
+    CHECK(header->distributed_object_index() == distributed_object_index);
+    CHECK(header->message_type() == MessageType::Reduction);
+    CHECK(header->data_alignment() == alignof(DataTuple));
 
-  {
-    // Check metadata block is zeroed. We may stop zeroing in the future for
-    // better efficiency.
-    const std::byte* metadata_ptr = reinterpret_cast<const std::byte*>(header);
-    for (std::size_t i = (callback_offset_jump_in_bytes + 4);
-         i < metadata_block_size; ++i) {
-      CAPTURE(i);
-      CHECK(std::to_integer<unsigned char>(metadata_ptr[i]) == 0);
+    {
+      // Check metadata block is zeroed. We may stop zeroing in the future for
+      // better efficiency.
+      const std::byte* metadata_ptr =
+          reinterpret_cast<const std::byte*>(header);
+      for (std::size_t i = (callback_offset_jump_in_bytes + 4);
+           i < metadata_block_size; ++i) {
+        CAPTURE(i);
+        CHECK(std::to_integer<unsigned char>(metadata_ptr[i]) == 0);
+      }
     }
+
+    CHECK(header->target_collection_index() ==
+          MessageHeader::reduction_message_collection_index());
+
+    if (serialize) {
+      const std::byte* data_ptr = get_data_pointer<std::byte>(message);
+      CHECK(reinterpret_cast<const char*>(data_ptr) == header->data_location());
+      CHECK(data_ptr != nullptr);
+
+      DataTuple result{};
+      serialize::Serializer unpacker{serialize::Serializer::Unpacking, data_ptr,
+                                     get_data_size(message)};
+      unpacker | result;
+
+      CHECK(std::get<0>(result) == std::get<0>(data_tuple));
+      CHECK(std::get<1>(result) == std::get<1>(data_tuple));
+    } else {
+      const DataTuple* data_ptr = get_data_pointer<DataTuple>(message);
+      CHECK(reinterpret_cast<const char*>(data_ptr) == header->data_location());
+      CHECK(data_ptr != nullptr);
+      CHECK(std::get<0>(*data_ptr) == std::get<0>(data_tuple));
+      CHECK(std::get<1>(*data_ptr) == std::get<1>(data_tuple));
+      CHECK(reinterpret_cast<std::uintptr_t>(data_ptr) % alignof(DataTuple) ==
+            0);
+    }
+
+    // Check callback
+    const std::uint32_t callback_offset = get_callback_offset(message);
+    const CallbackType* callback_ptr = reinterpret_cast<const CallbackType*>(
+        reinterpret_cast<const std::byte*>(header) + callback_offset);
+    CHECK(callback_ptr != nullptr);
+    CHECK(*callback_ptr == callback);
+
+    // Check alignment
+    CHECK(reinterpret_cast<std::uintptr_t>(callback_ptr) % callback_alignment ==
+          0);
   }
-
-  CHECK(header->target_collection_index() ==
-        MessageHeader::reduction_message_collection_index());
-
-  const std::uint32_t data_offset = get_data_offset(message);
-  const DataTuple* data_ptr = reinterpret_cast<const DataTuple*>(
-      reinterpret_cast<const std::byte*>(header) + data_offset);
-  CHECK(reinterpret_cast<const char*>(data_ptr) == header->data_location());
-  CHECK(data_ptr != nullptr);
-  CHECK(std::get<0>(*data_ptr) == std::get<0>(data_tuple));
-  CHECK(std::get<1>(*data_ptr) == std::get<1>(data_tuple));
-
-  // Check callback
-  const std::uint32_t callback_offset = get_callback_offset(message);
-  const CallbackType* callback_ptr = reinterpret_cast<const CallbackType*>(
-      reinterpret_cast<const std::byte*>(header) + callback_offset);
-  CHECK(callback_ptr != nullptr);
-  CHECK(*callback_ptr == callback);
-
-  // Check alignment
-  CHECK(reinterpret_cast<std::uintptr_t>(data_ptr) % alignof(DataTuple) == 0);
-  CHECK(reinterpret_cast<std::uintptr_t>(callback_ptr) % callback_alignment ==
-        0);
 }
 
 void test_get_callback_address_and_get_callback() {
@@ -890,7 +909,7 @@ void test_get_callback_address_and_get_callback() {
   // Create the reduction message
   Message_t message = create_message<DummyAction, DummyComponent>(
       distributed_object_index, reduction_id, data_tuple, callback,
-      MessageType::Reduction);
+      MessageType::Reduction, false);
 
   // Get callback address (non-const)
   std::byte* callback_addr = get_callback_address(message);
@@ -946,7 +965,7 @@ void test_set_and_get_combine_function_pointer() {
   CallbackType callback{99};
   Message_t message = create_message<DummyAction, DummyComponent>(
       distributed_object_index, reduction_id, data_tuple, callback,
-      MessageType::Reduction);
+      MessageType::Reduction, false);
 
   // Set the combine function pointer
   set_combine_function_pointer(message, dummy_combine);
@@ -1004,7 +1023,7 @@ void test_contribution_metadata() {
     ReductionCallback<DummyAction, DummyComponent> callback{0};
     Message_t message = create_message<DummyAction, DummyComponent>(
         distributed_object_index, reduction_id, data_tuple, callback,
-        MessageType::Reduction);
+        MessageType::Reduction, false);
 
     const std::string mask_string = std::bitset<8>{mask}.to_string();
     CAPTURE(mask_string);
@@ -1077,7 +1096,7 @@ void test_reduction_contribution_counters() {
   ReductionCallback<DummyAction, DummyComponent> callback{0};
   Message_t message = create_message<DummyAction, DummyComponent>(
       distributed_object_index, reduction_id, data_tuple, callback,
-      MessageType::Reduction);
+      MessageType::Reduction, false);
 
   // Test target process id
   const std::int32_t target_pid = 12345;

@@ -247,10 +247,12 @@ void test_combine_function() {
     CallbackType callback{0};
 
     // Create two messages
-    Message_t msg0 = create_message(distributed_object_index, reduction_id,
-                                    data0, callback, MessageType::Reduction);
-    Message_t msg1 = create_message(distributed_object_index, reduction_id,
-                                    data1, callback, MessageType::Reduction);
+    Message_t msg0 =
+        create_message(distributed_object_index, reduction_id, data0, callback,
+                       MessageType::Reduction, false);
+    Message_t msg1 =
+        create_message(distributed_object_index, reduction_id, data1, callback,
+                       MessageType::Reduction, false);
 
     // Combine msg1 into msg0
     detail::combine<SumProductOp, DataTuple>(msg0, msg1);
@@ -262,8 +264,9 @@ void test_combine_function() {
     CHECK(std::get<1>(*result) == 12.0);
 
     // Test error: mismatched reduction id
-    Message_t msg2 = create_message(distributed_object_index, reduction_id + 1,
-                                    data1, callback, MessageType::Reduction);
+    Message_t msg2 =
+        create_message(distributed_object_index, reduction_id + 1, data1,
+                       callback, MessageType::Reduction, false);
     CHECK_THROWS_WITH_AS((detail::combine<SumProductOp, DataTuple>(msg0, msg2)),
                          "The reduction id in the two reduction messages must "
                          "match but message0 has: 1234 and message1 has: 1235",

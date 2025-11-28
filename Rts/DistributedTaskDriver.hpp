@@ -1685,7 +1685,8 @@ void DistributedTaskDriver::reduction_over(
         std::is_same_v<std::decay_t<UnaryPredicate>,
                        reduction::detail::AllElements>
             ? MessageType::Reduction
-            : MessageType::ReductionOver);
+            : MessageType::ReductionOver,
+        not data_is_trivially_copyable);
     holder.reduction_handler
         ->set_interprocess_message_info<ContributingParallelComponent>(
             message, current_node_id(), number_of_nodes(), predicate);

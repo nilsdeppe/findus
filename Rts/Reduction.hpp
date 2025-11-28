@@ -404,7 +404,7 @@ InsertAction DataHandler::insert_or_combine(
       entries_[index].callback_and_data = reduction::create_message(
           distributed_object_index, reduction_id,
           Data_t{std::forward<Args>(args)...}, std::move(reduction_callback),
-          message_type);
+          message_type, false);
       return InsertAction::Insert;
     }
   }

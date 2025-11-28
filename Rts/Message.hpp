@@ -699,6 +699,8 @@ std::int32_t get_expected_number_of_root_contributions(
  *   The reduction callback object to be invoked after reduction.
  * \param message_type
  *   The type of message (default is MessageType::Reduction).
+ * \param serialize
+ *   If `true` then the data is serialized into the message instead of copied.
  *
  * \return
  *   A Message_t containing the allocated buffer with header, metadata, data,
@@ -717,7 +719,7 @@ Message_t create_message(
     const std::uint32_t distributed_object_index,
     const std::uint64_t reduction_id, std::tuple<Args...> args,
     ReductionCallback<BroadcastAction, BroadcastParallelComponent> callback,
-    const MessageType message_type) {
+    const MessageType message_type, const bool serialize) {
   static_assert(callback_alignment == alignof(MessageHeader),
                 "If this fails then we need to add special handling for the "
                 "callback alignment into the Message_t destructor.");
@@ -734,9 +736,18 @@ Message_t create_message(
   const std::size_t data_offset =
       unaligned_data_offset +
       ((data_align - (unaligned_data_offset % data_align)) % data_align);
+  const std::size_t data_size = [&args, &serialize]() -> std::size_t {
+    if (serialize) {
+      serialize::Serializer sizer{serialize::Serializer::Sizing};
+      sizer | args;
+      return sizer.number_of_bytes();
+    } else {
+      return sizeof(DataTuple);
+    }
+  }();
 
   // Compute callback_offset: after data, aligned to 64 bytes
-  const std::size_t unaligned_callback_offset = data_offset + sizeof(DataTuple);
+  const std::size_t unaligned_callback_offset = data_offset + data_size;
   const std::size_t callback_offset =
       unaligned_callback_offset +
       ((callback_align - (unaligned_callback_offset % callback_align)) %
@@ -753,15 +764,22 @@ Message_t create_message(
   MessageHeader* header = new (buffer.get()) MessageHeader(
       {0, 0}, MessageHeader::reduction_message_collection_index(), total_size,
       distributed_object_index, data_offset, reduction_process_id,
-      reduction_process_id, std::numeric_limits<std::uint64_t>::max(), false,
-      message_type);
+      reduction_process_id, std::numeric_limits<std::uint64_t>::max(),
+      serialize, message_type);
   header->set_data_alignment(alignof(DataTuple));
 
   // Zero the metadata block for safety/future use
   std::memset(buffer.get() + header_size, 0, metadata_block_size);
 
   // Construct the data and callback
-  new (buffer.get() + data_offset) DataTuple(std::move(args));
+  if (serialize) {
+    serialize::Serializer packer{serialize::Serializer::Packing,
+                                 std::next(buffer.get(), data_offset),
+                                 data_size};
+    packer | args;
+  } else {
+    new (buffer.get() + data_offset) DataTuple(std::move(args));
+  }
   new (buffer.get() + callback_offset) CallbackType(std::move(callback));
 
   // Wrap in Message_t
@@ -770,7 +788,7 @@ Message_t create_message(
   // Set metadata using reduction helpers
   set_id(message, reduction_id);
   set_data_offset(message, static_cast<std::uint32_t>(data_offset));
-  set_data_size(message, sizeof(DataTuple));
+  set_data_size(message, data_size);
   set_callback_offset(message, static_cast<std::uint32_t>(callback_offset));
 
   return message;
