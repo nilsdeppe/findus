@@ -332,6 +332,15 @@ class DistributedTaskDriver {
   collection_ids_and_locations() const;
 
   /*!
+   * \brief Returns `true` if the `ParallelComponent` was inserted.
+   *
+   * For collection components this means at some point there was at least one
+   * element inserted into the collection component.
+   */
+  template <class ParallelComponent>
+  bool parallel_component_inserted() const;
+
+  /*!
    * \brief The MPI driver run on the main thread for a single phase of the
    * evolution.
    *
@@ -1200,6 +1209,15 @@ auto DistributedTaskDriver::collection_ids_and_locations() const
         "collection_ids_and_locations()."};
   }
   return std::get<1>(distributed_objects_[object_index].objects);
+}
+
+template <class ParallelComponent>
+bool DistributedTaskDriver::parallel_component_inserted() const {
+  static thread_local const std::string component_name =
+      ParallelComponent::name();
+  return std::any_of(
+      distributed_objects_.begin(), distributed_objects_.end(),
+      [](const auto& object) -> bool { return object.name == component_name; });
 }
 
 template <class Action, class ParallelComponent, class IndexType, class... Args>

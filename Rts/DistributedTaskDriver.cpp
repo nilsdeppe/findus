@@ -2050,9 +2050,14 @@ void test_invoke(DistributedTaskDriver& driver) {
       {42ul, 0}, {43ul, 1}, {44ul, 1}, {45ul, 1},
       {46ul, 0}, {47ul, 0}, {48ul, 0}};
 
+  CHECK_FALSE(driver.parallel_component_inserted<CollectionComponent>());
+  CHECK_FALSE(driver.parallel_component_inserted<RegularComponent>());
+
   for (const auto& [id, pid] : all_indices) {
     driver.insert_parallel_component_collection<CollectionComponent>(id, pid);
   }
+  CHECK(driver.parallel_component_inserted<CollectionComponent>());
+  CHECK_FALSE(driver.parallel_component_inserted<RegularComponent>());
 
   REQUIRE(driver.collection_ids_and_locations<CollectionComponent>().size() ==
           all_indices.size());
@@ -2077,7 +2082,9 @@ void test_invoke(DistributedTaskDriver& driver) {
   }
   //! [collection_ids_on_processes_usage]
 
+  CHECK_FALSE(driver.parallel_component_inserted<RegularComponent>());
   driver.insert_parallel_component<RegularComponent>();
+  CHECK(driver.parallel_component_inserted<RegularComponent>());
 
   // Now remove and re-add the first element and make sure that works.
   driver.remove_parallel_component_collection<CollectionComponent>(
