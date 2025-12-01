@@ -356,6 +356,7 @@ class Serializer
   Serializer(Packing_t selector, std::byte* buffer, size_t buffer_size,
              std::uint64_t extra_info = 0);
 
+  /// @{
   /*!
    * \brief Constructs a Serializer for unpacking mode.
    *
@@ -374,6 +375,9 @@ class Serializer
    */
   Serializer(Unpacking_t selector, std::byte* buffer, size_t buffer_size,
              std::uint64_t extra_info = 0);
+  Serializer(Unpacking_t selector, const std::byte* buffer, size_t buffer_size,
+             std::uint64_t extra_info = 0);
+  /// @}
 
   /*!
    * \brief Constructs a Serializer for memory footprinting mode.
@@ -413,7 +417,7 @@ class Serializer
   size_t number_of_bytes() const { return number_of_bytes_; }
 
   /// Returns the pointer to the start of the buffer.
-  std::byte* start_pointer() const { return start_pointer_; }
+  const std::byte* start_pointer() const { return start_pointer_; }
 
   /*!
    * \brief Serializes or deserializes a View of objects that satisfy

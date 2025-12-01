@@ -33,6 +33,15 @@ Serializer::Serializer(Unpacking_t /*selector*/, std::byte* buffer,
       end_pointer_(
           std::next(buffer, static_cast<std::ptrdiff_t>(buffer_size))) {}
 
+Serializer::Serializer(Unpacking_t /*selector*/, const std::byte* buffer,
+                       size_t buffer_size, std::uint64_t extra_info)
+    : extra_info_(extra_info),
+      action_(Action::Unpacking),
+      start_pointer_(const_cast<std::byte*>(buffer)),
+      current_pointer_(const_cast<std::byte*>(buffer)),
+      end_pointer_(const_cast<std::byte*>(
+          std::next(buffer, static_cast<std::ptrdiff_t>(buffer_size)))) {}
+
 Serializer::Serializer(MemoryFootprinting_t /*selector*/,
                        const std::uint64_t extra_info)
     : extra_info_(extra_info), action_(Action::MemoryFootprinting) {}
@@ -242,40 +251,49 @@ void test_impl() {
   REQUIRE(packer.number_of_bytes() ==
           (array.size() + vector.size() + 2) * sizeof(T));
 
-  std::array<T, 10> array_unpacked{};
-  std::vector<T> vector_unpacked(12);
-  T value_unpacked{0};
-  T value2_unpacked{0};
-  // [serializer_construct_unpacking_extra_info]
-  Serializer unpacker{Serializer::Unpacking, buffer.get(),
-                      sizer.number_of_bytes(), 222};
-  // [serializer_construct_unpacking_extra_info]
-  CHECK_FALSE(unpacker.isSizing());
-  CHECK_FALSE(unpacker.isPacking());
-  CHECK(unpacker.isUnpacking());
-  CHECK_FALSE(unpacker.isMemoryFootprinting());
-  CHECK(unpacker.action() != Action::Sizing);
-  CHECK(unpacker.action() != Action::Packing);
-  CHECK(unpacker.action() == Action::Unpacking);
-  CHECK(unpacker.action() != Action::MemoryFootprinting);
-  CHECK(unpacker.extra_info() == 222);
+  const auto unpack_help = [&](auto make_const) {
+    std::array<T, 10> array_unpacked{};
+    std::vector<T> vector_unpacked(12);
+    T value_unpacked{0};
+    T value2_unpacked{0};
+    std::conditional_t<decltype(make_const)::value, const std::byte*,
+                       std::byte*>
+        buff = buffer.get();
+    // clang-format off
+    // [serializer_construct_unpacking_extra_info]
+Serializer unpacker{Serializer::Unpacking, buff,
+                    sizer.number_of_bytes(), 222};
+    // [serializer_construct_unpacking_extra_info]
+    // clang-format on
+    CHECK_FALSE(unpacker.isSizing());
+    CHECK_FALSE(unpacker.isPacking());
+    CHECK(unpacker.isUnpacking());
+    CHECK_FALSE(unpacker.isMemoryFootprinting());
+    CHECK(unpacker.action() != Action::Sizing);
+    CHECK(unpacker.action() != Action::Packing);
+    CHECK(unpacker.action() == Action::Unpacking);
+    CHECK(unpacker.action() != Action::MemoryFootprinting);
+    CHECK(unpacker.extra_info() == 222);
 
-  unpacker(View{array_unpacked.data(), array_unpacked.size()});
-  REQUIRE(unpacker.number_of_bytes() == array_unpacked.size() * sizeof(T));
-  unpacker(View{vector_unpacked.data(), vector_unpacked.size()});
-  REQUIRE(unpacker.number_of_bytes() ==
-          (array_unpacked.size() + vector_unpacked.size()) * sizeof(T));
-  unpacker(View{value_unpacked});
-  REQUIRE(unpacker.number_of_bytes() ==
-          (array_unpacked.size() + vector_unpacked.size() + 1) * sizeof(T));
-  CHECK(unpacker.start_pointer() == buffer.get());
-  unpacker(value2_unpacked);
-  REQUIRE(unpacker.number_of_bytes() ==
-          (array_unpacked.size() + vector_unpacked.size() + 2) * sizeof(T));
-  CHECK(array_unpacked == array);
-  CHECK(vector_unpacked == vector);
-  CHECK(value_unpacked == value);
-  CHECK(value2_unpacked == value2);
+    unpacker(View{array_unpacked.data(), array_unpacked.size()});
+    REQUIRE(unpacker.number_of_bytes() == array_unpacked.size() * sizeof(T));
+    unpacker(View{vector_unpacked.data(), vector_unpacked.size()});
+    REQUIRE(unpacker.number_of_bytes() ==
+            (array_unpacked.size() + vector_unpacked.size()) * sizeof(T));
+    unpacker(View{value_unpacked});
+    REQUIRE(unpacker.number_of_bytes() ==
+            (array_unpacked.size() + vector_unpacked.size() + 1) * sizeof(T));
+    CHECK(unpacker.start_pointer() == buffer.get());
+    unpacker(value2_unpacked);
+    REQUIRE(unpacker.number_of_bytes() ==
+            (array_unpacked.size() + vector_unpacked.size() + 2) * sizeof(T));
+    CHECK(array_unpacked == array);
+    CHECK(vector_unpacked == vector);
+    CHECK(value_unpacked == value);
+    CHECK(value2_unpacked == value2);
+  };
+  unpack_help(std::bool_constant<false>{});
+  unpack_help(std::bool_constant<true>{});
 }
 
 #ifdef RTS_MIMIC_CHARM_PUPER
