@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <exception>
 #include <initializer_list>
 #include <iterator>
@@ -1663,22 +1664,76 @@ void DistributedTaskDriver::reduction_over(
     // thread on the process, we must move the message to the communication
     // thread for further processing. We do this by pushing it to the
     // outgoing_messages_ queue.
-    Message_t& message = message_with_all_local_contributions.value();
-    // TODO: serialize the data here? We could also store a function pointer to
-    // a serialization function.
+    //
+    // If necessary we serialize the data before sending it. We may be able
+    // reduce memory allocations by 1 if we delay serialization until send,
+    // but this would require store a function pointer that does the
+    // serialization, resulting in significantly more complicated code.
+    Message_t& local_message = message_with_all_local_contributions.value();
     holder.reduction_handler
         ->set_interprocess_message_info<ContributingParallelComponent>(
-            message, current_node_id(), number_of_nodes(),
+            local_message, current_node_id(), number_of_nodes(),
             holder.ids_per_process, predicate);
-    message.get_header()->member_function_ptr(
+    local_message.get_header()->member_function_ptr(
         threaded_action_relative_ptr<CallbackAction, CallbackParallelComponent,
                                      std::decay_t<Args>...>(
             std::make_index_sequence<sizeof...(Args)>{}));
-    outgoing_messages_.enqueue(std::tuple<int, Message_t>{
-        reduction::reduction_process_id, std::move(message)});
+    if constexpr (data_is_trivially_copyable) {
+      outgoing_messages_.enqueue(std::tuple<int, Message_t>{
+          reduction::reduction_process_id, std::move(local_message)});
+    } else {
+      if (local_message.get_header()->data_was_serialized()) {
+        throw Exception{
+            "The reduction data should not be serialized until after sending. "
+            "Maybe this happened because we sent serialized data and forgot to "
+            "deserialize it on the receiving end?"};
+      }
+      using Data_t = std::tuple<std::decay_t<Args>...>;
+      Data_t* local_data = reduction::get_data_pointer<Data_t>(local_message);
+      serialize::Serializer sizer{serialize::Serializer::Sizing};
+      sizer | *local_data;
+      const auto header_size_in_bytes =
+          reduction::get_data_offset(local_message);
+      const size_t end_of_data = header_size_in_bytes + sizer.number_of_bytes();
+      const size_t new_callback_offset =
+          end_of_data + ((reduction::callback_alignment -
+                          (end_of_data % reduction::callback_alignment)) %
+                         reduction::callback_alignment);
+      constexpr size_t callback_size =
+          sizeof(reduction::ReductionCallback<CallbackAction,
+                                              CallbackParallelComponent>);
+      const size_t total_size = new_callback_offset + callback_size;
+      Message_t message{std::unique_ptr<std::byte[]>{new (std::align_val_t(
+          std::max(std::max(alignof(MessageHeader),
+                            static_cast<std::uint64_t>(
+                                local_message.get_header()->data_alignment())),
+                   reduction::callback_alignment))) std::byte[total_size]}};
+      // Copy over header.
+      std::memcpy(message.message.get(), local_message.message.get(),
+                  header_size_in_bytes);
+      reduction::set_callback_offset(message, new_callback_offset);
+      message.get_header()->number_of_bytes_in_message(total_size);
+      reduction::set_data_size(message, sizer.number_of_bytes());
+      reduction::set_data_offset(message, header_size_in_bytes);
+      // Copy in data
+      {
+        serialize::Serializer packer{
+            serialize::Serializer::Packing,
+            std::next(message.message.get(),
+                      static_cast<std::ptrdiff_t>(header_size_in_bytes)),
+            sizer.number_of_bytes()};
+        packer | *local_data;
+      }
+      // Copy over callback
+      std::memcpy(reduction::get_callback_address(message),
+                  reduction::get_callback_address(local_message),
+                  callback_size);
+      message.get_header()->data_was_serialized(true);
+      outgoing_messages_.enqueue(std::tuple<int, Message_t>{
+          reduction::reduction_process_id, std::move(message)});
+    }
   } else { // per-process component case
     using Data_t = std::tuple<std::decay_t<Args>...>;
-    static_assert(data_is_trivially_copyable);
     Message_t message = reduction::create_message(
         object_index, reduction_id, Data_t{std::forward<Args>(args)...},
         std::move(reduction_callback),

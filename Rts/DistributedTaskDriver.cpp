@@ -902,9 +902,6 @@ void DistributedTaskDriver::send_reduction_message_impl(Message_t in_message) {
 
   const bool was_serialized =
       message.value().get_header()->data_was_serialized();
-  if (was_serialized) {
-    throw Exception{"Can't handle serialized data in reductions."};
-  }
 
   if (current_node_id() == 0) {
     // Invoke the callback, but semantics depend on type of callback.
@@ -1565,12 +1562,15 @@ DistributedTaskDriver& CallbackBase::get_task_driver() const {
 #include <cstdint>
 #include <doctest/doctest.h>
 #include <doctest/extensions/doctest_mpi.h>
+#include <ios>  // For std::boolalpha
 #include <mutex>
 #include <set>
+#include <stdexcept>
 #include <unordered_set>
 #include <vector>
 
 #include "Rts/Detail/IndexConversion.hpp"
+#include "Rts/Detail/VectorStream.hpp"
 #include "Rts/DistributedObjectCollection.hpp"
 #include "Rts/Serialize/Stl/Vector.hpp"
 
@@ -2944,7 +2944,10 @@ struct ReductionComponent1
   using rts_collection_index =
       std::conditional_t<IsCollection, std::uint64_t, int>;
 
-  static std::string name() { return "ReductionComponent1"; }
+  static std::string name() {
+    return "ReductionComponent1" +
+           std::string{IsCollection ? "Collection" : ""};
+  }
 
   template <class Action, class... Args>
   void threaded_action(rts::DistributedTaskDriver& task_driver, Args... args) {
@@ -2957,8 +2960,9 @@ struct ReductionComponent1
    * Maps collection indices to a pair of `(uint64_t, double)` that is set in
    * the callback of the reduction.
    */
-  static std::unordered_map<rts_collection_index,
-                            std::pair<std::uint64_t, double>>
+  static std::unordered_map<
+      rts_collection_index,
+      std::pair<std::vector<std::uint64_t>, std::vector<double>>>
       reduction_data;
   /// \brief Mutex for thread-safe access to reduction_data.
   static std::mutex reduction_data_mutex;
@@ -2967,12 +2971,12 @@ struct ReductionComponent1
 template <bool IsCollection>
 std::unordered_map<
     typename ReductionComponent1<IsCollection>::rts_collection_index,
-    std::pair<std::uint64_t, double>>
+    std::pair<std::vector<std::uint64_t>, std::vector<double>>>
     ReductionComponent1<IsCollection>::reduction_data{};
 template <bool IsCollection>
 std::mutex ReductionComponent1<IsCollection>::reduction_data_mutex{};
 
-template <bool BroadcastCallback, bool IsCollection>
+template <bool BroadcastCallback, bool IsCollection, bool UseStdVector>
 struct StartReduction {
   using rts_index = std::conditional_t<IsCollection, std::uint64_t, int>;
   /*!
@@ -3018,12 +3022,58 @@ struct StartReduction {
       std::get<0>(data) += i;
       std::get<1>(data) += d;
     }
+
+    void operator()(
+        std::tuple<std::vector<std::uint64_t>, std::vector<double>>& data,
+        const std::vector<std::uint64_t>& i, const std::vector<double>& d) {
+      if (std::get<0>(data).size() != i.size()) {
+        throw std::runtime_error{
+            "Vector sizes for uint64_t must match in collection reduction."};
+      }
+      if (std::get<1>(data).size() != d.size()) {
+        throw std::runtime_error{
+            "Vector sizes for double must match in collection reduction."};
+      }
+      for (uint16_t j = 0; j < i.size(); ++j) {
+        std::get<0>(data)[j] += i[j];
+      }
+      for (uint16_t j = 0; j < d.size(); ++j) {
+        std::get<1>(data)[j] += d[j];
+      }
+    }
+
+    void operator()(std::tuple<std::vector<int>, std::vector<double>>& data,
+                    const std::vector<int>& i, const std::vector<double>& d) {
+      if (std::get<0>(data).size() != i.size()) {
+        throw std::runtime_error{
+            "Vector sizes for uint64_t must match in collection reduction."};
+      }
+      if (std::get<1>(data).size() != d.size()) {
+        throw std::runtime_error{
+            "Vector sizes for double must match in collection reduction."};
+      }
+      for (uint16_t j = 0; j < i.size(); ++j) {
+        std::get<0>(data)[j] += i[j];
+      }
+      for (uint16_t j = 0; j < d.size(); ++j) {
+        std::get<1>(data)[j] += d[j];
+      }
+    }
   };
 
   struct SetResult {
     static void apply(rts::DistributedTaskDriver& /*task_driver*/,
                       const std::uint64_t my_index, const std::uint64_t i,
                       const double d) {
+      std::lock_guard lock{
+          ReductionComponent1<IsCollection>::reduction_data_mutex};
+      ReductionComponent1<IsCollection>::reduction_data[my_index] =
+          std::pair{std::vector{i}, std::vector{d}};
+    }
+    static void apply(rts::DistributedTaskDriver& /*task_driver*/,
+                      const std::uint64_t my_index,
+                      const std::vector<std::uint64_t>& i,
+                      const std::vector<double>& d) {
       std::lock_guard lock{
           ReductionComponent1<IsCollection>::reduction_data_mutex};
       ReductionComponent1<IsCollection>::reduction_data[my_index] =
@@ -3035,9 +3085,36 @@ struct StartReduction {
           ReductionComponent1<IsCollection>::reduction_data_mutex};
       ReductionComponent1<
           IsCollection>::reduction_data[task_driver.current_node_id()] =
-          std::pair{i, d};
+          std::pair{std::vector{static_cast<std::uint64_t>(i)}, std::vector{d}};
+    }
+    static void apply(rts::DistributedTaskDriver& task_driver,
+                      const std::vector<int>& i, const std::vector<double>& d) {
+      std::lock_guard lock{
+          ReductionComponent1<IsCollection>::reduction_data_mutex};
+      std::vector<std::uint64_t> i_u{i.begin(), i.end()};
+      ReductionComponent1<
+          IsCollection>::reduction_data[task_driver.current_node_id()] =
+          std::pair{i_u, d};
     }
   };
+
+  template <class T>
+  static auto index_int_data(const T my_index) {
+    if constexpr (UseStdVector) {
+      return std::vector{my_index};
+    } else {
+      return my_index;
+    }
+  }
+  template <class T>
+  static auto index_double_data(const T my_index) {
+    if constexpr (UseStdVector) {
+      return std::vector{2.0 * my_index, 3.0 * my_index, 4.0 * my_index,
+                         5.0 * my_index};
+    } else {
+      return 2.0 * my_index;
+    }
+  }
 
   /*!
    * \brief Initiates the reduction operation for a given collection element.
@@ -3069,7 +3146,7 @@ struct StartReduction {
                 : rts::reduction::ReductionCallback<
                       SetResult,
                       ReductionComponent1<IsCollection>>{invoke_index},
-            my_index, 2.0 * my_index);
+            index_int_data(my_index), index_double_data(my_index));
       }
     } else {
       task_driver.reduction<ReductionComponent1<IsCollection>, MyOp>(
@@ -3079,7 +3156,7 @@ struct StartReduction {
                     SetResult, ReductionComponent1<IsCollection>>{}
               : rts::reduction::ReductionCallback<
                     SetResult, ReductionComponent1<IsCollection>>{invoke_index},
-          my_index, 2.0 * my_index);
+          index_int_data(my_index), index_double_data(my_index));
     }
   }
 
@@ -3104,7 +3181,7 @@ struct StartReduction {
                       SetResult,
                       ReductionComponent1<IsCollection>>{static_cast<rts_index>(
                       invoke_index)},
-            my_index, 2.0 * my_index);
+            index_int_data(my_index), index_double_data(my_index));
       }
     } else {
       task_driver.reduction<ReductionComponent1<IsCollection>, MyOp>(
@@ -3116,25 +3193,28 @@ struct StartReduction {
                     SetResult,
                     ReductionComponent1<IsCollection>>{static_cast<rts_index>(
                     invoke_index)},
-          my_index, 2.0 * my_index);
+          index_int_data(my_index), index_double_data(my_index));
     }
   }
 };
 
-template <bool BroadcastCallback, bool IsCollection>
-int StartReduction<BroadcastCallback, IsCollection>::delay_process = -1;
-template <bool BroadcastCallback, bool IsCollection>
-std::uint64_t StartReduction<BroadcastCallback, IsCollection>::invoke_index = 0;
-template <bool BroadcastCallback, bool IsCollection>
+template <bool BroadcastCallback, bool IsCollection, bool UseStdVector>
+int StartReduction<BroadcastCallback, IsCollection,
+                   UseStdVector>::delay_process = -1;
+template <bool BroadcastCallback, bool IsCollection, bool UseStdVector>
+std::uint64_t StartReduction<BroadcastCallback, IsCollection,
+                             UseStdVector>::invoke_index = 0;
+template <bool BroadcastCallback, bool IsCollection, bool UseStdVector>
 std::optional<const std::function<bool(
     const std::conditional_t<IsCollection, std::uint64_t, int>&)>*>
-    StartReduction<BroadcastCallback, IsCollection>::unary_predicate =
-        std::nullopt;
-template <bool BroadcastCallback, bool IsCollection>
-size_t StartReduction<BroadcastCallback, IsCollection>::number_of_reductions =
-    0;
-template <bool BroadcastCallback, bool IsCollection>
-size_t StartReduction<BroadcastCallback, IsCollection>::delay_amount_us = 1000;
+    StartReduction<BroadcastCallback, IsCollection,
+                   UseStdVector>::unary_predicate = std::nullopt;
+template <bool BroadcastCallback, bool IsCollection, bool UseStdVector>
+size_t StartReduction<BroadcastCallback, IsCollection,
+                      UseStdVector>::number_of_reductions = 0;
+template <bool BroadcastCallback, bool IsCollection, bool UseStdVector>
+size_t StartReduction<BroadcastCallback, IsCollection,
+                      UseStdVector>::delay_amount_us = 1000;
 
 /*!
  * \brief Test reduction operations across multiple processes for a distributed
@@ -3160,27 +3240,32 @@ size_t StartReduction<BroadcastCallback, IsCollection>::delay_amount_us = 1000;
  * elements participate in the reduction. If not provided, all elements
  * participate.
  */
-template <bool IsCollection>
+template <bool IsCollection, bool UseStdVector>
 void test_reduction_n_processes_impl(
     rts::DistributedTaskDriver& driver,
     const std::optional<std::function<
         bool(const std::conditional_t<IsCollection, std::uint64_t, int>&)>>&
         maybe_unary_predicate) {
+  CAPTURE(IsCollection);
+  CAPTURE(UseStdVector);
   using component = ReductionComponent1<IsCollection>;
   using Index = std::conditional_t<IsCollection, std::uint64_t, int>;
   if (maybe_unary_predicate.has_value()) {
-    StartReduction<true, IsCollection>::unary_predicate =
+    StartReduction<true, IsCollection, UseStdVector>::unary_predicate =
         &maybe_unary_predicate.value();
-    StartReduction<false, IsCollection>::unary_predicate =
+    StartReduction<false, IsCollection, UseStdVector>::unary_predicate =
         &maybe_unary_predicate.value();
   } else {
-    StartReduction<true, IsCollection>::unary_predicate = std::nullopt;
-    StartReduction<false, IsCollection>::unary_predicate = std::nullopt;
+    StartReduction<true, IsCollection, UseStdVector>::unary_predicate =
+        std::nullopt;
+    StartReduction<false, IsCollection, UseStdVector>::unary_predicate =
+        std::nullopt;
   }
 
   std::vector<std::unordered_set<Index>> ids_on_pid_to_use(
       static_cast<size_t>(driver.number_of_nodes()));
-  std::pair<std::uint64_t, double> expected{0, 0.0};
+  std::pair<std::vector<std::uint64_t>, std::vector<double>> expected{
+      std::vector<std::uint64_t>{0}, std::vector(UseStdVector ? 4 : 1, 0.0)};
   if constexpr (IsCollection) {
     for (const auto& [id, holder] :
          driver.collection_ids_and_locations<component>()) {
@@ -3188,8 +3273,14 @@ void test_reduction_n_processes_impl(
           (maybe_unary_predicate.has_value() and
            maybe_unary_predicate.value()(
                detail::from_internal<component>(id)))) {
-        expected.first += id;
-        expected.second += 2.0 * id;
+        expected.first[0] += id;
+        if constexpr (UseStdVector) {
+          for (size_t i = 0; i < expected.second.size(); ++i) {
+            expected.second[i] += (static_cast<double>(i) + 2.0) * id;
+          }
+        } else {
+          expected.second[0] += 2.0 * id;
+        }
         ids_on_pid_to_use[static_cast<size_t>(holder.process_id)].insert(id);
       }
     }
@@ -3198,8 +3289,14 @@ void test_reduction_n_processes_impl(
       if (not maybe_unary_predicate.has_value() or
           (maybe_unary_predicate.has_value() and
            maybe_unary_predicate.value()(i))) {
-        expected.first += static_cast<std::uint64_t>(i);
-        expected.second += 2.0 * i;
+        expected.first[0] += static_cast<std::uint64_t>(i);
+        if constexpr (UseStdVector) {
+          for (size_t j = 0; j < expected.second.size(); ++j) {
+            expected.second[j] += (static_cast<double>(j) + 2.0) * i;
+          }
+        } else {
+          expected.second[0] += 2.0 * i;
+        }
         ids_on_pid_to_use[static_cast<size_t>(i)].insert(i);
       }
     }
@@ -3208,11 +3305,13 @@ void test_reduction_n_processes_impl(
 
   const auto broadcast_callback = [&driver,
                                    &expected](const int delay_process) {
-    StartReduction<true, IsCollection>::delay_process = delay_process;
+    StartReduction<true, IsCollection, UseStdVector>::delay_process =
+        delay_process;
     component::reduction_data.clear();
     driver.barrier();
     if (driver.current_node_id() == 0) {
-      driver.broadcast<StartReduction<true, IsCollection>, component>();
+      driver.broadcast<StartReduction<true, IsCollection, UseStdVector>,
+                       component>();
     }
     driver.run_to_quiescence();
 
@@ -3264,18 +3363,23 @@ void test_reduction_n_processes_impl(
   const auto invoke_callback = [&driver, &expected](const int delay_process) {
     const auto check = [&delay_process, &driver, &expected](
                            const bool is_local, const auto invoke_index) {
-      StartReduction<false, IsCollection>::delay_process = delay_process;
-      StartReduction<false, IsCollection>::invoke_index =
+      StartReduction<false, IsCollection, UseStdVector>::delay_process =
+          delay_process;
+      StartReduction<false, IsCollection, UseStdVector>::invoke_index =
           static_cast<std::uint64_t>(invoke_index);
       driver.barrier();
       if (driver.current_node_id() == 0) {
-        driver.broadcast<StartReduction<false, IsCollection>, component>();
+        driver.broadcast<StartReduction<false, IsCollection, UseStdVector>,
+                         component>();
       }
       driver.run_to_quiescence();
 
       if (is_local) {
         REQUIRE(component::reduction_data.size() == 1);
-        CHECK(component::reduction_data.at(invoke_index) == expected);
+        CHECK(component::reduction_data.at(invoke_index).first ==
+              std::vector{expected.first});
+        CHECK(component::reduction_data.at(invoke_index).second ==
+              std::vector{expected.second});
       } else {
         REQUIRE(component::reduction_data.size() == 0);
       }
@@ -3320,7 +3424,12 @@ void test_reduction_over(rts::DistributedTaskDriver& driver,
                IsCollection
                    ? driver.collection_ids_and_locations<component>().size()
                    : pids.size()))) {
-    test_reduction_n_processes_impl<IsCollection>(
+    test_reduction_n_processes_impl<IsCollection, false>(
+        driver, [&subset_over](const Index& id) -> bool {
+          return std::find(subset_over.begin(), subset_over.end(), id) !=
+                 subset_over.end();
+        });
+    test_reduction_n_processes_impl<IsCollection, true>(
         driver, [&subset_over](const Index& id) -> bool {
           return std::find(subset_over.begin(), subset_over.end(), id) !=
                  subset_over.end();
@@ -3329,7 +3438,7 @@ void test_reduction_over(rts::DistributedTaskDriver& driver,
   driver.barrier();
 }
 
-template <bool IsCollection>
+template <bool IsCollection, bool UseStdVector>
 void test_reduction_2_processes(rts::DistributedTaskDriver& driver) {
   using component = ReductionComponent1<IsCollection>;
 
@@ -3344,7 +3453,9 @@ void test_reduction_2_processes(rts::DistributedTaskDriver& driver) {
     driver.insert_parallel_component_collection<component>(
         static_cast<size_t>(7), 1);
   } else {
-    driver.insert_parallel_component<component>();
+    if (not driver.parallel_component_inserted<component>()) {
+      driver.insert_parallel_component<component>();
+    }
   }
 
   component::reduction_data.clear();
@@ -3352,7 +3463,8 @@ void test_reduction_2_processes(rts::DistributedTaskDriver& driver) {
   driver.insert_barrier();
 
   // 2 elements on both processes or test PerProcess component
-  test_reduction_n_processes_impl<IsCollection>(driver, std::nullopt);
+  test_reduction_n_processes_impl<IsCollection, UseStdVector>(driver,
+                                                              std::nullopt);
   test_reduction_over<IsCollection>(driver, std::nullopt);
 
   if constexpr (IsCollection) {
@@ -3360,46 +3472,41 @@ void test_reduction_2_processes(rts::DistributedTaskDriver& driver) {
     driver.remove_parallel_component_collection<component>(
         static_cast<size_t>(3));
     driver.insert_barrier();
-    test_reduction_n_processes_impl<IsCollection>(driver, std::nullopt);
+    test_reduction_n_processes_impl<IsCollection, UseStdVector>(driver,
+                                                                std::nullopt);
     test_reduction_over<IsCollection>(driver, std::nullopt);
 
     // 0 elements on process 2
     driver.remove_parallel_component_collection<component>(
         static_cast<size_t>(7));
     driver.insert_barrier();
-    test_reduction_n_processes_impl<IsCollection>(driver, std::nullopt);
+    test_reduction_n_processes_impl<IsCollection, UseStdVector>(driver,
+                                                                std::nullopt);
     test_reduction_over<IsCollection>(driver, std::nullopt);
 
     // 1 element on process 1
     driver.remove_parallel_component_collection<component>(
         static_cast<size_t>(1));
     driver.insert_barrier();
-    test_reduction_n_processes_impl<IsCollection>(driver, std::nullopt);
+    test_reduction_n_processes_impl<IsCollection, UseStdVector>(driver,
+                                                                std::nullopt);
     test_reduction_over<IsCollection>(driver, std::nullopt);
 
     // Add 1 element back on process 2
     driver.insert_parallel_component_collection<component>(
         static_cast<size_t>(3), 1);
     driver.insert_barrier();
-    test_reduction_n_processes_impl<IsCollection>(driver, std::nullopt);
+    test_reduction_n_processes_impl<IsCollection, UseStdVector>(driver,
+                                                                std::nullopt);
     test_reduction_over<IsCollection>(driver, std::nullopt);
 
     // 1 element on process 2
     driver.remove_parallel_component_collection<component>(
         static_cast<size_t>(5));
     driver.insert_barrier();
-    test_reduction_n_processes_impl<IsCollection>(driver, std::nullopt);
+    test_reduction_n_processes_impl<IsCollection, UseStdVector>(driver,
+                                                                std::nullopt);
     test_reduction_over<IsCollection>(driver, std::nullopt);
-
-    std::vector<std::uint64_t> all_ids{};
-    all_ids.reserve(driver.collection_ids_and_locations<component>().size());
-    for (const auto& ids_and_data :
-         driver.collection_ids_and_locations<component>()) {
-      all_ids.push_back(ids_and_data.first);
-    }
-    for (const std::uint64_t id : all_ids) {
-      driver.remove_parallel_component_collection<component>(id);
-    }
     driver.insert_barrier();
   }
 }
@@ -3420,8 +3527,36 @@ MPI_TEST_CASE("DistributedTaskDriver.Reduction1", 2) {
   driver.barrier();
   driver.launch_threads();
 
-  test_reduction_2_processes<true>(driver);
-  test_reduction_2_processes<false>(driver);
+  {
+    constexpr bool use_std_vector = false;
+    test_reduction_2_processes<true, use_std_vector>(driver);
+    test_reduction_2_processes<false, use_std_vector>(driver);
+  }
+  {
+    const auto remove_all_ids = [&driver]() {
+      static constexpr bool IsCollection = true;
+      using component = ReductionComponent1<IsCollection>;
+      if constexpr (IsCollection) {
+        std::vector<std::uint64_t> all_ids{};
+        all_ids.reserve(
+            driver.collection_ids_and_locations<component>().size());
+        for (const auto& ids_and_data :
+             driver.collection_ids_and_locations<component>()) {
+          all_ids.push_back(ids_and_data.first);
+        }
+        for (const std::uint64_t id : all_ids) {
+          driver.remove_parallel_component_collection<component>(id);
+        }
+      } else {
+        (void)driver;
+      }
+    };
+    remove_all_ids();
+    driver.insert_barrier();
+    constexpr bool use_std_vector = true;
+    test_reduction_2_processes<true, use_std_vector>(driver);
+    test_reduction_2_processes<false, use_std_vector>(driver);
+  }
 
   driver.force_threads_to_stop();
 }
@@ -3440,46 +3575,22 @@ std::string to_string(const std::vector<T>& vec) {
   os << "]";
   return os.str();
 }
-}  // namespace
 
-MPI_TEST_CASE("DistributedTaskDriver.ExhaustiveReductions8Processes", 8) {
-  // Tests that reductions where significant elements are missing in the tree
-  // also work. This is a very long running test that attempts to catch any
-  // and all bugs, including race conditions.
-  //
-  // With 8 processes we get the following structure:
-  //                                0
-  //                1                               2
-  //        3               4               5               6
-  //     7     8
-  //
-  // The cost of this test is set almost entirely by the delay amount since
-  // the actual reductions are ridiculously fast. We generate about 16.8
-  // million configurations, and so a delay amount of 100us means about 30 min
-  // of runtime, assuming each configuration costs the same amount. This is
-  // also not true because for each configuration we test all possible
-  // permutations of element distributions. This makes the test extremely
-  // expensive, but also extremely rigorous.
-  const size_t delay_amount_us = 10;
-  rts::DistributedTaskDriver& driver =
-      rts::create_distributed_task_driver(nullptr, nullptr, false);
-
+template <bool IsCollection, bool UseStdVector>
+void exhaustive_8_impl(rts::DistributedTaskDriver& driver,
+                       const size_t delay_amount_us) {
   driver.barrier();
-  driver.insert_parallel_component<ReductionComponent1<false>>();
-  driver.insert_barrier();
-  driver.launch_threads();
-  driver.barrier();
-
   if (driver.current_node_id() == 0) {
-    std::cout << "Testing PerProcess.\n" << std::flush;
+    std::cout << std::boolalpha << "Testing IsCollection: " << IsCollection
+              << " and UseStdVector: " << UseStdVector << ".\n\n"
+              << std::flush;
   }
-  test_reduction_n_processes_impl<false>(driver, std::nullopt);
-  test_reduction_over<false>(driver, std::nullopt);
   driver.barrier();
 
-  constexpr bool IsCollection = true;
-  StartReduction<true, IsCollection>::delay_amount_us = delay_amount_us;
-  StartReduction<false, IsCollection>::delay_amount_us = delay_amount_us;
+  StartReduction<true, IsCollection, UseStdVector>::delay_amount_us =
+      delay_amount_us;
+  StartReduction<false, IsCollection, UseStdVector>::delay_amount_us =
+      delay_amount_us;
   const std::unordered_map<std::uint64_t, int> possible_elements_and_pids{
       {10, 0}, {11, 0}, {12, 0},           // value 0: 3 keys
       {20, 1}, {21, 1}, {22, 1},           // value 1: 3 keys
@@ -3489,7 +3600,7 @@ MPI_TEST_CASE("DistributedTaskDriver.ExhaustiveReductions8Processes", 8) {
       {60, 5}, {61, 5}, {62, 5}, {63, 5},  // value 5: 4 keys
       {70, 6}, {71, 6}, {72, 6},           // value 6: 3 keys
       {80, 7}, {81, 7}                     // value 7: 2 keys
-      // Total: 24
+                                           // Total: 24
   };
   const std::vector<std::uint64_t> possible_elements =
       keys_of(possible_elements_and_pids);
@@ -3523,7 +3634,8 @@ MPI_TEST_CASE("DistributedTaskDriver.ExhaustiveReductions8Processes", 8) {
     }
     driver.insert_barrier();
 
-    test_reduction_n_processes_impl<IsCollection>(driver, std::nullopt);
+    test_reduction_n_processes_impl<IsCollection, UseStdVector>(driver,
+                                                                std::nullopt);
     test_reduction_over<IsCollection>(driver, std::nullopt);
 
     driver.barrier();
@@ -3533,14 +3645,70 @@ MPI_TEST_CASE("DistributedTaskDriver.ExhaustiveReductions8Processes", 8) {
     }
     driver.insert_barrier();
   }
-
-  driver.force_threads_to_stop();
+  driver.barrier();
   if (driver.current_node_id() == 0) {
     std::cout << "We performed "
-              << (StartReduction<true, IsCollection>::number_of_reductions +
-                  StartReduction<false, IsCollection>::number_of_reductions)
+              << (StartReduction<true, IsCollection,
+                                 UseStdVector>::number_of_reductions +
+                  StartReduction<false, IsCollection,
+                                 UseStdVector>::number_of_reductions)
               << " reductions in total.\n";
   }
+}
+}  // namespace
+
+MPI_TEST_CASE("DistributedTaskDriver.ExhaustiveReductions8Processes", 8) {
+  // Tests that reductions where significant elements are missing in the tree
+  // also work. This is a very long running test that attempts to catch any
+  // and all bugs, including race conditions.
+  //
+  // With 8 processes we get the following structure:
+  //                                0
+  //                1                               2
+  //        3               4               5               6
+  //     7     8
+  //
+  // The cost of this test is set almost entirely by the delay amount since
+  // the actual reductions are ridiculously fast. We generate about 16.8
+  // million configurations, and so a delay amount of 100us means about 30 min
+  // of runtime, assuming each configuration costs the same amount. This is
+  // also not true because for each configuration we test all possible
+  // permutations of element distributions. This makes the test extremely
+  // expensive, but also extremely rigorous.
+  const size_t delay_amount_us = 10;
+  rts::DistributedTaskDriver& driver =
+      rts::create_distributed_task_driver(nullptr, nullptr, false);
+
+  driver.barrier();
+  driver.insert_parallel_component<ReductionComponent1<false>>();
+  driver.insert_barrier();
+  driver.launch_threads();
+  driver.barrier();
+
+  if (driver.current_node_id() == 0) {
+    std::cout << "Testing PerProcess with std::vector reduction.\n"
+              << std::flush;
+  }
+  driver.barrier();
+  test_reduction_n_processes_impl<false, true>(driver, std::nullopt);
+  driver.barrier();
+  if (driver.current_node_id() == 0) {
+    std::cout << "Testing PerProcess with fundamental type reduction.\n"
+              << std::flush;
+  }
+  driver.barrier();
+  test_reduction_n_processes_impl<false, false>(driver, std::nullopt);
+  driver.barrier();
+  if (driver.current_node_id() == 0) {
+    std::cout << "Testing PerProcess with reduction_over.\n" << std::flush;
+  }
+  driver.barrier();
+  test_reduction_over<false>(driver, std::nullopt);
+  driver.barrier();
+
+  exhaustive_8_impl<true, true>(driver, delay_amount_us);
+
+  driver.force_threads_to_stop();
 }
 }  // namespace rts
 #endif
