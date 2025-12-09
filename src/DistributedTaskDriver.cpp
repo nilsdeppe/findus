@@ -42,6 +42,7 @@
 #include "findus/HardwareInfo.hpp"
 #include "findus/Message.hpp"
 #include "findus/MessageHeader.hpp"
+#include "findus/MessageRequeue.hpp"
 #include "findus/MessageTags.hpp"
 #include "findus/ParentAndChildren.hpp"
 #include "findus/Reduction.hpp"
@@ -807,8 +808,8 @@ void DistributedTaskDriver::check_component_accounting_consistency() const {
   // If this is the root, and we reach here, all data matched.
 }
 
-void DistributedTaskDriver::invoke(Message_t& message,
-                                   const uint32_t thread_id) {
+MessageRequeue DistributedTaskDriver::invoke(Message_t& message,
+                                             const uint32_t thread_id) {
   thread_id_ = thread_id_offset_ + thread_id;
   MessageHeader* message_header = message.get_header();
   if (thread_id_ >= active_object_.size()) {
@@ -819,9 +820,11 @@ void DistributedTaskDriver::invoke(Message_t& message,
   active_object_[thread_id_] =
       detail::ActiveObject{message_header->distributed_object_index(),
                            message_header->target_collection_index()};
-  (this->*findus_invoke_action_absolute_ptr(
-              message_header->member_function_ptr()))(message);
+  const MessageRequeue message_requeue =
+      (this->*findus_invoke_action_absolute_ptr(
+                  message_header->member_function_ptr()))(message);
   active_object_[thread_id_] = detail::ActiveObject{};
+  return message_requeue;
 }
 
 void DistributedTaskDriver::send_data(const int target_node,
@@ -1655,40 +1658,45 @@ struct RegularComponent : public findus::DistributedObject<RegularComponent> {
   static std::string name() { return "RegularComponent"; }
 
   template <class Action, class... Args>
-  void findus_invoke_action(findus::DistributedTaskDriver&, Args... args);
+  MessageRequeue findus_invoke_action(findus::DistributedTaskDriver&,
+                                      Args... args);
 };
 
 template <>
-void RegularComponent::findus_invoke_action<TestAction>(
+MessageRequeue RegularComponent::findus_invoke_action<TestAction>(
     findus::DistributedTaskDriver&, const int a, const int b) {
   last_args = std::make_tuple(a, b);
   last_result += static_cast<int>(a + b);
+  return MessageRequeue::Invoked;
 }
 
 template <>
-void RegularComponent::findus_invoke_action<TestAction>(
+MessageRequeue RegularComponent::findus_invoke_action<TestAction>(
     findus::DistributedTaskDriver&, const std::vector<int> a) {
   last_args =
       std::tuple{static_cast<int>(a.size()), static_cast<int>(a.capacity())};
   last_result = std::accumulate(a.begin(), a.end(), 0);
+  return MessageRequeue::Invoked;
 }
 
 // Specialization for broadcast (int, int, double)
 template <>
-void RegularComponent::findus_invoke_action<TestBroadcastAction>(
+MessageRequeue RegularComponent::findus_invoke_action<TestBroadcastAction>(
     findus::DistributedTaskDriver&, const int a, const int b, const double d) {
   last_broadcast_args = std::make_tuple(a, b, d);
   last_result = static_cast<int>(a + b + d);
+  return MessageRequeue::Invoked;
 }
 
 // Specialization for broadcast (int, int, double, std::vector<int>)
 template <>
-void RegularComponent::findus_invoke_action<TestBroadcastAction>(
+MessageRequeue RegularComponent::findus_invoke_action<TestBroadcastAction>(
     findus::DistributedTaskDriver&, const int a, const int b, const double d,
     const std::vector<int> vec) {
   last_broadcast_args = std::make_tuple(a, b, d);
   last_result =
       static_cast<int>(a + b + d) + std::accumulate(vec.begin(), vec.end(), 0);
+  return MessageRequeue::Invoked;
 }
 
 // Collection parallel component
@@ -1703,22 +1711,24 @@ struct CollectionComponent
   static std::string name() { return "CollectionComponent"; }
 
   template <class Action, class... Args>
-  void findus_invoke_action(findus::DistributedTaskDriver&,
-                            findus_collection_index my_index, Args... args);
+  MessageRequeue findus_invoke_action(findus::DistributedTaskDriver&,
+                                      findus_collection_index my_index,
+                                      Args... args);
 };
 
 template <>
-void CollectionComponent::findus_invoke_action<TestAction>(
+MessageRequeue CollectionComponent::findus_invoke_action<TestAction>(
     findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const int a, const int b) {
   CHECK(my_index != 0);
   CHECK(my_index != MessageHeader::no_collection_index());
   last_args = std::make_tuple(a, b);
   last_result += static_cast<int>(a + b);
+  return MessageRequeue::Invoked;
 }
 
 template <>
-void CollectionComponent::findus_invoke_action<TestAction>(
+MessageRequeue CollectionComponent::findus_invoke_action<TestAction>(
     findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const std::vector<int> a) {
   CHECK(my_index != 0);
@@ -1726,22 +1736,24 @@ void CollectionComponent::findus_invoke_action<TestAction>(
   last_args =
       std::tuple{static_cast<int>(a.size()), static_cast<int>(a.capacity())};
   last_result += std::accumulate(a.begin(), a.end(), 0);
+  return MessageRequeue::Invoked;
 }
 
 // Specialization for broadcast (int, int, double)
 template <>
-void CollectionComponent::findus_invoke_action<TestBroadcastAction>(
+MessageRequeue CollectionComponent::findus_invoke_action<TestBroadcastAction>(
     findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const int a, const int b, const double d) {
   CHECK(my_index != 0);
   CHECK(my_index != MessageHeader::no_collection_index());
   last_broadcast_args = std::make_tuple(a, b, d);
   last_result = static_cast<int>(a + b + d);
+  return MessageRequeue::Invoked;
 }
 
 // Specialization for broadcast (int, int, double, std::vector<int>)
 template <>
-void CollectionComponent::findus_invoke_action<TestBroadcastAction>(
+MessageRequeue CollectionComponent::findus_invoke_action<TestBroadcastAction>(
     findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const int a, const int b, const double d, const std::vector<int> vec) {
   CHECK(my_index != 0);
@@ -1749,22 +1761,24 @@ void CollectionComponent::findus_invoke_action<TestBroadcastAction>(
   last_broadcast_args = std::make_tuple(a, b, d);
   last_result =
       static_cast<int>(a + b + d) + std::accumulate(vec.begin(), vec.end(), 0);
+  return MessageRequeue::Invoked;
 }
 
 // Specialization for broadcast_to (int, double)
 template <>
-void CollectionComponent::findus_invoke_action<TestBroadcastToAction>(
+MessageRequeue CollectionComponent::findus_invoke_action<TestBroadcastToAction>(
     findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const int a, const double d) {
   CHECK(my_index != 0);
   CHECK(my_index != MessageHeader::no_collection_index());
   last_broadcast_to_args = std::make_tuple(a, d);
   last_result = static_cast<int>(a + d);
+  return MessageRequeue::Invoked;
 }
 
 // Specialization for broadcast_to (int, double, std::vector<int>)
 template <>
-void CollectionComponent::findus_invoke_action<TestBroadcastToAction>(
+MessageRequeue CollectionComponent::findus_invoke_action<TestBroadcastToAction>(
     findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const int a, const double d, const std::vector<int> vec) {
   CHECK(my_index != 0);
@@ -1772,6 +1786,7 @@ void CollectionComponent::findus_invoke_action<TestBroadcastToAction>(
   last_broadcast_to_args = std::make_tuple(a, d);
   last_result =
       static_cast<int>(a + d) + std::accumulate(vec.begin(), vec.end(), 0);
+  return MessageRequeue::Invoked;
 }
 
 void reset_args_on_all(DistributedTaskDriver& driver) {
@@ -2975,9 +2990,9 @@ struct ReductionComponent1
   }
 
   template <class Action, class... Args>
-  void findus_invoke_action(findus::DistributedTaskDriver& task_driver,
-                            Args... args) {
-    Action::apply(task_driver, std::forward<Args>(args)...);
+  MessageRequeue findus_invoke_action(
+      findus::DistributedTaskDriver& task_driver, Args... args) {
+    return Action::apply(task_driver, std::forward<Args>(args)...);
   }
 
   /*!
@@ -3088,39 +3103,44 @@ struct StartReduction {
   };
 
   struct SetResult {
-    static void apply(findus::DistributedTaskDriver& /*task_driver*/,
-                      const std::uint64_t my_index, const std::uint64_t i,
-                      const double d) {
+    static MessageRequeue apply(findus::DistributedTaskDriver& /*task_driver*/,
+                                const std::uint64_t my_index,
+                                const std::uint64_t i, const double d) {
       std::lock_guard lock{
           ReductionComponent1<IsCollection>::reduction_data_mutex};
       ReductionComponent1<IsCollection>::reduction_data[my_index] =
           std::pair{std::vector{i}, std::vector{d}};
+      return MessageRequeue::Invoked;
     }
-    static void apply(findus::DistributedTaskDriver& /*task_driver*/,
-                      const std::uint64_t my_index,
-                      const std::vector<std::uint64_t>& i,
-                      const std::vector<double>& d) {
+    static MessageRequeue apply(findus::DistributedTaskDriver& /*task_driver*/,
+                                const std::uint64_t my_index,
+                                const std::vector<std::uint64_t>& i,
+                                const std::vector<double>& d) {
       std::lock_guard lock{
           ReductionComponent1<IsCollection>::reduction_data_mutex};
       ReductionComponent1<IsCollection>::reduction_data[my_index] =
           std::pair{i, d};
+      return MessageRequeue::Invoked;
     }
-    static void apply(findus::DistributedTaskDriver& task_driver, const int i,
-                      const double d) {
+    static MessageRequeue apply(findus::DistributedTaskDriver& task_driver,
+                                const int i, const double d) {
       std::lock_guard lock{
           ReductionComponent1<IsCollection>::reduction_data_mutex};
       ReductionComponent1<
           IsCollection>::reduction_data[task_driver.current_node_id()] =
           std::pair{std::vector{static_cast<std::uint64_t>(i)}, std::vector{d}};
+      return MessageRequeue::Invoked;
     }
-    static void apply(findus::DistributedTaskDriver& task_driver,
-                      const std::vector<int>& i, const std::vector<double>& d) {
+    static MessageRequeue apply(findus::DistributedTaskDriver& task_driver,
+                                const std::vector<int>& i,
+                                const std::vector<double>& d) {
       std::lock_guard lock{
           ReductionComponent1<IsCollection>::reduction_data_mutex};
       std::vector<std::uint64_t> i_u{i.begin(), i.end()};
       ReductionComponent1<
           IsCollection>::reduction_data[task_driver.current_node_id()] =
           std::pair{i_u, d};
+      return MessageRequeue::Invoked;
     }
   };
 
@@ -3154,7 +3174,7 @@ struct StartReduction {
    * \param my_index    The collection index of the element.
    */
   template <bool LocalIsCollection = IsCollection>
-  static std::enable_if_t<LocalIsCollection> apply(
+  static std::enable_if_t<LocalIsCollection, MessageRequeue> apply(
       findus::DistributedTaskDriver& task_driver,
       const std::uint64_t my_index) {
     if (task_driver.current_node_id() == 0) {
@@ -3185,10 +3205,11 @@ struct StartReduction {
                     SetResult, ReductionComponent1<IsCollection>>{invoke_index},
           index_int_data(my_index), index_double_data(my_index));
     }
+    return MessageRequeue::Invoked;
   }
 
   template <bool LocalIsCollection = IsCollection>
-  static std::enable_if_t<not LocalIsCollection> apply(
+  static std::enable_if_t<not LocalIsCollection, MessageRequeue> apply(
       findus::DistributedTaskDriver& task_driver) {
     const auto my_index = task_driver.current_node_id();
     if (task_driver.current_node_id() == 0) {
@@ -3220,6 +3241,7 @@ struct StartReduction {
                     findus_index>(invoke_index)},
           index_int_data(my_index), index_double_data(my_index));
     }
+    return MessageRequeue::Invoked;
   }
 };
 

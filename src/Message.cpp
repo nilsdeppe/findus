@@ -17,12 +17,11 @@
 #include "findus/Serialize/Serializer.hpp"
 
 namespace findus {
-bool Message_t::execute(
+MessageRequeue Message_t::execute(
     findus::ThreadPool<Message_t, findus::DistributedTaskDriver*>& /*pool*/,
     const std::uint32_t thread_id, Message_t& message,
     DistributedTaskDriver* distributed_task_driver) {
-  distributed_task_driver->invoke(message, thread_id);
-  return true;
+  return distributed_task_driver->invoke(message, thread_id);
 }
 
 Message_t copy(const Message_t& message) {

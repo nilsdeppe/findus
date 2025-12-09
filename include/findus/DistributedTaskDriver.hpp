@@ -37,6 +37,7 @@
 #include "findus/IsCollection.hpp"
 #include "findus/Message.hpp"
 #include "findus/MessageHeader.hpp"
+#include "findus/MessageRequeue.hpp"
 #include "findus/MessageType.hpp"
 #include "findus/ParentAndChildren.hpp"
 #include "findus/QuiescenceDetection.hpp"
@@ -723,7 +724,7 @@ class DistributedTaskDriver {
    * This uses `findus_invoke_action_absolute_ptr` to get which threaded action
    * overload needs to be called and invokes it.
    */
-  void invoke(Message_t& message, uint32_t thread_id);
+  MessageRequeue invoke(Message_t& message, uint32_t thread_id);
 
   /*!
    * \brief Send the message to the target node.
@@ -773,27 +774,28 @@ class DistributedTaskDriver {
   /// invoke_impl is invoked _by_ the thread pool on the task driver to
   /// initiate the action on the distributed action.
   template <class Action, class ParallelComponent, class... ArgIndexes>
-  void findus_invoke_action_impl(Message_t& message);
+  MessageRequeue findus_invoke_action_impl(Message_t& message);
 
   // Compute the threaded action member function pointer location relative to
   // the anchor() member function pointer. This is then sent to other nodes.
   template <class Action, class ParallelComponent, class... Args, size_t... Is>
   detail::MemberFunctionPtr findus_invoke_action_relative_ptr(
       std::index_sequence<Is...> /*meta*/) {
-    return {detail::to_member_function_ptr<void, DistributedTaskDriver>(
-                &DistributedTaskDriver::template findus_invoke_action_impl<
-                    Action, ParallelComponent, detail::ArgIndex<Args, Is>...>) -
-            detail::to_member_function_ptr<void, DistributedTaskDriver>(
-                &DistributedTaskDriver::anchor)};
+    return {
+        detail::to_member_function_ptr<MessageRequeue, DistributedTaskDriver>(
+            &DistributedTaskDriver::template findus_invoke_action_impl<
+                Action, ParallelComponent, detail::ArgIndex<Args, Is>...>) -
+        detail::to_member_function_ptr<void, DistributedTaskDriver>(
+            &DistributedTaskDriver::anchor)};
   }
 
   // Compute the threaded action member function pointer absolute address from
   // the address relative to the anchor() function.
   auto findus_invoke_action_absolute_ptr(
       const detail::MemberFunctionPtr& theaded_action_rel_ptr)
-      -> void (DistributedTaskDriver::*)(Message_t&) {
-    return detail::from_member_function_ptr<void, DistributedTaskDriver,
-                                            Message_t&>(
+      -> MessageRequeue (DistributedTaskDriver::*)(Message_t&) {
+    return detail::from_member_function_ptr<MessageRequeue,
+                                            DistributedTaskDriver, Message_t&>(
         {theaded_action_rel_ptr +
          detail::to_member_function_ptr<void, DistributedTaskDriver>(
              &DistributedTaskDriver::anchor)});
@@ -1828,7 +1830,8 @@ void DistributedTaskDriver::compute_elements_per_pid(
 }
 
 template <class Action, class ParallelComponent, class... ArgIndexes>
-void DistributedTaskDriver::findus_invoke_action_impl(Message_t& message) {
+MessageRequeue DistributedTaskDriver::findus_invoke_action_impl(
+    Message_t& message) {
   MessageHeader* header = message.get_header();
   if (header->distributed_object_index() >= distributed_objects_.size()) {
     throw findus::Exception{"Requested distributed object with index " +
@@ -1850,6 +1853,7 @@ void DistributedTaskDriver::findus_invoke_action_impl(Message_t& message) {
   } else {
     args = data_from_message<Data_t>(*header);
   }
+  MessageRequeue message_requeue{};
   if constexpr (findus::is_collection_v<ParallelComponent>) {
     DistributedOjectClassHolder::Map_t& distributed_object_collection =
         std::get<1>(
@@ -1857,12 +1861,13 @@ void DistributedTaskDriver::findus_invoke_action_impl(Message_t& message) {
     if (const auto it = distributed_object_collection.find(
             header->target_collection_index());
         it != distributed_object_collection.end()) {
-      dynamic_cast<ParallelComponent&>(*it->second.object)
-          .template findus_invoke_action<Action>(
-              *this,
-              detail::from_internal<ParallelComponent>(
-                  header->target_collection_index()),
-              std::move(std::get<ArgIndexes::index>(*args))...);
+      message_requeue =
+          dynamic_cast<ParallelComponent&>(*it->second.object)
+              .template findus_invoke_action<Action>(
+                  *this,
+                  detail::from_internal<ParallelComponent>(
+                      header->target_collection_index()),
+                  std::move(std::get<ArgIndexes::index>(*args))...);
     } else {
       throw Exception{
           "Collection index " +
@@ -1874,12 +1879,15 @@ void DistributedTaskDriver::findus_invoke_action_impl(Message_t& message) {
           ParallelComponent::name()};
     }
   } else {
-    dynamic_cast<ParallelComponent&>(
-        *std::get<0>(
-            distributed_objects_[header->distributed_object_index()].objects))
-        .template findus_invoke_action<Action>(
-            *this, std::move(std::get<ArgIndexes::index>(*args))...);
+    message_requeue =
+        dynamic_cast<ParallelComponent&>(
+            *std::get<0>(
+                distributed_objects_[header->distributed_object_index()]
+                    .objects))
+            .template findus_invoke_action<Action>(
+                *this, std::move(std::get<ArgIndexes::index>(*args))...);
   }
+  return message_requeue;
 }
 
 /// \brief Retrieve a pointer to the local parallel component.

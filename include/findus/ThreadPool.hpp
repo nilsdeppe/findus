@@ -17,6 +17,7 @@
 #include "Spinlock.hpp"
 #include "findus/Exceptions/Exception.hpp"
 #include "findus/HardwareInfo.hpp"
+#include "findus/MessageRequeue.hpp"
 #include "findus/QuiescenceDetection.hpp"
 
 namespace findus {
@@ -270,12 +271,15 @@ inline void ThreadPool<MessageType, ProcessLocalDataType>::thread_loop(
 
     // `execute` returns `true` on success and `false` on failure. On
     // failure we need to requeue the message.
-    if (MessageType::execute(*this, thread_id, message,
-                             process_local_data_for_execution_)) {
+    if (const auto message_requeue = MessageType::execute(
+            *this, thread_id, message, process_local_data_for_execution_);
+        message_requeue == MessageRequeue::Invoked) {
       ++call_count_for_print;
       local_qd_.increment_processed();
-    } else {
+    } else if (message_requeue == MessageRequeue::Requeue) {
       task_queue_.try_enqueue(std::move(message));
+    } else {
+      throw Exception{"Don't know how to handle MessageRequeue value."};
     }
   }
 }

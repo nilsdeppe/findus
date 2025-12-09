@@ -18,6 +18,7 @@
 #include "findus/Detail/IsTuple.hpp"
 #include "findus/Exceptions/Exception.hpp"
 #include "findus/MessageHeader.hpp"
+#include "findus/MessageRequeue.hpp"
 #include "findus/MessageType.hpp"
 #include "findus/Serialize/Serializer.hpp"
 #include "findus/Serialize/Stl/Tuple.hpp"
@@ -75,7 +76,7 @@ struct Message_t {
   /// @}
 
   /// \brief Executes the message.
-  static bool execute(
+  static MessageRequeue execute(
       findus::ThreadPool<Message_t, findus::DistributedTaskDriver*>& /*pool*/,
       const std::uint32_t thread_id, Message_t& message,
       DistributedTaskDriver* distributed_task_driver);
