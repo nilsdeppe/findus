@@ -5,6 +5,7 @@
 option(FINDUS_FETCH_DOCTEST "If ON, then we fetch doctest." OFF)
 
 if (FINDUS_FETCH_DOCTEST)
+  set(DOCTEST_NO_INSTALL YES CACHE BOOL "Disable doctest install" FORCE)
   include(FetchContent)
   FetchContent_Declare(
     doctest

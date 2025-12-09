@@ -67,6 +67,18 @@ target_link_libraries(
   hwloc::hwloc
 )
 
+install(
+  DIRECTORY ${PROJECT_SOURCE_DIR}/include/findus/
+  DESTINATION include/findus
+)
+
+install(TARGETS findus
+  EXPORT findus
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
 if (BUILD_TESTING AND TARGET doctest::doctest)
   # Configure a library that holds just the implementation of the doctest
   # functions. This can then be linked privately into the findus library
