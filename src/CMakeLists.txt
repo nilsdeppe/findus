@@ -25,6 +25,7 @@ add_library(
   HardwareInfo.cpp
   Message.cpp
   MessageHeader.cpp
+  MessageRequeue.cpp
   MessageTags.cpp
   MessageType.cpp
   ParentAndChildren.cpp
