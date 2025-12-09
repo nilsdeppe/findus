@@ -45,7 +45,7 @@ include(Sanitizers)
 find_package(MPI REQUIRED COMPONENTS CXX)
 find_package(hwloc REQUIRED)
 
-add_subdirectory(Rts)
+add_subdirectory(src)
 
 add_executable(
   Main
