@@ -11,7 +11,7 @@
 #include <string>
 #include <type_traits>
 
-namespace rts::serialize {
+namespace findus::serialize {
 Serializer::Serializer(Sizing_t /*selector*/, const std::uint64_t extra_info)
     : extra_info_(extra_info), action_(Action::Sizing) {}
 
@@ -72,9 +72,9 @@ void Serializer::bytes(Bytes data) {
               static_cast<std::underlying_type_t<Action>>(action()))};
   };
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <array>
 #include <doctest/doctest.h>
@@ -99,7 +99,7 @@ std::ostream& operator<<(std::ostream& os, const std::vector<T>& vec) {
 
 }  // namespace std
 
-namespace rts::serialize {
+namespace findus::serialize {
 namespace {
 // Test as_bytes trait
 struct MyBytesType : as_bytes<void> {
@@ -123,13 +123,13 @@ struct as_bytes<MyBytesType2> : std::true_type {};
 namespace {
 struct NotBytesType {};
 
-static_assert(rts::serialize::as_bytes<int>::value == false,
+static_assert(findus::serialize::as_bytes<int>::value == false,
               "int should not be serialized as bytes by default");
-static_assert(rts::serialize::as_bytes<MyBytesType>::value == false,
+static_assert(findus::serialize::as_bytes<MyBytesType>::value == false,
               "MyBytesType does not specialize as_bytes directly");
-static_assert(rts::serialize::as_bytes<MyBytesType2>::value == true,
+static_assert(findus::serialize::as_bytes<MyBytesType2>::value == true,
               "MyBytesType does not specialize as_bytes directly");
-static_assert(std::is_base_of_v<rts::serialize::as_bytes<void>, MyBytesType>,
+static_assert(std::is_base_of_v<findus::serialize::as_bytes<void>, MyBytesType>,
               "MyBytesType should inherit from as_bytes<void>");
 
 // Test has_pup_member trait
@@ -142,13 +142,13 @@ struct PupType {
 };
 struct NoPupType {};
 
-static_assert(rts::serialize::has_pup_member<PupType>::value == true,
+static_assert(findus::serialize::has_pup_member<PupType>::value == true,
               "PupType should have pup member");
-static_assert(rts::serialize::has_pup_member<NoPupType>::value == false,
+static_assert(findus::serialize::has_pup_member<NoPupType>::value == false,
               "NoPupType should not have pup member");
-static_assert(rts::serialize::has_pup_member_v<PupType> == true,
+static_assert(findus::serialize::has_pup_member_v<PupType> == true,
               "has_pup_member_v should be true for PupType");
-static_assert(rts::serialize::has_pup_member_v<NoPupType> == false,
+static_assert(findus::serialize::has_pup_member_v<NoPupType> == false,
               "has_pup_member_v should be false for NoPupType");
 
 // Test has_serialize_member trait
@@ -163,23 +163,24 @@ struct SerializeType {
 };
 struct NoSerializeType {};
 
-static_assert(rts::serialize::has_serialize_member<SerializeType>::value ==
+static_assert(findus::serialize::has_serialize_member<SerializeType>::value ==
                   true,
               "SerializeType should have serialize member");
-static_assert(rts::serialize::has_serialize_member<NoSerializeType>::value ==
+static_assert(findus::serialize::has_serialize_member<NoSerializeType>::value ==
                   false,
               "NoSerializeType should not have serialize member");
-static_assert(rts::serialize::has_serialize_member_v<SerializeType> == true,
+static_assert(findus::serialize::has_serialize_member_v<SerializeType> == true,
               "has_serialize_member_v should be true for SerializeType");
-static_assert(rts::serialize::has_serialize_member_v<NoSerializeType> == false,
+static_assert(findus::serialize::has_serialize_member_v<NoSerializeType> ==
+                  false,
               "has_serialize_member_v should be false for NoSerializeType");
 
-static_assert(rts::serialize::is_serializable_v<SerializeType>);
-static_assert(rts::serialize::is_serializable_v<MyBytesType>);
-static_assert(not rts::serialize::is_serializable_v<NoSerializeType>);
-#if defined(RTS_MIMIC_CHARM_PUPER)
-static_assert(rts::serialize::is_serializable_v<PupType>);
-static_assert(not rts::serialize::is_serializable_v<NoPupType>);
+static_assert(findus::serialize::is_serializable_v<SerializeType>);
+static_assert(findus::serialize::is_serializable_v<MyBytesType>);
+static_assert(not findus::serialize::is_serializable_v<NoSerializeType>);
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
+static_assert(findus::serialize::is_serializable_v<PupType>);
+static_assert(not findus::serialize::is_serializable_v<NoPupType>);
 #endif
 
 template <class T>
@@ -296,7 +297,7 @@ Serializer unpacker{Serializer::Unpacking, buff,
   unpack_help(std::bool_constant<true>{});
 }
 
-#ifdef RTS_MIMIC_CHARM_PUPER
+#ifdef FINDUS_MIMIC_CHARM_PUPER
 struct PuperType {
   // [serializer_puper_example]
   int value = 0;
@@ -475,7 +476,7 @@ void test_operator_pipe() {
     CHECK(obj == obj_unpacked);
   }
 
-#ifdef RTS_MIMIC_CHARM_PUPER
+#ifdef FINDUS_MIMIC_CHARM_PUPER
   // Type with pup member
   {
     PupType obj;
@@ -596,6 +597,6 @@ TEST_CASE("Serialize.Serializer") {
   test_operator_pipe();
   test_noncopyable_nonmovable();
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize
 
 #endif

@@ -7,10 +7,10 @@
 #include <stdexcept>
 #include <string>
 
-namespace rts::serialize {
+namespace findus::serialize {
 /// Exception indicating an RTS error occurred.
 class Exception : public std::runtime_error {
  public:
   explicit Exception(const std::string& message);
 };
-}  // namespace rts::serialize
+}  // namespace findus::serialize

@@ -10,7 +10,7 @@
 
 #include "Rts/Exceptions/Exception.hpp"
 
-namespace rts::detail {
+namespace findus::detail {
 bool operator==(const ParentAndChildren& lhs, const ParentAndChildren& rhs) {
   return lhs.self_process_id == rhs.self_process_id and
          lhs.parent_process_id == rhs.parent_process_id and
@@ -118,9 +118,9 @@ std::vector<int> children_in_subtree(const int process_id,
   result.shrink_to_fit();
   return result;
 }
-}  // namespace rts::detail
+}  // namespace findus::detail
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 #include <string>
@@ -128,7 +128,7 @@ std::vector<int> children_in_subtree(const int process_id,
 #include "Rts/Detail/GetOutput.hpp"
 #include "Rts/Detail/VectorStream.hpp"
 
-namespace rts::detail {
+namespace findus::detail {
 
 namespace {
 void test_p_and_c() {
@@ -197,8 +197,8 @@ void test_p_and_c() {
 }
 
 void test_subtree() {
-  using rts::detail::children_in_subtree;
-  using rts::detail::operator<<;
+  using findus::detail::children_in_subtree;
+  using findus::detail::operator<<;
 
   // Edge cases: invalid arguments
   CHECK_THROWS_AS(children_in_subtree(-1, 5), Exception);
@@ -302,8 +302,8 @@ void test_count_first_descendants() {
     // Predicate: only leaf nodes contribute
     const auto is_leaf = [total_processes](const int pid) -> bool {
       (void)total_processes;
-      const rts::detail::ParentAndChildren pc =
-          rts::detail::parent_and_children(pid, total_processes);
+      const findus::detail::ParentAndChildren pc =
+          findus::detail::parent_and_children(pid, total_processes);
       return pc.left_process_id == -1 and pc.right_process_id == -1;
     };
 
@@ -377,38 +377,38 @@ void test_find_first_parent() {
   };
 
   // Node 13: parent is 6 (even), so should return 6
-  CHECK(rts::detail::find_first_parent(13, total_processes, even_predicate) ==
-        6);
+  CHECK(findus::detail::find_first_parent(13, total_processes,
+                                          even_predicate) == 6);
 
   // Node 14: parent is 6 (even), so should return 6
-  CHECK(rts::detail::find_first_parent(14, total_processes, even_predicate) ==
-        6);
+  CHECK(findus::detail::find_first_parent(14, total_processes,
+                                          even_predicate) == 6);
 
   // Node 6: parent is 2 (even), so should return 2
-  CHECK(rts::detail::find_first_parent(6, total_processes, even_predicate) ==
+  CHECK(findus::detail::find_first_parent(6, total_processes, even_predicate) ==
         2);
 
   // Node 2: parent is 0 (even), so should return 0
-  CHECK(rts::detail::find_first_parent(2, total_processes, even_predicate) ==
+  CHECK(findus::detail::find_first_parent(2, total_processes, even_predicate) ==
         0);
 
   // Node 0: root, has no parent, should return -1
-  CHECK(rts::detail::find_first_parent(0, total_processes, even_predicate) ==
+  CHECK(findus::detail::find_first_parent(0, total_processes, even_predicate) ==
         -1);
 
   // Predicate: find the first parent with process_id > 3
   const auto greater_than_3 = [](const int pid) -> bool { return pid > 3; };
   // Node 14: parent is 6, which is > 3, so should return 6
-  CHECK(rts::detail::find_first_parent(14, total_processes, greater_than_3) ==
-        6);
+  CHECK(findus::detail::find_first_parent(14, total_processes,
+                                          greater_than_3) == 6);
 
   // Node 5: parent is 2, which is not > 3, parent of 2 is 0, not > 3, so should
   // return -1
-  CHECK(rts::detail::find_first_parent(5, total_processes, greater_than_3) ==
+  CHECK(findus::detail::find_first_parent(5, total_processes, greater_than_3) ==
         -1);
 
   // Test edge case where we get -1.
-  CHECK(rts::detail::find_first_parent(
+  CHECK(findus::detail::find_first_parent(
             1, total_processes,
             [](const int /*pid*/) -> bool { return false; }) == -1);
 }
@@ -420,5 +420,5 @@ TEST_CASE("ParentAndChildren") {
   test_count_first_descendants();
   test_find_first_parent();
 }
-}  // namespace rts::detail
+}  // namespace findus::detail
 #endif

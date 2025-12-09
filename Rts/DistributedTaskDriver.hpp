@@ -44,7 +44,7 @@
 #include "Rts/Serialize/Serializer.hpp"
 #include "Rts/ThreadPool.hpp"
 
-namespace rts {
+namespace findus {
 namespace detail {
 /*!
  * \brief Class used to track argument types and their index in the tuple used
@@ -102,7 +102,7 @@ class DistributedTaskDriver {
 
  public:
   /// \brief The type of the underlying thread pool and dynamic tasking.
-  using ThreadPool_t = rts::ThreadPool<Message_t, DistributedTaskDriver*>;
+  using ThreadPool_t = findus::ThreadPool<Message_t, DistributedTaskDriver*>;
 
   /// \brief The type used for storing the incoming MPI messages while the NIC
   /// is receiving the data.
@@ -190,9 +190,9 @@ class DistributedTaskDriver {
    * \param check_consistency_across_processes If true, perform a cross-rank
    *        consistency check before the barrier.
    *
-   * \throws rts::MpiException If any MPI call (probe, recv, barrier) fails
+   * \throws findus::MpiException If any MPI call (probe, recv, barrier) fails
    *         during the consistency check or barrier.
-   * \throws rts::Exception If component accounting differs across ranks.
+   * \throws findus::Exception If component accounting differs across ranks.
    */
   void insert_barrier(bool check_consistency_across_processes = true) const;
 
@@ -226,7 +226,7 @@ class DistributedTaskDriver {
    * elements are to make communication easier for users.
    *
    * Collection parallel components must have a type alias
-   * `rts_collection_index` that is the user-facing index. This type must be
+   * `findus_collection_index` that is the user-facing index. This type must be
    * exactly 64 bits in size and the user must explicitly set all bits. Any
    * bits that are "unused" must be set to 0 otherwise the behavior is
    * undefined.
@@ -235,7 +235,7 @@ class DistributedTaskDriver {
    */
   template <class ParallelComponent, class... Args>
   void insert_parallel_component_collection(
-      const typename ParallelComponent::rts_collection_index& user_index,
+      const typename ParallelComponent::findus_collection_index& user_index,
       int node_to_insert_on, Args&&... args);
 
   /*!
@@ -259,7 +259,7 @@ class DistributedTaskDriver {
    */
   template <class ParallelComponent>
   void remove_parallel_component_collection(
-      const typename ParallelComponent::rts_collection_index& user_index);
+      const typename ParallelComponent::findus_collection_index& user_index);
 
   /*!
    * \brief Returns a vector of vectors containing the collection indices for
@@ -358,7 +358,7 @@ class DistributedTaskDriver {
    *
    * ### Quiescence detection
    *
-   * See rts::qd::Local and rts::qd::Global for documentation of the QD
+   * See findus::qd::Local and findus::qd::Global for documentation of the QD
    * algorithms used.
    *
    */
@@ -370,8 +370,8 @@ class DistributedTaskDriver {
    * Allows invoking/calling `Actions` on local or remote parallel
    * components. If the parallel component is a collection then
    * `user_index_or_target_node` must be a 64-it user index of type
-   * `ParallelComponent::rts_collection_index`. If the parallel component is a
-   * regular component, then `user_index_or_target_node` must be the node on
+   * `ParallelComponent::findus_collection_index`. If the parallel component is
+   * a regular component, then `user_index_or_target_node` must be the node on
    * which the action should be invoked.
    *
    * The `args...` are the argument with which the member function
@@ -380,13 +380,13 @@ class DistributedTaskDriver {
    * component is
    * ```cpp
    * template <class Action, class... Args>
-   * void threaded_action(rts::DistributedTaskDriver& driver, Args... args);
+   * void threaded_action(findus::DistributedTaskDriver& driver, Args... args);
    * ```
    * Specialization to specific actions is essentially providing remotely
    * callable member functions. For example,
    * ```cpp
    * template <>
-   * void threaded_action<MyAction>(rts::DistributedTaskDriver& task_driver,
+   * void threaded_action<MyAction>(findus::DistributedTaskDriver& task_driver,
    *                                const int t)
    * ```
    * provides remotely callable member function labeled or tagged by the
@@ -407,13 +407,13 @@ class DistributedTaskDriver {
    * An example of a threaded action member function of a parallel component is:
    * ```cpp
    * template <class Action, class... Args>
-   * void threaded_action(rts::DistributedTaskDriver& driver, Args... args);
+   * void threaded_action(findus::DistributedTaskDriver& driver, Args... args);
    * ```
    * Specialization to specific actions is essentially providing remotely
    * callable member functions. For example,
    * ```cpp
    * template <>
-   * void threaded_action<MyAction>(rts::DistributedTaskDriver& task_driver,
+   * void threaded_action<MyAction>(findus::DistributedTaskDriver& task_driver,
    *                                const int t)
    * ```
    * provides a remotely callable member function labeled or tagged by the
@@ -439,19 +439,19 @@ class DistributedTaskDriver {
    * predicate.
    *
    * The predicate must be callable with a collection index of type
-   * `ParallelComponent::rts_collection_index` and return a `bool` indicating
+   * `ParallelComponent::findus_collection_index` and return a `bool` indicating
    * whether the element should receive the broadcast.
    *
    * An example of a threaded action member function of a parallel component is:
    * ```cpp
    * template <class Action, class... Args>
-   * void threaded_action(rts::DistributedTaskDriver& driver, Args... args);
+   * void threaded_action(findus::DistributedTaskDriver& driver, Args... args);
    * ```
    * Specialization to specific actions is essentially providing remotely
    * callable member functions. For example,
    * ```cpp
    * template <>
-   * void threaded_action<MyAction>(rts::DistributedTaskDriver& task_driver,
+   * void threaded_action<MyAction>(findus::DistributedTaskDriver& task_driver,
    *                                const int t)
    * ```
    * provides a remotely callable member function labeled or tagged by the
@@ -557,7 +557,7 @@ class DistributedTaskDriver {
    *   exception is thrown. In this case you need to increase the number of
    *   allowed simultaneous reductions.
    *
-   * \see rts::DistributedTaskDriver::reduction_over()
+   * \see findus::DistributedTaskDriver::reduction_over()
    */
   template <class ContributingParallelComponent, class BinaryOp,
             class CallbackAction, class CallbackParallelComponent,
@@ -604,7 +604,7 @@ class DistributedTaskDriver {
    *
    * \note
    * - The predicate must be callable with a collection index of type
-   *   `ParallelComponent::rts_collection_index` for a collection parallel
+   *   `ParallelComponent::findus_collection_index` for a collection parallel
    *   component and with a type `int` for the per-process parallel
    *   component. It must always return a bool.
    * - This function is thread-safe for concurrent calls from multiple threads,
@@ -621,7 +621,7 @@ class DistributedTaskDriver {
    *   exception is thrown. In this case you need to increase the number of
    *   allowed simultaneous reductions.
    *
-   * \see rts::DistributedTaskDriver::reduction()
+   * \see findus::DistributedTaskDriver::reduction()
    */
   template <class ContributingParallelComponent, class BinaryOp,
             class CallbackAction, class CallbackParallelComponent,
@@ -661,7 +661,7 @@ class DistributedTaskDriver {
    * \brief Provide an infinite loop to attach a debugger during startup. Useful
    * for debugging MPI runs.
    *
-   * Each MPI rank prints out name `rts_pid_#_host_NAME` to the working
+   * Each MPI rank prints out name `findus_pid_#_host_NAME` to the working
    * directory. This allows you to attach GDB to the running process using
    * `gdb --pid=PID`, once for each MPI rank. You must then halt the program
    * using `C-c` and then call `set var i = 7` inside GDB. Once you've done this
@@ -669,13 +669,13 @@ class DistributedTaskDriver {
    *
    * To add support for attaching to a debugger in an executable, you must add
    * `driver.attach_debugger()` to the start of the executable after you call
-   * `rts::create_distributed_task_driver()`. Then, when you launch the
+   * `findus::create_distributed_task_driver()`. Then, when you launch the
    * executable launch it as
    * ```shell
-   * RTS_ATTACH_DEBUGGER=1 mpirun -np N ...
+   * FINDUS_ATTACH_DEBUGGER=1 mpirun -np N ...
    * ```
-   * The environment variable `RTS_ATTACH_DEBUGGER` being set tells the code to
-   * allow attaching from a debugger.
+   * The environment variable `FINDUS_ATTACH_DEBUGGER` being set tells the code
+   * to allow attaching from a debugger.
    */
   void attach_debugger();
 
@@ -705,9 +705,10 @@ class DistributedTaskDriver {
    * If any inconsistency is found, such as a mismatch in the number, names,
    * or indices of components or collection elements, an exception is thrown.
    *
-   * \throws rts::MpiException If any MPI call fails during the consistency
+   * \throws findus::MpiException If any MPI call fails during the consistency
    *         check.
-   * \throws rts::Exception If component registration differs across processes.
+   * \throws findus::Exception If component registration differs across
+   * processes.
    */
   void check_component_accounting_consistency() const;
 
@@ -958,7 +959,7 @@ class DistributedTaskDriver {
     std::unique_ptr<reduction::Handler> reduction_handler{nullptr};
   };
 
-  MPI_Comm rts_comm_{};
+  MPI_Comm findus_comm_{};
   bool finalize_mpi_{false};
   bool mpi_supports_multithreading_{false};
   bool in_insert_mode_{false};
@@ -1000,9 +1001,10 @@ template <class ParallelComponent, class... Args>
 void DistributedTaskDriver::insert_parallel_component(Args&&... args) {
   in_insert_mode_ = true;
   static_assert(
-      not rts::is_collection_v<ParallelComponent>,
+      not findus::is_collection_v<ParallelComponent>,
       "To insert into a collection use insert_parallel_component_collection");
-  const auto index = rts::detail::distributed_object_index<ParallelComponent>();
+  const auto index =
+      findus::detail::distributed_object_index<ParallelComponent>();
   if (index < distributed_objects_.size()) {
     throw Exception(
         "Inserting a parallel component that was already inserted with index " +
@@ -1030,7 +1032,7 @@ void DistributedTaskDriver::insert_parallel_component(Args&&... args) {
 
 template <class ParallelComponent, class... Args>
 void DistributedTaskDriver::insert_parallel_component_collection(
-    const typename ParallelComponent::rts_collection_index& user_index,
+    const typename ParallelComponent::findus_collection_index& user_index,
     const int node_to_insert_on, Args&&... args) {
   if (node_to_insert_on < 0) {
     throw Exception{"The process to insert on must be non-negative but got " +
@@ -1038,12 +1040,12 @@ void DistributedTaskDriver::insert_parallel_component_collection(
   }
   in_insert_mode_ = true;
   static_assert(
-      rts::is_collection_v<ParallelComponent>,
+      findus::is_collection_v<ParallelComponent>,
       "To insert into a collection use insert_parallel_component_collection");
-  static_assert(sizeof(typename ParallelComponent::rts_collection_index) ==
+  static_assert(sizeof(typename ParallelComponent::findus_collection_index) ==
                 sizeof(std::uint64_t));
   const std::uint32_t index =
-      rts::detail::distributed_object_index<ParallelComponent>();
+      findus::detail::distributed_object_index<ParallelComponent>();
   using Map =
       std::variant_alternative_t<1, DistributedOjectClassHolder::variant_t>;
   if (index == distributed_objects_.size()) {
@@ -1106,19 +1108,20 @@ void DistributedTaskDriver::insert_parallel_component_collection(
 
 template <class ParallelComponent>
 void DistributedTaskDriver::remove_parallel_component_collection(
-    const typename ParallelComponent::rts_collection_index& user_index) {
+    const typename ParallelComponent::findus_collection_index& user_index) {
   in_insert_mode_ = true;
   static_assert(
-      rts::is_collection_v<ParallelComponent>,
+      findus::is_collection_v<ParallelComponent>,
       "To insert into a collection use insert_parallel_component_collection");
-  static_assert(sizeof(typename ParallelComponent::rts_collection_index) ==
+  static_assert(sizeof(typename ParallelComponent::findus_collection_index) ==
                 sizeof(std::uint64_t));
   const std::uint32_t object_index =
       detail::distributed_object_index<ParallelComponent>();
   if (object_index >= distributed_objects_.size()) {
-    throw rts::Exception{"Requested to remove distributed object with index " +
-                         std::to_string(object_index) + " and name " +
-                         ParallelComponent::name() + " was never inserted."};
+    throw findus::Exception{
+        "Requested to remove distributed object with index " +
+        std::to_string(object_index) + " and name " +
+        ParallelComponent::name() + " was never inserted."};
   }
   if (distributed_objects_[object_index].objects.index() !=
       detail::Collection) {
@@ -1155,13 +1158,13 @@ void DistributedTaskDriver::remove_parallel_component_collection(
 template <class ParallelComponent>
 auto DistributedTaskDriver::collection_ids_on_processes() const
     -> const std::vector<std::vector<std::uint64_t>>& {
-  static_assert(rts::is_collection_v<ParallelComponent>);
+  static_assert(findus::is_collection_v<ParallelComponent>);
   const std::uint32_t object_index =
       detail::distributed_object_index<ParallelComponent>();
   if (object_index >= distributed_objects_.size()) {
-    throw rts::Exception{"Requested distributed object with index " +
-                         std::to_string(object_index) + " and name " +
-                         ParallelComponent::name() + " was never inserted."};
+    throw findus::Exception{"Requested distributed object with index " +
+                            std::to_string(object_index) + " and name " +
+                            ParallelComponent::name() + " was never inserted."};
   }
   if (distributed_objects_[object_index].objects.index() !=
       detail::Collection) {
@@ -1193,9 +1196,9 @@ auto DistributedTaskDriver::collection_ids_and_locations() const
   const auto object_index =
       detail::distributed_object_index<ParallelComponent>();
   if (object_index >= distributed_objects_.size()) {
-    throw rts::Exception{"Requested distributed object with index " +
-                         std::to_string(object_index) + " and name " +
-                         ParallelComponent::name() + " was never inserted."};
+    throw findus::Exception{"Requested distributed object with index " +
+                            std::to_string(object_index) + " and name " +
+                            ParallelComponent::name() + " was never inserted."};
   }
   if (distributed_objects_[object_index].objects.index() !=
       detail::Collection) {
@@ -1245,12 +1248,12 @@ void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
 
   int target_node = -1;
   std::uint64_t collection_index = MessageHeader::no_collection_index();
-  if constexpr (rts::is_collection_v<ParallelComponent>) {
+  if constexpr (findus::is_collection_v<ParallelComponent>) {
     static_assert(
-        std::is_same_v<typename ParallelComponent::rts_collection_index,
+        std::is_same_v<typename ParallelComponent::findus_collection_index,
                        IndexType>);
     const auto object_index =
-        rts::detail::distributed_object_index<ParallelComponent>();
+        findus::detail::distributed_object_index<ParallelComponent>();
     collection_index = detail::to_internal(user_index_or_target_node);
     if (object_index >= distributed_objects_.size()) {
       throw Exception{
@@ -1287,7 +1290,7 @@ void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
       ((std::is_trivially_copyable_v<std::decay_t<Args>> && ...))) {
     send_data(
         target_node,
-        rts::create_message(
+        findus::create_message(
             threaded_action_relative_ptr<Action, ParallelComponent,
                                          std::decay_t<Args>...>(
                 std::make_index_sequence<sizeof...(Args)>{}),
@@ -1298,7 +1301,7 @@ void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
             std::tuple<std::decay_t<Args>...>{std::forward<Args>(args)...}));
   } else {
     send_data(target_node,
-              rts::create_message(
+              findus::create_message(
                   threaded_action_relative_ptr<Action, ParallelComponent,
                                                std::decay_t<Args>...>(
                       std::make_index_sequence<sizeof...(Args)>{}),
@@ -1332,7 +1335,7 @@ void DistributedTaskDriver::broadcast(Args&&... args) {
   if ((std::is_trivially_copyable_v<std::decay_t<Args>> && ...)) {
     send_data(
         broadcast_process_id,
-        rts::create_message(
+        findus::create_message(
             threaded_action_relative_ptr<Action, ParallelComponent,
                                          std::decay_t<Args>...>(
                 std::make_index_sequence<sizeof...(Args)>{}),
@@ -1346,7 +1349,7 @@ void DistributedTaskDriver::broadcast(Args&&... args) {
             std::tuple<std::decay_t<Args>...>{std::forward<Args>(args)...}));
   } else {
     send_data(broadcast_process_id,
-              rts::create_message(
+              findus::create_message(
                   threaded_action_relative_ptr<Action, ParallelComponent,
                                                std::decay_t<Args>...>(
                       std::make_index_sequence<sizeof...(Args)>{}),
@@ -1375,8 +1378,9 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
                 "safe manner. Please wrap these in a container that can "
                 "safely handle the serialization.");
   static_assert(
-      std::is_invocable_r_v<bool, UnaryPredicate,
-                            typename ParallelComponent::rts_collection_index>,
+      std::is_invocable_r_v<
+          bool, UnaryPredicate,
+          typename ParallelComponent::findus_collection_index>,
       "Predicate must be callable with collection index and return bool.");
   if (in_insert_mode_) {
     throw Exception{
@@ -1391,7 +1395,7 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
   }
 
   const std::uint32_t distributed_object_index =
-      rts::detail::distributed_object_index<ParallelComponent>();
+      findus::detail::distributed_object_index<ParallelComponent>();
   if (distributed_object_index >= distributed_objects_.size()) {
     throw Exception{
         "Trying to send broadcast_to over an unregistered ParallelComponent, " +
@@ -1505,7 +1509,8 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
             detail::distributed_object_index<ParallelComponent>(),
             current_node_id(), current_node_id(),
             global_qd_.local_sweep_number(), not data_is_trivially_copyable,
-            rts::MessageType::Invoke, data_alignment, data_size, data.get()));
+            findus::MessageType::Invoke, data_alignment, data_size,
+            data.get()));
       } else {
         Message_t& this_message = broadcast_to_messages[static_cast<size_t>(
             collection_holder.process_id)];
@@ -1590,8 +1595,8 @@ void DistributedTaskDriver::reduction_over(
         ") is out of range, or the active object was not correctly set."};
   }
   DistributedOjectClassHolder& holder = distributed_objects_[object_index];
-  if (object_index !=
-      rts::detail::distributed_object_index<ContributingParallelComponent>()) {
+  if (object_index != findus::detail::distributed_object_index<
+                          ContributingParallelComponent>()) {
     throw Exception{
         "The ContributingParallelComponent passed to reduction is " +
         ContributingParallelComponent::name() +
@@ -1628,7 +1633,7 @@ void DistributedTaskDriver::reduction_over(
       }
     }
   }
-  if constexpr (rts::is_collection_v<ContributingParallelComponent>) {
+  if constexpr (findus::is_collection_v<ContributingParallelComponent>) {
     std::optional<Message_t> message_with_all_local_contributions =
         holder.reduction_handler->insert_or_combine<BinaryOp>(
             [current_pid = current_node_id(), &holder,
@@ -1732,7 +1737,7 @@ void DistributedTaskDriver::reduction_over(
       outgoing_messages_.enqueue(std::tuple<int, Message_t>{
           reduction::reduction_process_id, std::move(message)});
     }
-  } else { // per-process component case
+  } else {  // per-process component case
     using Data_t = std::tuple<std::decay_t<Args>...>;
     Message_t message = reduction::create_message(
         object_index, reduction_id, Data_t{std::forward<Args>(args)...},
@@ -1765,8 +1770,9 @@ void DistributedTaskDriver::compute_elements_per_pid(
   static_assert(is_collection_v<ParallelComponent>,
                 "Can only perform a BroadcastTo over a collection.");
   static_assert(
-      std::is_invocable_r_v<bool, UnaryPredicate,
-                            typename ParallelComponent::rts_collection_index>,
+      std::is_invocable_r_v<
+          bool, UnaryPredicate,
+          typename ParallelComponent::findus_collection_index>,
       "Predicate must be callable with collection index and return bool.");
 
   const DistributedOjectClassHolder& distributed_object =
@@ -1821,10 +1827,10 @@ template <class Action, class ParallelComponent, class... ArgIndexes>
 void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
   MessageHeader* header = message.get_header();
   if (header->distributed_object_index() >= distributed_objects_.size()) {
-    throw rts::Exception{"Requested distributed object with index " +
-                         std::to_string(header->distributed_object_index()) +
-                         " but only have " +
-                         std::to_string(distributed_objects_.size())};
+    throw findus::Exception{"Requested distributed object with index " +
+                            std::to_string(header->distributed_object_index()) +
+                            " but only have " +
+                            std::to_string(distributed_objects_.size())};
   }
 
   using Data_t = std::tuple<typename ArgIndexes::type...>;
@@ -1840,7 +1846,7 @@ void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
   } else {
     args = data_from_message<Data_t>(*header);
   }
-  if constexpr (rts::is_collection_v<ParallelComponent>) {
+  if constexpr (findus::is_collection_v<ParallelComponent>) {
     DistributedOjectClassHolder::Map_t& distributed_object_collection =
         std::get<1>(
             distributed_objects_[header->distributed_object_index()].objects);
@@ -1879,13 +1885,13 @@ void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
 template <class ParallelComponent>
 ParallelComponent* local_parallel_component(
     DistributedTaskDriver& distributed_task_driver) {
-  static_assert(not rts::is_collection_v<ParallelComponent>);
+  static_assert(not findus::is_collection_v<ParallelComponent>);
   const auto object_index =
       detail::distributed_object_index<ParallelComponent>();
   if (object_index >= distributed_task_driver.distributed_objects_.size()) {
-    throw rts::Exception{"Requested distributed object with index " +
-                         std::to_string(object_index) + " and name " +
-                         ParallelComponent::name() + " was never inserted."};
+    throw findus::Exception{"Requested distributed object with index " +
+                            std::to_string(object_index) + " and name " +
+                            ParallelComponent::name() + " was never inserted."};
   }
   auto& objects =
       distributed_task_driver.distributed_objects_[object_index].objects;
@@ -1909,14 +1915,14 @@ template <class ParallelComponent, class IndexType>
 ParallelComponent* local_parallel_component(
     DistributedTaskDriver& distributed_task_driver,
     const IndexType& user_index) {
-  static_assert(rts::is_collection_v<ParallelComponent>);
+  static_assert(findus::is_collection_v<ParallelComponent>);
   static_assert(sizeof(IndexType) == sizeof(uint64_t));
   const auto object_index =
       detail::distributed_object_index<ParallelComponent>();
   if (object_index >= distributed_task_driver.distributed_objects_.size()) {
-    throw rts::Exception{"Requested distributed object with index " +
-                         std::to_string(object_index) + " and name " +
-                         ParallelComponent::name() + " was never inserted."};
+    throw findus::Exception{"Requested distributed object with index " +
+                            std::to_string(object_index) + " and name " +
+                            ParallelComponent::name() + " was never inserted."};
   }
   const std::uint64_t collection_index = detail::to_internal(user_index);
   if (distributed_task_driver.distributed_objects_[object_index]
@@ -1945,4 +1951,4 @@ ParallelComponent* local_parallel_component(
 /// used to globally access the task driver.
 DistributedTaskDriver& create_distributed_task_driver(int* argc, char** argv[],
                                                       bool initialize_mpi);
-}  // namespace rts
+}  // namespace findus

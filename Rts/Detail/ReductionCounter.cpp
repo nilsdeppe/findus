@@ -8,7 +8,7 @@
 
 #include "Rts/Exceptions/Exception.hpp"
 
-namespace rts::reduction::detail {
+namespace findus::reduction::detail {
 Counter::Counter(const size_t max_entries) : entries_(max_entries) {
   if (max_entries == 0) {
     throw Exception{
@@ -40,9 +40,9 @@ Counter::Counter(const size_t max_entries) : entries_(max_entries) {
 }
 
 Counter::~Counter() = default;
-}  // namespace rts::reduction::detail
+}  // namespace findus::reduction::detail
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <algorithm>
 #include <atomic>
@@ -53,7 +53,7 @@ Counter::~Counter() = default;
 
 #include "Rts/Detail/ReductionCounter.hpp"
 
-namespace rts::reduction::detail {
+namespace findus::reduction::detail {
 namespace {
 template <size_t NumThreads>
 void test_counter_parallel(const size_t num_reductions,
@@ -128,19 +128,19 @@ void test_counter_constructor_exceptions() {
   CHECK_THROWS_WITH_AS(Counter(0),
                        "The maximum number of entries must be a power of two "
                        "larger than 0. Got 0",
-                       rts::Exception);
+                       findus::Exception);
 
   // Test non-power-of-two max_entries (e.g., 3)
   CHECK_THROWS_WITH_AS(Counter(3),
                        "The maximum number of entries must be a power of two "
                        "larger than 0. Got 3",
-                       rts::Exception);
+                       findus::Exception);
 
   // Test another non-power-of-two (e.g., 5)
   CHECK_THROWS_WITH_AS(Counter(5),
                        "The maximum number of entries must be a power of two "
                        "larger than 0. Got 5",
-                       rts::Exception);
+                       findus::Exception);
 }
 
 void test_counter_increment_zero_key_exception() {
@@ -152,7 +152,7 @@ void test_counter_increment_zero_key_exception() {
   CHECK_THROWS_WITH_AS(counter.increment(0, [] { return 10; }),
                        "The key value of 0 is not supported in reductions "
                        "because it is used as a sentinel.",
-                       rts::Exception);
+                       findus::Exception);
 }
 
 void test_counter_full_exception() {
@@ -170,27 +170,27 @@ void test_counter_full_exception() {
   CHECK_THROWS_WITH_AS(counter.increment(max_entries + 1, [] { return 1; }),
                        "Failed to insert hashed key 5 because the container is "
                        "full. Max entries is 4",
-                       rts::Exception);
+                       findus::Exception);
 }
 }  // namespace
-}  // namespace rts::reduction::detail
+}  // namespace findus::reduction::detail
 
 TEST_CASE("ReductionCounter") {
   for (const auto number_of_reductions :
        {0ul, 1ul, 2ul, 8ul, 16ul, 128ul, 512ul}) {
-    rts::reduction::detail::test_counter_parallel<1>(number_of_reductions);
-    rts::reduction::detail::test_counter_parallel<2>(number_of_reductions);
-    rts::reduction::detail::test_counter_parallel<4>(number_of_reductions);
-    rts::reduction::detail::test_counter_parallel<32>(number_of_reductions);
-    rts::reduction::detail::test_counter_parallel<128>(number_of_reductions);
+    findus::reduction::detail::test_counter_parallel<1>(number_of_reductions);
+    findus::reduction::detail::test_counter_parallel<2>(number_of_reductions);
+    findus::reduction::detail::test_counter_parallel<4>(number_of_reductions);
+    findus::reduction::detail::test_counter_parallel<32>(number_of_reductions);
+    findus::reduction::detail::test_counter_parallel<128>(number_of_reductions);
 
     // Test case where vector can get full to cause high pressure on hash.
-    rts::reduction::detail::test_counter_parallel<4>(
+    findus::reduction::detail::test_counter_parallel<4>(
         number_of_reductions, std::max(number_of_reductions, 2ul));
   }
-  rts::reduction::detail::test_counter_constructor_exceptions();
-  rts::reduction::detail::test_counter_increment_zero_key_exception();
-  rts::reduction::detail::test_counter_full_exception();
+  findus::reduction::detail::test_counter_constructor_exceptions();
+  findus::reduction::detail::test_counter_increment_zero_key_exception();
+  findus::reduction::detail::test_counter_full_exception();
 }
 
 #endif

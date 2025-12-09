@@ -7,7 +7,7 @@
 #include <tuple>
 #include <type_traits>
 
-namespace rts::detail {
+namespace findus::detail {
 /*!
  * \brief Trait to detect whether a type is `std::tuple`.
  *
@@ -31,4 +31,4 @@ struct is_std_tuple<std::tuple<Ts...>> : std::true_type {};
  */
 template <class T>
 inline constexpr bool is_std_tuple_v = is_std_tuple<T>::value;
-}  // namespace rts::detail
+}  // namespace findus::detail

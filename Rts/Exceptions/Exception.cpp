@@ -8,20 +8,20 @@
 #include <stdexcept>
 #include <string>
 
-namespace rts {
+namespace findus {
 Exception::Exception(const std::string& message)
     : std::runtime_error(message) {}
 
 static_assert(std::is_base_of_v<std::runtime_error, Exception>);
-}  // namespace rts
+}  // namespace findus
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 #include <string>
 #include <type_traits>
 
-namespace rts {
+namespace findus {
 TEST_CASE("Exception") {
   try {
     throw Exception("Throwing test exception 0.");
@@ -39,5 +39,5 @@ TEST_CASE("Exception") {
     CHECK(std::string{e.what()} == "Throwing test exception 2.");
   }
 }
-}  // namespace rts
+}  // namespace findus
 #endif

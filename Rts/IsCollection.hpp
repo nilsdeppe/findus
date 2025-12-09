@@ -6,7 +6,7 @@
 
 #include <type_traits>
 
-namespace rts {
+namespace findus {
 /// \cond
 template <class ParallelComponent>
 class DistributedObjectCollection;
@@ -22,4 +22,4 @@ struct is_collection
 /// Is `true` if  `ParallelComponent` is a `DistributedObjectCollection`
 template <typename ParallelComponent>
 static constexpr bool is_collection_v = is_collection<ParallelComponent>::value;
-}  // namespace rts
+}  // namespace findus

@@ -8,7 +8,7 @@
 
 #include "Rts/Serialize/Serializer.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 /*!
  * \brief Serializes or deserializes a std::forward_list using the Serializer.
  *
@@ -51,4 +51,4 @@ std::enable_if_t<is_serializable_v<T>, Serializer&> operator|(
   }
   return serializer;
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize

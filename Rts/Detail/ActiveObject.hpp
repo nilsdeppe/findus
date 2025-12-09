@@ -10,7 +10,7 @@
 
 #include "Rts/HardwareInfo.hpp"
 
-namespace rts::detail {
+namespace findus::detail {
 /*!
  * \brief Stores info for indexing the active distributed object and,
  * optionally, its target collection index.
@@ -24,7 +24,7 @@ namespace rts::detail {
  * - distributed_object_index: The index of the distributed object.
  * - target_collection_index: The index of the target collection element.
  */
-struct alignas(rts::hardware_info::hardware_destructive_interference_size)
+struct alignas(findus::hardware_info::hardware_destructive_interference_size)
     ActiveObject {
   std::uint32_t distributed_object_index{
       std::numeric_limits<std::uint32_t>::max()};
@@ -32,6 +32,6 @@ struct alignas(rts::hardware_info::hardware_destructive_interference_size)
       std::numeric_limits<std::uint64_t>::max()};
 };
 
-/// \brief Stream operator for rts::detail::ActiveObject.
+/// \brief Stream operator for findus::detail::ActiveObject.
 std::ostream& operator<<(std::ostream& os, const ActiveObject& obj);
-}  // namespace rts::detail
+}  // namespace findus::detail

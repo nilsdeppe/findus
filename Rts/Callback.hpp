@@ -22,7 +22,7 @@
 #include "Rts/IsCollection.hpp"
 #include "Rts/MessageHeader.hpp"
 
-namespace rts {
+namespace findus {
 namespace detail {
 /// @{
 /*!
@@ -80,7 +80,7 @@ bool tuple_equal(const std::tuple<Args...>& tuple_1,
 }  // namespace detail
 
 /*!
- * \brief Abstract base class for all callback types in the RTS system.
+ * \brief Abstract base class for all callback types in findus.
  *
  * The `CallbackBase` class defines the common interface for all callback
  * objects, enabling polymorphic storage and invocation of callbacks. It
@@ -278,9 +278,9 @@ void CallbackArgs<Args...>::update_arguments(
  *
  * The callback can be constructed for:
  * - An invoke operation, targeting a specific collection index or node using
- *   the `rts::make_callback()` function.
+ *   the `findus::make_callback()` function.
  * - A broadcast operation, targeting all elements of the parallel component
- *   using the `rts::make_broadcast_callback()` function.
+ *   using the `findus::make_broadcast_callback()` function.
  *
  * The arguments to the action are stored as a tuple of decayed types. The
  * callback can only be invoked once; subsequent invocations will throw an
@@ -317,9 +317,10 @@ class Callback final : public CallbackArgs<Args...> {
 
   /*!
    * \brief Constructs an invoke Callback for an element of a parallel
-   * component (regular or collection). Use `rts::make_callback()` instead.
+   * component (regular or collection). Use `findus::make_callback()` instead.
    *
-   * \warning You should use the helper function `rts::make_callback()` instead.
+   * \warning You should use the helper function `findus::make_callback()`
+   * instead.
    *
    * Initializes the Callback to invoke an action on a specific element of a
    * collection parallel component, storing the collection index and the
@@ -332,10 +333,10 @@ class Callback final : public CallbackArgs<Args...> {
 
   /*!
    * \brief Constructs a broadcast Callback with the given arguments. Use
-   * `rts::make_broadcast_callback()` instead.
+   * `findus::make_broadcast_callback()` instead.
    *
    * \warning You should use the helper function
-   * `rts::make_broadcast_callback()` instead.
+   * `findus::make_broadcast_callback()` instead.
    *
    * Initializes the Callback for a broadcast operation on the specified
    * parallel component, storing the provided arguments in a tuple. The
@@ -423,7 +424,7 @@ Callback<Action, ParallelComponent, Args...>::Callback(
     const uint64_t collection_index, std::decay_t<Args>... args)
     : Base(std::move(args)...),
       collection_index_(collection_index),
-      message_type_(rts::MessageType::Invoke) {
+      message_type_(findus::MessageType::Invoke) {
   if (message_type_ != MessageType::Invoke and
       message_type_ != MessageType::Broadcast) {
     throw Exception{
@@ -437,7 +438,7 @@ Callback<Action, ParallelComponent, Args...>::Callback(
     std::decay_t<Args>... args)
     : Base(std::move(args)...),
       collection_index_(std::numeric_limits<uint64_t>::max()),
-      message_type_(rts::MessageType::Broadcast) {}
+      message_type_(findus::MessageType::Broadcast) {}
 
 template <class Action, class ParallelComponent, class... Args>
 void Callback<Action, ParallelComponent, Args...>::invoke() {
@@ -448,7 +449,7 @@ void Callback<Action, ParallelComponent, Args...>::invoke() {
         "get_clone(), and then call invoke() on the clone the second time."};
   }
   invoked_ = true;
-  if (message_type_ == rts::MessageType::Invoke) {
+  if (message_type_ == findus::MessageType::Invoke) {
     std::apply(
         [this](auto&&... args) {
           this->get_task_driver().template invoke<Action, ParallelComponent>(
@@ -456,7 +457,7 @@ void Callback<Action, ParallelComponent, Args...>::invoke() {
               std::forward<decltype(args)>(args)...);
         },
         std::move(this->args_));
-  } else if (message_type_ == rts::MessageType::Broadcast) {
+  } else if (message_type_ == findus::MessageType::Broadcast) {
     std::apply(
         [this](auto&&... args) {
           this->get_task_driver().template broadcast<Action, ParallelComponent>(
@@ -512,7 +513,7 @@ bool Callback<Action, ParallelComponent, Args...>::is_equal_to(
  *
  * The callback can be constructed for:
  * - A broadcast-to operation, targeting only those collection elements that
- *   satisfy the predicate, using the `rts::make_broadcast_to_callback()`
+ *   satisfy the predicate, using the `findus::make_broadcast_to_callback()`
  *   function.
  *
  * The arguments to the action are stored as a tuple of decayed types. The
@@ -556,10 +557,10 @@ class CallbackBroadcastTo final : public CallbackArgs<Args...>,
 
   /*!
    * \brief Constructs a CallbackBroadcastTo with a predicate and
-   * arguments. Use `rts::make_broadcast_to_callback()` instead.
+   * arguments. Use `findus::make_broadcast_to_callback()` instead.
    *
    * \warning You should use the helper function
-   * `rts::make_broadcast_to_callback()` instead.
+   * `findus::make_broadcast_to_callback()` instead.
    *
    * Initializes the CallbackBroadcastTo object with the provided unary
    * predicate and argument list. The predicate is used to determine which
@@ -653,7 +654,7 @@ class CallbackBroadcastTo final : public CallbackArgs<Args...>,
    * \param collection_index The index of the collection element to check.
    * \return true if the element should receive the broadcast; false otherwise.
    */
-  bool operator()(const typename ParallelComponent::rts_collection_index
+  bool operator()(const typename ParallelComponent::findus_collection_index
                       collection_index) const {
     if (ids_are_serialized_) {
       return std::binary_search(broadcast_to_ids_.begin(),
@@ -663,7 +664,7 @@ class CallbackBroadcastTo final : public CallbackArgs<Args...>,
   }
 
  private:
-  std::vector<typename ParallelComponent::rts_collection_index>
+  std::vector<typename ParallelComponent::findus_collection_index>
       broadcast_to_ids_{};
   bool invoked_{false};
   bool ids_are_serialized_{false};
@@ -745,9 +746,9 @@ bool CallbackBroadcastTo<UnaryPredicate, Action, ParallelComponent,
 template <class Action, class ParallelComponent, class IndexType, class... Args>
 auto make_invoke_callback(IndexType user_index_or_target_node, Args&&... args)
     -> Callback<Action, ParallelComponent, std::decay_t<Args>...> {
-  if constexpr (rts::is_collection_v<ParallelComponent>) {
+  if constexpr (findus::is_collection_v<ParallelComponent>) {
     static_assert(
-        std::is_same_v<typename ParallelComponent::rts_collection_index,
+        std::is_same_v<typename ParallelComponent::findus_collection_index,
                        IndexType>);
     return {detail::to_internal(user_index_or_target_node),
             std::forward<Args>(args)...};
@@ -762,9 +763,9 @@ auto make_unique_invoke_callback(IndexType user_index_or_target_node,
                                  Args&&... args)
     -> std::unique_ptr<CallbackBase> {
   using Cb = Callback<Action, ParallelComponent, std::decay_t<Args>...>;
-  if constexpr (rts::is_collection_v<ParallelComponent>) {
+  if constexpr (findus::is_collection_v<ParallelComponent>) {
     static_assert(
-        std::is_same_v<typename ParallelComponent::rts_collection_index,
+        std::is_same_v<typename ParallelComponent::findus_collection_index,
                        IndexType>);
     return std::make_unique<Cb>(detail::to_internal(user_index_or_target_node),
                                 std::forward<Args>(args)...);
@@ -850,4 +851,4 @@ auto make_unique_broadcast_to_callback(UnaryPredicate&& predicate,
       std::forward<UnaryPredicate>(predicate), std::forward<Args>(args)...);
 }
 /// @}
-}  // namespace rts
+}  // namespace findus

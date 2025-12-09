@@ -6,9 +6,10 @@
 
 #include <tuple>
 
-static_assert(rts::detail::is_std_tuple_v<std::tuple<int, double>>);
-static_assert(rts::detail::is_std_tuple_v<std::tuple<int>>);
-static_assert(rts::detail::is_std_tuple_v<std::tuple<>>);
-static_assert(rts::detail::is_std_tuple_v<std::tuple<std::tuple<int>, double>>);
-static_assert(not rts::detail::is_std_tuple_v<int>);
-static_assert(not rts::detail::is_std_tuple_v<std::pair<int, int>>);
+static_assert(findus::detail::is_std_tuple_v<std::tuple<int, double>>);
+static_assert(findus::detail::is_std_tuple_v<std::tuple<int>>);
+static_assert(findus::detail::is_std_tuple_v<std::tuple<>>);
+static_assert(
+    findus::detail::is_std_tuple_v<std::tuple<std::tuple<int>, double>>);
+static_assert(not findus::detail::is_std_tuple_v<int>);
+static_assert(not findus::detail::is_std_tuple_v<std::pair<int, int>>);

@@ -6,7 +6,7 @@
 
 #include <cstddef>
 
-namespace rts::serialize {
+namespace findus::serialize {
 /*!
  * \brief Represents a non-owning view of one or more items for serialization.
  *
@@ -58,4 +58,4 @@ template <class T>
 View(T*, size_t) -> View<T>;
 template <class T>
 View(T&) -> View<T>;
-}  // namespace rts::serialize
+}  // namespace findus::serialize

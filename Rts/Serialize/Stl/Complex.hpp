@@ -8,7 +8,7 @@
 
 #include "Rts/Serialize/Serializer.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 template <class T>
 struct as_bytes<std::complex<T>> : std::bool_constant<serialize_as_bytes_v<T>> {
 };
@@ -51,4 +51,4 @@ std::enable_if_t<is_serializable_v<T>, Serializer&> operator|(
   }
   return serializer;
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize

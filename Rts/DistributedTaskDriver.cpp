@@ -46,7 +46,7 @@
 #include "Rts/ParentAndChildren.hpp"
 #include "Rts/Reduction.hpp"
 
-namespace rts {
+namespace findus {
 DistributedTaskDriver::DistributedTaskDriver(bool finalize_mpi,
                                              bool mpi_supports_multithreading)
     : finalize_mpi_(finalize_mpi),
@@ -61,10 +61,10 @@ DistributedTaskDriver::DistributedTaskDriver(bool finalize_mpi,
         "to.");
   }
 
-  if (MPI_Comm_dup(MPI_COMM_WORLD, &rts_comm_) != MPI_SUCCESS) {
+  if (MPI_Comm_dup(MPI_COMM_WORLD, &findus_comm_) != MPI_SUCCESS) {
     throw MpiException("Failed to set the rts communicator");
   }
-  if (MPI_Comm_rank(rts_comm_, &my_node_id_) != MPI_SUCCESS) {
+  if (MPI_Comm_rank(findus_comm_, &my_node_id_) != MPI_SUCCESS) {
     throw MpiException("Failed to get my node ID in the ToyRTS communicator.");
   }
 
@@ -85,7 +85,7 @@ DistributedTaskDriver::DistributedTaskDriver(bool finalize_mpi,
     }
   }
 
-  if (MPI_Comm_size(rts_comm_, &number_of_nodes_) != MPI_SUCCESS) {
+  if (MPI_Comm_size(findus_comm_, &number_of_nodes_) != MPI_SUCCESS) {
     throw MpiException(
         "Failed to get the number of nodes in the ToyRTS communicator.");
   }
@@ -93,13 +93,14 @@ DistributedTaskDriver::DistributedTaskDriver(bool finalize_mpi,
   number_of_threads_ = 4;
 
   // Broadcast number of threads requested.
-  if (MPI_Bcast(&number_of_threads_, 1, MPI_INT, 0, rts_comm_) != MPI_SUCCESS) {
+  if (MPI_Bcast(&number_of_threads_, 1, MPI_INT, 0, findus_comm_) !=
+      MPI_SUCCESS) {
     throw MpiException("Failed to broadcast number of threads.");
   }
 
   thread_pool_ = std::make_unique<ThreadPool_t>(
       static_cast<uint32_t>(number_of_threads_), 1, this);
-  hardware_info::print_hardware_info(rts_comm_);
+  hardware_info::print_hardware_info(findus_comm_);
 
   active_object_.resize(static_cast<size_t>(number_of_threads_ + 1),
                         detail::ActiveObject{});
@@ -173,7 +174,7 @@ DistributedTaskDriver::~DistributedTaskDriver() noexcept {
     mpi_is_finalized = 1;
   }
   if (not mpi_is_finalized) {
-    if (const auto mpi_result = MPI_Comm_free(&rts_comm_);
+    if (const auto mpi_result = MPI_Comm_free(&findus_comm_);
         mpi_result != MPI_SUCCESS) {
       std::cout << "Failed to free RTS communicator.\n" << std::flush;
     }
@@ -216,7 +217,7 @@ void DistributedTaskDriver::insert_barrier(
 }
 
 void DistributedTaskDriver::barrier() const {
-  if (const auto mpi_result = MPI_Barrier(rts_comm_);
+  if (const auto mpi_result = MPI_Barrier(findus_comm_);
       mpi_result != MPI_SUCCESS) {
     throw MpiException{"Failed to call barrier on process " +
                        std::to_string(current_node_id())};
@@ -253,7 +254,7 @@ void DistributedTaskDriver::run_to_quiescence(const int max_to_receive,
       ++local_qd_counter;
       if (local_qd_counter >= local_qd_counts_for_global_qd_) {
         local_qd_counter = 0;
-        if (global_qd_.check(rts_comm_)) {
+        if (global_qd_.check(findus_comm_)) {
           return;
         }
       }
@@ -295,7 +296,7 @@ std::vector<int> split_string_as_ints(const std::string& str,
 void DistributedTaskDriver::attach_debugger() {
   const char* env_enable_parallel_debug =
       // NOLINTNEXTLINE(concurrency-mt-unsafe)
-      std::getenv("RTS_ATTACH_DEBUGGER");
+      std::getenv("FINDUS_ATTACH_DEBUGGER");
   if (env_enable_parallel_debug == nullptr) {
     return;
   }
@@ -307,7 +308,7 @@ void DistributedTaskDriver::attach_debugger() {
   for (const char ch : debugger_request) {
     if (not std::isdigit(ch) and ch != ',' and ch != '-') {
       throw Exception{
-          "The environment variable RTS_ATTACH_DEBUGGER must contain only "
+          "The environment variable FINDUS_ATTACH_DEBUGGER must contain only "
           "numbers or ',' but is set to: " +
           debugger_request};
     }
@@ -320,7 +321,7 @@ void DistributedTaskDriver::attach_debugger() {
     throw Exception{
         "Received an empty list of nodes to attach a debugger to. You must "
         "specify a comma separated list of node IDs to attach on. You can "
-        "specify '-1' to attach on all nodes. RTS_ATTACH_DEBUGGER is " +
+        "specify '-1' to attach on all nodes. FINDUS_ATTACH_DEBUGGER is " +
         debugger_request};
   }
 
@@ -329,7 +330,7 @@ void DistributedTaskDriver::attach_debugger() {
       if (node_id == -1) {
         throw Exception{
             "Cannot request all nodes for debugging (-1) and also specify "
-            "specific nodes. RTS_ATTACH_DEBUGGER is " +
+            "specific nodes. FINDUS_ATTACH_DEBUGGER is " +
             debugger_request};
       } else if (node_id >= number_of_nodes()) {
         throw Exception{"Cannot request to debug on a node ID (" +
@@ -337,11 +338,11 @@ void DistributedTaskDriver::attach_debugger() {
                         ") greater than the number of "
                         "nodes (" +
                         std::to_string(number_of_nodes()) +
-                        ") . RTS_ATTACH_DEBUGGER is " + debugger_request};
+                        ") . FINDUS_ATTACH_DEBUGGER is " + debugger_request};
       } else if (node_id < -1) {
         throw Exception{
             "Cannot request to debug on a node ID (" + std::to_string(node_id) +
-            ") less than -1. RTS_ATTACH_DEBUGGER is " + debugger_request};
+            ") less than -1. FINDUS_ATTACH_DEBUGGER is " + debugger_request};
       }
     }
   } else {
@@ -352,11 +353,11 @@ void DistributedTaskDriver::attach_debugger() {
                       ") greater than the number of "
                       "nodes (" +
                       std::to_string(number_of_nodes()) +
-                      ") . RTS_ATTACH_DEBUGGER is " + debugger_request};
+                      ") . FINDUS_ATTACH_DEBUGGER is " + debugger_request};
     } else if (node_id < -1) {
       throw Exception{
           "Cannot request to debug on a node ID (" + std::to_string(node_id) +
-          ") less than -1. RTS_ATTACH_DEBUGGER is " + debugger_request};
+          ") less than -1. FINDUS_ATTACH_DEBUGGER is " + debugger_request};
     }
   }
 
@@ -389,7 +390,7 @@ void DistributedTaskDriver::attach_debugger() {
 
       MPI_Status status{};
       if (const auto mpi_result = MPI_Probe(
-              node_id, message_tags::debugger_attach, rts_comm_, &status);
+              node_id, message_tags::debugger_attach, findus_comm_, &status);
           mpi_result != MPI_SUCCESS) {
         throw MpiException{
             "Could not call MPI_Probe in attach_debugger() for rank " +
@@ -413,7 +414,7 @@ void DistributedTaskDriver::attach_debugger() {
       std::string output(static_cast<size_t>(count + 4), '\0');
       if (const auto mpi_result = MPI_Recv(
               output.data(), count, MPI_CHAR, node_id,
-              message_tags::debugger_attach, rts_comm_, MPI_STATUS_IGNORE);
+              message_tags::debugger_attach, findus_comm_, MPI_STATUS_IGNORE);
           mpi_result != MPI_SUCCESS) {
         throw MpiException{
             "Could not receive data in attach_debugger() for rank " +
@@ -426,7 +427,7 @@ void DistributedTaskDriver::attach_debugger() {
                        current_node_id()) != nodes_to_attach_on.end()) {
     if (const auto mpi_result =
             MPI_Send(output_info.data(), output_info.length(), MPI_CHAR, 0,
-                     message_tags::debugger_attach, rts_comm_);
+                     message_tags::debugger_attach, findus_comm_);
         mpi_result != MPI_SUCCESS) {
       throw MpiException(
           "Could not send message for attaching to debugger from rank " +
@@ -497,7 +498,7 @@ std::string read_string_and_advance(const char*& ptr,
  * \param buffer_b The second buffer (from process_b).
  * \param process_b The process ID for buffer_b.
  *
- * \throws rts::Exception if any inconsistency is detected.
+ * \throws findus::Exception if any inconsistency is detected.
  */
 void compare_component_accounting_buffers(const std::vector<char>& buffer_a,
                                           const int process_a,
@@ -526,7 +527,7 @@ void compare_component_accounting_buffers(const std::vector<char>& buffer_a,
     throw Exception(
         "Insertion error: The number of regular components is different on "
         "different processes. This means you have different "
-        "rts::insert_parallel_component calls on different processes. "
+        "findus::insert_parallel_component calls on different processes. "
         "Process " +
         std::to_string(process_a) + " has " +
         std::to_string(number_of_regular_components_a) + ", process " +
@@ -542,7 +543,7 @@ void compare_component_accounting_buffers(const std::vector<char>& buffer_a,
     throw Exception(
         "Insertion error: The number of collection components is different on "
         "different processes. This means you have different "
-        "rts::insert_parallel_component_collection calls on different "
+        "findus::insert_parallel_component_collection calls on different "
         "processes. Process " +
         std::to_string(process_a) + " has " +
         std::to_string(number_of_collection_components_a) + ", process " +
@@ -629,12 +630,12 @@ std::vector<char> DistributedTaskDriver::serialize_component_accounting()
   size_t number_of_collection_components = 0;
   size_t number_of_collection_elements = 0;
   for (const auto& object : distributed_objects_) {
-    if (object.objects.index() == rts::detail::Regular) {
+    if (object.objects.index() == findus::detail::Regular) {
       ++number_of_regular_components;
-    } else if (object.objects.index() == rts::detail::Collection) {
+    } else if (object.objects.index() == findus::detail::Collection) {
       ++number_of_collection_components;
       number_of_collection_elements +=
-          std::get<rts::detail::Collection>(object.objects).size();
+          std::get<findus::detail::Collection>(object.objects).size();
     }
   }
 
@@ -662,7 +663,7 @@ std::vector<char> DistributedTaskDriver::serialize_component_accounting()
 
   // Serialize regular component names
   for (const auto& object : distributed_objects_) {
-    if (object.objects.index() == rts::detail::Regular) {
+    if (object.objects.index() == findus::detail::Regular) {
       const uint32_t name_length = static_cast<uint32_t>(object.name.size());
       buffer.insert(
           buffer.end(), reinterpret_cast<const char*>(&name_length),
@@ -673,7 +674,7 @@ std::vector<char> DistributedTaskDriver::serialize_component_accounting()
 
   // Serialize collection component names and their elements
   for (const auto& object : distributed_objects_) {
-    if (object.objects.index() == rts::detail::Collection) {
+    if (object.objects.index() == findus::detail::Collection) {
       // First add name of collection
       const uint32_t name_length = static_cast<uint32_t>(object.name.size());
       buffer.insert(
@@ -733,7 +734,7 @@ void DistributedTaskDriver::check_component_accounting_consistency() const {
     MPI_Status status;
     if (const auto mpi_result =
             MPI_Probe(child_id, message_tags::insert_consistency_check,
-                      rts_comm_, &status);
+                      findus_comm_, &status);
         mpi_result != MPI_SUCCESS) {
       throw MpiException{
           "Failed to call MPI_Probe during insert_barrier()'s consistency "
@@ -756,7 +757,7 @@ void DistributedTaskDriver::check_component_accounting_consistency() const {
       if (const auto mpi_result =
               MPI_Recv(child_buffer.data(), child_buffer_size, MPI_CHAR,
                        child_id, message_tags::insert_consistency_check,
-                       rts_comm_, MPI_STATUS_IGNORE);
+                       findus_comm_, MPI_STATUS_IGNORE);
           mpi_result != MPI_SUCCESS) {
         throw MpiException{
             "Failed to call MPI_Recv during insert_barrier()'s consistency "
@@ -782,7 +783,7 @@ void DistributedTaskDriver::check_component_accounting_consistency() const {
     if (local_buffer_size > 0) {
       if (const auto mpi_result = MPI_Isend(
               local_buffer.data(), local_buffer_size, MPI_CHAR, parent_id,
-              message_tags::insert_consistency_check, rts_comm_, &request);
+              message_tags::insert_consistency_check, findus_comm_, &request);
           mpi_result != MPI_SUCCESS) {
         throw MpiException{
             "Failed to call MPI_Send during insert_barrier()'s consistency "
@@ -868,7 +869,7 @@ void DistributedTaskDriver::send_message_impl(Message_t in_message) {
   }
   if (const auto mpi_result = MPI_Isend(
           message.message.get(), num_bytes, MPI_BYTE, destination_process_id,
-          message_tags::regular, rts_comm_, &request);
+          message_tags::regular, findus_comm_, &request);
       mpi_result != MPI_SUCCESS) {
     throw MpiException{"Failed to send regular message from rank " +
                        std::to_string(current_node_id()) + " to rank " +
@@ -932,7 +933,7 @@ void DistributedTaskDriver::send_reduction_message_impl(Message_t in_message) {
               : MessageHeader::no_collection_index(),
           callback_impl.distributed_object_index_, current_node_id(),
           target_process, global_qd_.local_sweep_number(), was_serialized,
-          rts::MessageType::Invoke,
+          findus::MessageType::Invoke,
           message.value().get_header()->data_alignment(),
           reduction::get_data_size(message.value()),
           reduction::get_data_pointer<std::byte>(message.value()));
@@ -946,7 +947,7 @@ void DistributedTaskDriver::send_reduction_message_impl(Message_t in_message) {
           // For broadcasts we first set the target process ID to
           // self, then update it as we send to different processes.
           current_node_id(), global_qd_.local_sweep_number(), was_serialized,
-          rts::MessageType::Broadcast,
+          findus::MessageType::Broadcast,
           message.value().get_header()->data_alignment(),
           reduction::get_data_size(message.value()),
           reduction::get_data_pointer<std::byte>(message.value()));
@@ -1105,8 +1106,8 @@ void DistributedTaskDriver::initiate_receives(const int max_to_receive) {
     int flag{0};
     MPI_Status status{};
     if (const auto mpi_result =
-            MPI_Iprobe(node_id_for_receive_, message_tags::regular, rts_comm_,
-                       &flag, &status);
+            MPI_Iprobe(node_id_for_receive_, message_tags::regular,
+                       findus_comm_, &flag, &status);
         mpi_result != MPI_SUCCESS) {
       throw MpiException{
           "Failed to call MPI_Iprobe_to check for a regular "
@@ -1142,7 +1143,8 @@ void DistributedTaskDriver::initiate_receives(const int max_to_receive) {
                 std::byte[static_cast<unsigned long>(message_size)]}});
     auto& [request, message] = incoming_mpi_messages_.back();
     MPI_Irecv(message.message.get(), message_size, MPI_BYTE,
-              node_id_for_receive_, message_tags::regular, rts_comm_, &request);
+              node_id_for_receive_, message_tags::regular, findus_comm_,
+              &request);
     ++node_id_for_receive_;
   }
 }
@@ -1454,7 +1456,7 @@ void DistributedTaskDriver::add_local_broadcast_tasks(
             message_header.distributed_object_index(),
             message_header.source_process_id(), current_node_id(),
             message_header.quiescence_detection_sweep_number(),
-            message_header.data_was_serialized(), rts::MessageType::Invoke,
+            message_header.data_was_serialized(), findus::MessageType::Invoke,
             message_header.data_alignment(), data_size,
             header.data_location()));
       }
@@ -1535,7 +1537,7 @@ DistributedTaskDriver& create_distributed_task_driver(
   task_driver->barrier();
   return *task_driver.get();
 }
-}  // namespace rts
+}  // namespace findus
 
 // Callback.cpp equivalent
 //
@@ -1543,7 +1545,7 @@ DistributedTaskDriver& create_distributed_task_driver(
 // DistributedTaskDriver object, and also because MPI-based tests have
 // significant 0.5 second or more startup overhead, so combining them helps
 // keep test runtime down.
-namespace rts {
+namespace findus {
 CallbackBase::CallbackBase() = default;
 CallbackBase::~CallbackBase() = default;
 
@@ -1555,9 +1557,9 @@ DistributedTaskDriver& CallbackBase::get_task_driver() const {
   }
   return *task_driver;
 }
-}  // namespace rts
+}  // namespace findus
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <cstdint>
 #include <doctest/doctest.h>
@@ -1574,27 +1576,27 @@ DistributedTaskDriver& CallbackBase::get_task_driver() const {
 #include "Rts/DistributedObjectCollection.hpp"
 #include "Rts/Serialize/Stl/Vector.hpp"
 
-namespace rts {
+namespace findus {
 namespace {
 namespace testing {
 void test_bulk_enequeue_iterator_exceptions() {
   using IncomingMpiMessages_t = DistributedTaskDriver::IncomingMpiMessages_t;
 
   // Helper to create a Message_t with a given MessageType
-  auto make_message = [](rts::MessageType type) -> Message_t {
-    const std::uint64_t num_bytes = sizeof(rts::MessageHeader);
+  auto make_message = [](findus::MessageType type) -> Message_t {
+    const std::uint64_t num_bytes = sizeof(findus::MessageHeader);
     std::unique_ptr<std::byte[]> buffer(
         new (std::align_val_t(alignof(MessageHeader))) std::byte[num_bytes]);
     new (buffer.get())
-        rts::MessageHeader(rts::detail::MemberFunctionPtr{}, 0, num_bytes, 0, 0,
-                           0, 0, 0, false, type);
+        findus::MessageHeader(findus::detail::MemberFunctionPtr{}, 0, num_bytes,
+                              0, 0, 0, 0, 0, false, type);
     return {std::move(buffer)};
   };
 
   {
     // 1. Test already dereferenced exception
     IncomingMpiMessages_t vec{};
-    vec.emplace_back(MPI_Request{}, make_message(rts::MessageType::Invoke));
+    vec.emplace_back(MPI_Request{}, make_message(findus::MessageType::Invoke));
     BulkEnqueueIterator bulk_it(vec.begin());
     // First dereference should succeed
     CHECK_NOTHROW(*bulk_it);
@@ -1602,20 +1604,21 @@ void test_bulk_enequeue_iterator_exceptions() {
     CHECK_THROWS_WITH_AS(*bulk_it,
                          "Already dereferenced the iterator and we can only "
                          "dereference it once.",
-                         rts::Exception);
+                         findus::Exception);
   }
 
   {
     // 2. Test message type not Invoke exception
     IncomingMpiMessages_t vec{};
-    vec.emplace_back(MPI_Request{}, make_message(rts::MessageType::Broadcast));
+    vec.emplace_back(MPI_Request{},
+                     make_message(findus::MessageType::Broadcast));
     BulkEnqueueIterator bulk_it(vec.begin());
     CHECK_THROWS_WITH_AS(
         *bulk_it,
         "The received message type must be Invoke. Other message types need to "
         "be preprocessed and turned into Invoke messages. The message type "
         "received is Broadcast",
-        rts::Exception);
+        findus::Exception);
   }
 }
 
@@ -1625,7 +1628,7 @@ struct TestBroadcastAction {};
 struct TestBroadcastToAction {};
 
 // Regular parallel component
-struct RegularComponent : public rts::detail::DistributedObjectBase {
+struct RegularComponent : public findus::detail::DistributedObjectBase {
   int last_result = 0;
   std::tuple<int, int> last_args{0, 0};
   std::tuple<int, int, double> last_broadcast_args{0, 0, 0.0};
@@ -1633,19 +1636,19 @@ struct RegularComponent : public rts::detail::DistributedObjectBase {
   static std::string name() { return "RegularComponent"; }
 
   template <class Action, class... Args>
-  void threaded_action(rts::DistributedTaskDriver&, Args... args);
+  void threaded_action(findus::DistributedTaskDriver&, Args... args);
 };
 
 template <>
-void RegularComponent::threaded_action<TestAction>(rts::DistributedTaskDriver&,
-                                                   const int a, const int b) {
+void RegularComponent::threaded_action<TestAction>(
+    findus::DistributedTaskDriver&, const int a, const int b) {
   last_args = std::make_tuple(a, b);
   last_result += static_cast<int>(a + b);
 }
 
 template <>
-void RegularComponent::threaded_action<TestAction>(rts::DistributedTaskDriver&,
-                                                   const std::vector<int> a) {
+void RegularComponent::threaded_action<TestAction>(
+    findus::DistributedTaskDriver&, const std::vector<int> a) {
   last_args =
       std::tuple{static_cast<int>(a.size()), static_cast<int>(a.capacity())};
   last_result = std::accumulate(a.begin(), a.end(), 0);
@@ -1654,7 +1657,7 @@ void RegularComponent::threaded_action<TestAction>(rts::DistributedTaskDriver&,
 // Specialization for broadcast (int, int, double)
 template <>
 void RegularComponent::threaded_action<TestBroadcastAction>(
-    rts::DistributedTaskDriver&, const int a, const int b, const double d) {
+    findus::DistributedTaskDriver&, const int a, const int b, const double d) {
   last_broadcast_args = std::make_tuple(a, b, d);
   last_result = static_cast<int>(a + b + d);
 }
@@ -1662,7 +1665,7 @@ void RegularComponent::threaded_action<TestBroadcastAction>(
 // Specialization for broadcast (int, int, double, std::vector<int>)
 template <>
 void RegularComponent::threaded_action<TestBroadcastAction>(
-    rts::DistributedTaskDriver&, const int a, const int b, const double d,
+    findus::DistributedTaskDriver&, const int a, const int b, const double d,
     const std::vector<int> vec) {
   last_broadcast_args = std::make_tuple(a, b, d);
   last_result =
@@ -1671,8 +1674,8 @@ void RegularComponent::threaded_action<TestBroadcastAction>(
 
 // Collection parallel component
 struct CollectionComponent
-    : public rts::DistributedObjectCollection<CollectionComponent> {
-  using rts_collection_index = uint64_t;
+    : public findus::DistributedObjectCollection<CollectionComponent> {
+  using findus_collection_index = uint64_t;
   int last_result{0};
   std::tuple<int, int> last_args{};
   std::tuple<int, int, double> last_broadcast_args{0, 0, 0.0};
@@ -1681,13 +1684,13 @@ struct CollectionComponent
   static std::string name() { return "CollectionComponent"; }
 
   template <class Action, class... Args>
-  void threaded_action(rts::DistributedTaskDriver&,
-                       rts_collection_index my_index, Args... args);
+  void threaded_action(findus::DistributedTaskDriver&,
+                       findus_collection_index my_index, Args... args);
 };
 
 template <>
 void CollectionComponent::threaded_action<TestAction>(
-    rts::DistributedTaskDriver&, const rts_collection_index my_index,
+    findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const int a, const int b) {
   CHECK(my_index != 0);
   CHECK(my_index != MessageHeader::no_collection_index());
@@ -1697,7 +1700,7 @@ void CollectionComponent::threaded_action<TestAction>(
 
 template <>
 void CollectionComponent::threaded_action<TestAction>(
-    rts::DistributedTaskDriver&, const rts_collection_index my_index,
+    findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const std::vector<int> a) {
   CHECK(my_index != 0);
   CHECK(my_index != MessageHeader::no_collection_index());
@@ -1709,7 +1712,7 @@ void CollectionComponent::threaded_action<TestAction>(
 // Specialization for broadcast (int, int, double)
 template <>
 void CollectionComponent::threaded_action<TestBroadcastAction>(
-    rts::DistributedTaskDriver&, const rts_collection_index my_index,
+    findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const int a, const int b, const double d) {
   CHECK(my_index != 0);
   CHECK(my_index != MessageHeader::no_collection_index());
@@ -1720,7 +1723,7 @@ void CollectionComponent::threaded_action<TestBroadcastAction>(
 // Specialization for broadcast (int, int, double, std::vector<int>)
 template <>
 void CollectionComponent::threaded_action<TestBroadcastAction>(
-    rts::DistributedTaskDriver&, const rts_collection_index my_index,
+    findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const int a, const int b, const double d, const std::vector<int> vec) {
   CHECK(my_index != 0);
   CHECK(my_index != MessageHeader::no_collection_index());
@@ -1732,7 +1735,7 @@ void CollectionComponent::threaded_action<TestBroadcastAction>(
 // Specialization for broadcast_to (int, double)
 template <>
 void CollectionComponent::threaded_action<TestBroadcastToAction>(
-    rts::DistributedTaskDriver&, const rts_collection_index my_index,
+    findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const int a, const double d) {
   CHECK(my_index != 0);
   CHECK(my_index != MessageHeader::no_collection_index());
@@ -1743,7 +1746,7 @@ void CollectionComponent::threaded_action<TestBroadcastToAction>(
 // Specialization for broadcast_to (int, double, std::vector<int>)
 template <>
 void CollectionComponent::threaded_action<TestBroadcastToAction>(
-    rts::DistributedTaskDriver&, const rts_collection_index my_index,
+    findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const int a, const double d, const std::vector<int> vec) {
   CHECK(my_index != 0);
   CHECK(my_index != MessageHeader::no_collection_index());
@@ -1755,7 +1758,7 @@ void CollectionComponent::threaded_action<TestBroadcastToAction>(
 void reset_args_on_all(DistributedTaskDriver& driver) {
   driver.insert_barrier();
   RegularComponent* const reg =
-      rts::local_parallel_component<RegularComponent>(driver);
+      findus::local_parallel_component<RegularComponent>(driver);
   reg->last_result = 0;
   reg->last_args = std::tuple<int, int>{0, 0};
   reg->last_broadcast_args = std::tuple<int, int, double>{0, 0, 0.0};
@@ -1763,7 +1766,7 @@ void reset_args_on_all(DistributedTaskDriver& driver) {
   for (const auto& [idx, holder] :
        driver.collection_ids_and_locations<CollectionComponent>()) {
     auto* const elem =
-        rts::local_parallel_component<CollectionComponent>(driver, idx);
+        findus::local_parallel_component<CollectionComponent>(driver, idx);
     if (elem != nullptr) {
       CHECK(holder.process_id == driver.current_node_id());
       elem->last_result = 0;
@@ -1791,7 +1794,7 @@ void test_callbacks(DistributedTaskDriver& driver) {
     std::unique_ptr<CallbackBase> cb_clone{nullptr};
     if (driver.current_node_id() == from_process) {
       // Element 42ul was inserted in test_invoke.
-      cb = rts::make_unique_invoke_callback<TestAction, CollectionComponent>(
+      cb = findus::make_unique_invoke_callback<TestAction, CollectionComponent>(
           42ul, 7 + from_process, 13);
 
       CHECK_FALSE(cb->was_invoked());
@@ -1809,7 +1812,7 @@ void test_callbacks(DistributedTaskDriver& driver) {
 
     if (driver.current_node_id() == 0) {
       auto* const elem =
-          rts::local_parallel_component<CollectionComponent>(driver, 42ul);
+          findus::local_parallel_component<CollectionComponent>(driver, 42ul);
       CHECK(elem->last_args == std::tuple{7 + from_process, 13});
       CHECK(elem->last_broadcast_args == std::make_tuple(0, 0, 0.0));
       CHECK(elem->last_broadcast_to_args == std::make_tuple(0, 0.0));
@@ -1822,7 +1825,7 @@ void test_callbacks(DistributedTaskDriver& driver) {
           "Already invoked the Callback. Cannot invoke() it a second time. You "
           "must first make a copy of the callback, for example using "
           "get_clone(), and then call invoke() on the clone the second time.",
-          rts::Exception);
+          findus::Exception);
 
       // Note: because the types being sent (ints) are trivially copyable, the
       // move semantics decay to copy and so are clone is equal to the
@@ -1844,7 +1847,7 @@ void test_callbacks(DistributedTaskDriver& driver) {
 
     if (driver.current_node_id() == 0) {
       auto* const elem =
-          rts::local_parallel_component<CollectionComponent>(driver, 42ul);
+          findus::local_parallel_component<CollectionComponent>(driver, 42ul);
       CHECK(elem->last_args == std::tuple{7 + from_process, 13});
       CHECK(elem->last_broadcast_args == std::make_tuple(0, 0, 0.0));
       CHECK(elem->last_broadcast_to_args == std::make_tuple(0, 0.0));
@@ -1863,8 +1866,8 @@ void test_callbacks(DistributedTaskDriver& driver) {
     std::unique_ptr<CallbackBase> cb_clone{nullptr};
     if (driver.current_node_id() == from_process) {
       // Element 42ul was inserted in test_invoke.
-      cb = rts::make_unique_broadcast_callback<TestBroadcastAction,
-                                               CollectionComponent>(
+      cb = findus::make_unique_broadcast_callback<TestBroadcastAction,
+                                                  CollectionComponent>(
           9 + from_process, 23, 2.3);
 
       CHECK_FALSE(cb->was_invoked());
@@ -1883,7 +1886,7 @@ void test_callbacks(DistributedTaskDriver& driver) {
     for (const auto& [idx, holder] :
          driver.collection_ids_and_locations<CollectionComponent>()) {
       auto* const elem =
-          rts::local_parallel_component<CollectionComponent>(driver, idx);
+          findus::local_parallel_component<CollectionComponent>(driver, idx);
       if (elem != nullptr) {
         CHECK(holder.process_id == driver.current_node_id());
         CHECK(elem->last_args == std::make_tuple(0, 0.0));
@@ -1901,7 +1904,7 @@ void test_callbacks(DistributedTaskDriver& driver) {
           "Already invoked the Callback. Cannot invoke() it a second time. You "
           "must first make a copy of the callback, for example using "
           "get_clone(), and then call invoke() on the clone the second time.",
-          rts::Exception);
+          findus::Exception);
 
       // Note: because the types being sent (ints) are trivially copyable, the
       // move semantics decay to copy and so are clone is equal to the
@@ -1924,7 +1927,7 @@ void test_callbacks(DistributedTaskDriver& driver) {
     for (const auto& [idx, holder] :
          driver.collection_ids_and_locations<CollectionComponent>()) {
       auto* const elem =
-          rts::local_parallel_component<CollectionComponent>(driver, idx);
+          findus::local_parallel_component<CollectionComponent>(driver, idx);
       if (elem != nullptr) {
         CHECK(holder.process_id == driver.current_node_id());
         CHECK(elem->last_args == std::make_tuple(0, 0.0));
@@ -1950,8 +1953,8 @@ void test_callbacks(DistributedTaskDriver& driver) {
     std::unique_ptr<CallbackBase> cb{nullptr};
     std::unique_ptr<CallbackBase> cb_clone{nullptr};
     if (driver.current_node_id() == from_process) {
-      cb = rts::make_unique_broadcast_to_callback<TestBroadcastToAction,
-                                                  CollectionComponent>(
+      cb = findus::make_unique_broadcast_to_callback<TestBroadcastToAction,
+                                                     CollectionComponent>(
           predicate, 11 + from_process, 7.5);
 
       CHECK_FALSE(cb->was_invoked());
@@ -1970,7 +1973,7 @@ void test_callbacks(DistributedTaskDriver& driver) {
     for (const auto& [idx, holder] :
          driver.collection_ids_and_locations<CollectionComponent>()) {
       auto* const elem =
-          rts::local_parallel_component<CollectionComponent>(driver, idx);
+          findus::local_parallel_component<CollectionComponent>(driver, idx);
       if (elem != nullptr) {
         CHECK(holder.process_id == driver.current_node_id());
         CHECK(elem->last_args == std::make_tuple(0, 0.0));
@@ -1992,7 +1995,7 @@ void test_callbacks(DistributedTaskDriver& driver) {
           "Already invoked the Callback. Cannot invoke() it a second time. You "
           "must first make a copy of the callback, for example using "
           "get_clone(), and then call invoke() on the clone the second time.",
-          rts::Exception);
+          findus::Exception);
 
       // Note: because the types being sent (ints) are trivially copyable, the
       // move semantics decay to copy and so are clone is equal to the
@@ -2015,7 +2018,7 @@ void test_callbacks(DistributedTaskDriver& driver) {
     for (const auto& [idx, holder] :
          driver.collection_ids_and_locations<CollectionComponent>()) {
       auto* const elem =
-          rts::local_parallel_component<CollectionComponent>(driver, idx);
+          findus::local_parallel_component<CollectionComponent>(driver, idx);
       if (elem != nullptr) {
         CHECK(holder.process_id == driver.current_node_id());
         CHECK(elem->last_args == std::make_tuple(0, 0.0));
@@ -2097,7 +2100,7 @@ void test_invoke(DistributedTaskDriver& driver) {
       driver.launch_threads(),
       "Cannot call driver.launch_threads() while still in Insert mode. You "
       "must first call driver.insert_barrier() on all processes.",
-      rts::Exception);
+      findus::Exception);
   {
     const std::string expected_message_rtq{
         "Cannot call driver.run_to_quiescence() while still in Insert mode. "
@@ -2105,26 +2108,26 @@ void test_invoke(DistributedTaskDriver& driver) {
         "Process ID: " +
         std::to_string(driver.current_node_id())};
     CHECK_THROWS_WITH_AS(driver.run_to_quiescence(),
-                         expected_message_rtq.c_str(), rts::Exception);
+                         expected_message_rtq.c_str(), findus::Exception);
     const std::string expected_message_invoke{
         "Cannot invoke actions while still in Insert mode. You must first call "
         "driver.insert_barrier() on all processes."};
     CHECK_THROWS_WITH_AS((driver.invoke<TestAction, RegularComponent>(
                              driver.current_node_id(), 5, 7)),
-                         expected_message_invoke.c_str(), rts::Exception);
+                         expected_message_invoke.c_str(), findus::Exception);
     const std::string expected_message_broadcast{
         "Cannot perform broadcasts while still in Insert mode. You must first "
         "call driver.insert_barrier() on all processes."};
     CHECK_THROWS_WITH_AS(
         (driver.broadcast<TestBroadcastAction, RegularComponent>(10, 20, 1.5)),
-        expected_message_broadcast.c_str(), rts::Exception);
+        expected_message_broadcast.c_str(), findus::Exception);
     const std::string expected_message_broadcast_to{
         "Cannot perform broadcast_to while still in Insert mode. You must "
         "first call driver.insert_barrier() on all processes."};
     CHECK_THROWS_WITH_AS(
         (driver.broadcast_to<TestBroadcastToAction, CollectionComponent>(
             [](const std::uint64_t index) { return index > 10; }, 6, 2.5)),
-        expected_message_broadcast_to.c_str(), rts::Exception);
+        expected_message_broadcast_to.c_str(), findus::Exception);
   }
 
   driver.insert_barrier();
@@ -2137,7 +2140,7 @@ void test_invoke(DistributedTaskDriver& driver) {
         "driver.launch_threads(). Process ID: " +
         std::to_string(driver.current_node_id())};
     CHECK_THROWS_WITH_AS(driver.run_to_quiescence(),
-                         expected_message_rtq.c_str(), rts::Exception);
+                         expected_message_rtq.c_str(), findus::Exception);
     const std::string expected_message_invoke{
         "Cannot call invoke() on process " +
         std::to_string(driver.current_node_id()) +
@@ -2145,7 +2148,7 @@ void test_invoke(DistributedTaskDriver& driver) {
         "first call driver.launch_threads()."};
     CHECK_THROWS_WITH_AS((driver.invoke<TestAction, RegularComponent>(
                              driver.current_node_id(), 5, 7)),
-                         expected_message_invoke.c_str(), rts::Exception);
+                         expected_message_invoke.c_str(), findus::Exception);
     const std::string expected_message_broadcast{
         "Cannot call broadcast() on process " +
         std::to_string(driver.current_node_id()) +
@@ -2153,7 +2156,7 @@ void test_invoke(DistributedTaskDriver& driver) {
         "first call driver.launch_threads()."};
     CHECK_THROWS_WITH_AS(
         (driver.broadcast<TestBroadcastAction, RegularComponent>(10, 20, 1.5)),
-        expected_message_broadcast.c_str(), rts::Exception);
+        expected_message_broadcast.c_str(), findus::Exception);
     const std::string expected_message_broadcast_to{
         "Cannot call broadcast_to() on process " +
         std::to_string(driver.current_node_id()) +
@@ -2162,7 +2165,7 @@ void test_invoke(DistributedTaskDriver& driver) {
     CHECK_THROWS_WITH_AS(
         (driver.broadcast_to<TestBroadcastToAction, CollectionComponent>(
             [](const std::uint64_t index) { return index > 10; }, 6, 2.5)),
-        expected_message_broadcast_to.c_str(), rts::Exception);
+        expected_message_broadcast_to.c_str(), findus::Exception);
   }
 
   {
@@ -2211,7 +2214,7 @@ void test_invoke(DistributedTaskDriver& driver) {
       CHECK_THROWS_WITH_AS(
           driver.remove_parallel_component_collection<CollectionComponent>(
               10000),
-          expected_message.c_str(), rts::Exception);
+          expected_message.c_str(), findus::Exception);
     }
     driver.insert_barrier();
   }
@@ -2229,7 +2232,7 @@ void test_invoke(DistributedTaskDriver& driver) {
         "already running. Process ID: " +
         std::to_string(driver.current_node_id())};
     CHECK_THROWS_WITH_AS(driver.launch_threads(), expected_message_lt.c_str(),
-                         rts::Exception);
+                         findus::Exception);
   }
 
   // Test invoke for regular component
@@ -2247,7 +2250,7 @@ void test_invoke(DistributedTaskDriver& driver) {
   driver.run_to_quiescence();
 
   // Check results for invoke
-  auto* reg = rts::local_parallel_component<RegularComponent>(driver);
+  auto* reg = findus::local_parallel_component<RegularComponent>(driver);
   CHECK(reg->last_result == 12);
   CHECK(std::get<0>(reg->last_args) == 5);
   CHECK(std::get<1>(reg->last_args) == 7);
@@ -2257,7 +2260,7 @@ void test_invoke(DistributedTaskDriver& driver) {
        {std::tuple{42ul, 3, 4}, {43ul, 7, 9}, {44ul, 7, 9}, {46ul, 2, 5}}) {
     const int expected_node = all_indices.at(idx);
     auto* const elem =
-        rts::local_parallel_component<CollectionComponent>(driver, idx);
+        findus::local_parallel_component<CollectionComponent>(driver, idx);
     if (driver.current_node_id() == expected_node) {
       REQUIRE(elem != nullptr);
       CHECK(elem->last_result == expected_a + expected_b);
@@ -2271,7 +2274,7 @@ void test_invoke(DistributedTaskDriver& driver) {
   // Make sure we didn't send to other indices
   for (const uint64_t idx : {45ul, 47ul, 48ul}) {
     const auto* const elem =
-        rts::local_parallel_component<CollectionComponent>(driver, idx);
+        findus::local_parallel_component<CollectionComponent>(driver, idx);
     if (driver.current_node_id() == all_indices.at(idx)) {
       REQUIRE(elem != nullptr);
       CHECK(elem->last_result == 0);
@@ -2283,7 +2286,7 @@ void test_invoke(DistributedTaskDriver& driver) {
   // verify no broadcast or broadcast_to was recorded.
   for (const auto& [idx, node] : all_indices) {
     auto* const elem =
-        rts::local_parallel_component<CollectionComponent>(driver, idx);
+        findus::local_parallel_component<CollectionComponent>(driver, idx);
     if (driver.current_node_id() == node) {
       REQUIRE(elem != nullptr);
       CHECK(elem->last_result == 0); // If this fails, we missed a check and
@@ -2335,7 +2338,7 @@ void test_invoke(DistributedTaskDriver& driver) {
        {std::tuple{42ul, 24}, {43ul, 30}, {44ul, 117}, {46ul, 128}}) {
     const int expected_node = all_indices.at(idx);
     auto* const elem =
-        rts::local_parallel_component<CollectionComponent>(driver, idx);
+        findus::local_parallel_component<CollectionComponent>(driver, idx);
     if (driver.current_node_id() == expected_node) {
       REQUIRE(elem != nullptr);
       CHECK(elem->last_result == expected_accum);
@@ -2350,7 +2353,7 @@ void test_invoke(DistributedTaskDriver& driver) {
   // Make sure we didn't send to other indices
   for (const uint64_t idx : {45ul, 47ul, 48ul}) {
     const auto* const elem =
-        rts::local_parallel_component<CollectionComponent>(driver, idx);
+        findus::local_parallel_component<CollectionComponent>(driver, idx);
     if (driver.current_node_id() == all_indices.at(idx)) {
       REQUIRE(elem != nullptr);
       CHECK(elem->last_result == 0);
@@ -2362,7 +2365,7 @@ void test_invoke(DistributedTaskDriver& driver) {
   // verify no broadcast or broadcast_to was recorded.
   for (const auto& [idx, node] : all_indices) {
     auto* const elem =
-        rts::local_parallel_component<CollectionComponent>(driver, idx);
+        findus::local_parallel_component<CollectionComponent>(driver, idx);
     if (driver.current_node_id() == node) {
       REQUIRE(elem != nullptr);
       CHECK(elem->last_result == 0);  // If this fails, we missed a check and
@@ -2409,7 +2412,7 @@ void test_invoke(DistributedTaskDriver& driver) {
 
     for (const auto& [idx, node] : all_indices) {
       auto* const elem =
-          rts::local_parallel_component<CollectionComponent>(driver, idx);
+          findus::local_parallel_component<CollectionComponent>(driver, idx);
       if (driver.current_node_id() == node) {
         REQUIRE(elem != nullptr);
         CHECK(elem->last_result ==
@@ -2465,7 +2468,7 @@ void test_invoke(DistributedTaskDriver& driver) {
     // Check results for broadcast_to
     for (const auto& [idx, node] : all_indices) {
       auto* const elem =
-          rts::local_parallel_component<CollectionComponent>(driver, idx);
+          findus::local_parallel_component<CollectionComponent>(driver, idx);
       if (driver.current_node_id() == node) {
         REQUIRE(elem != nullptr);
         if (EvenPredicate{}(idx)) {
@@ -2509,24 +2512,25 @@ void test_invoke(DistributedTaskDriver& driver) {
 }  // namespace
 
 MPI_TEST_CASE("DistributedTaskDriver.2Processes", 2) {
-  rts::DistributedTaskDriver& driver =
-      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  findus::DistributedTaskDriver& driver =
+      findus::create_distributed_task_driver(nullptr, nullptr, false);
   testing::test_bulk_enequeue_iterator_exceptions();
   testing::test_invoke(driver);
 }
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertErrorRegular0", 2) {
-  rts::DistributedTaskDriver& driver =
-      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  findus::DistributedTaskDriver& driver =
+      findus::create_distributed_task_driver(nullptr, nullptr, false);
   if (driver.current_node_id() == 0) {
     driver.insert_parallel_component<testing::RegularComponent>();
     CHECK_THROWS_WITH_AS(
         driver.insert_barrier(),
         "Insertion error: The number of regular components is different on "
         "different processes. This means you have different "
-        "rts::insert_parallel_component calls on different processes. Process "
+        "findus::insert_parallel_component calls on different processes. "
+        "Process "
         "0 has 1, process 1 has 0",
-        rts::Exception);
+        findus::Exception);
     driver.barrier();
   } else {
     driver.insert_barrier();
@@ -2534,8 +2538,8 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertErrorRegular0", 2) {
 }
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertErrorRegular1", 2) {
-  rts::DistributedTaskDriver& driver =
-      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  findus::DistributedTaskDriver& driver =
+      findus::create_distributed_task_driver(nullptr, nullptr, false);
   if (driver.current_node_id() != 0) {
     driver.insert_parallel_component<testing::RegularComponent>();
     driver.insert_barrier();
@@ -2544,16 +2548,17 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertErrorRegular1", 2) {
         driver.insert_barrier(),
         "Insertion error: The number of regular components is different on "
         "different processes. This means you have different "
-        "rts::insert_parallel_component calls on different processes. Process "
+        "findus::insert_parallel_component calls on different processes. "
+        "Process "
         "0 has 0, process 1 has 1",
-        rts::Exception);
+        findus::Exception);
     driver.barrier();
   }
 }
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertErrorCollection0", 2) {
-  rts::DistributedTaskDriver& driver =
-      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  findus::DistributedTaskDriver& driver =
+      findus::create_distributed_task_driver(nullptr, nullptr, false);
   if (driver.current_node_id() == 0) {
     driver.insert_parallel_component_collection<testing::CollectionComponent>(
         42ul, 0);
@@ -2561,9 +2566,9 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertErrorCollection0", 2) {
         driver.insert_barrier(),
         "Insertion error: The number of collection components is different on "
         "different processes. This means you have different "
-        "rts::insert_parallel_component_collection calls on different "
+        "findus::insert_parallel_component_collection calls on different "
         "processes. Process 0 has 1, process 1 has 0",
-        rts::Exception);
+        findus::Exception);
     driver.barrier();
   } else {
     driver.insert_barrier();
@@ -2571,8 +2576,8 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertErrorCollection0", 2) {
 }
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertErrorCollection1", 2) {
-  rts::DistributedTaskDriver& driver =
-      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  findus::DistributedTaskDriver& driver =
+      findus::create_distributed_task_driver(nullptr, nullptr, false);
   if (driver.current_node_id() != 0) {
     driver.insert_parallel_component_collection<testing::CollectionComponent>(
         42ul, 0);
@@ -2582,22 +2587,22 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertErrorCollection1", 2) {
         driver.insert_barrier(),
         "Insertion error: The number of collection components is different on "
         "different processes. This means you have different "
-        "rts::insert_parallel_component_collection calls on different "
+        "findus::insert_parallel_component_collection calls on different "
         "processes. Process 0 has 0, process 1 has 1",
-        rts::Exception);
+        findus::Exception);
     driver.barrier();
   }
 }
 
 namespace {
-struct RegularComponentLong : public rts::detail::DistributedObjectBase {
+struct RegularComponentLong : public findus::detail::DistributedObjectBase {
   static std::string name() { return "RegularComponentLong"; }
 };
 }  // namespace
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertErrorRegularName", 2) {
-  rts::DistributedTaskDriver& driver =
-      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  findus::DistributedTaskDriver& driver =
+      findus::create_distributed_task_driver(nullptr, nullptr, false);
   if (driver.current_node_id() == 0) {
     driver.insert_parallel_component<testing::RegularComponent>();
   } else {
@@ -2611,7 +2616,7 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertErrorRegularName", 2) {
         "'RegularComponent', process 1 has 'RegularComponentLong'. You must "
         "have inserted the components in a different order on different "
         "processes.",
-        rts::Exception);
+        findus::Exception);
     driver.barrier();
   } else {
     driver.insert_barrier();
@@ -2637,15 +2642,15 @@ TEST_CASE("CompareComponentAccountingBuffers") {
 // Test: Collection component name differs
 namespace {
 struct CollectionComponentLong
-    : public rts::DistributedObjectCollection<CollectionComponentLong> {
-  using rts_collection_index = uint64_t;
+    : public findus::DistributedObjectCollection<CollectionComponentLong> {
+  using findus_collection_index = uint64_t;
   static std::string name() { return "CollectionComponentLong"; }
 };
 }  // namespace
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionName0", 2) {
-  rts::DistributedTaskDriver& driver =
-      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  findus::DistributedTaskDriver& driver =
+      findus::create_distributed_task_driver(nullptr, nullptr, false);
   if (driver.current_node_id() == 0) {
     driver.insert_parallel_component_collection<testing::CollectionComponent>(
         42ul, 0);
@@ -2658,7 +2663,7 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionName0", 2) {
         driver.insert_barrier(),
         "Insertion error: Collection component 0 name differs: process 0 has "
         "'CollectionComponent', process 1 has 'CollectionComponentLong'",
-        rts::Exception);
+        findus::Exception);
     driver.barrier();
   } else {
     driver.insert_barrier();
@@ -2666,8 +2671,8 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionName0", 2) {
 }
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionName1", 2) {
-  rts::DistributedTaskDriver& driver =
-      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  findus::DistributedTaskDriver& driver =
+      findus::create_distributed_task_driver(nullptr, nullptr, false);
   if (driver.current_node_id() == 1) {
     driver.insert_parallel_component_collection<testing::CollectionComponent>(
         42ul, 1);
@@ -2680,7 +2685,7 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionName1", 2) {
         driver.insert_barrier(),
         "Insertion error: Collection component 0 name differs: process 0 has "
         "'CollectionComponentLong', process 1 has 'CollectionComponent'",
-        rts::Exception);
+        findus::Exception);
     driver.barrier();
   } else {
     driver.insert_barrier();
@@ -2689,8 +2694,8 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionName1", 2) {
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionNumElements0", 2) {
   // Test: Collection number of elements differs
-  rts::DistributedTaskDriver& driver =
-      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  findus::DistributedTaskDriver& driver =
+      findus::create_distributed_task_driver(nullptr, nullptr, false);
   if (driver.current_node_id() == 0) {
     driver.insert_parallel_component_collection<testing::CollectionComponent>(
         42ul, 0);
@@ -2705,7 +2710,7 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionNumElements0", 2) {
         driver.insert_barrier(),
         "Insertion error: Collection component 'CollectionComponent' number of "
         "elements differs: process 0 has 2, process 1 has 1",
-        rts::Exception);
+        findus::Exception);
     driver.barrier();
   } else {
     driver.insert_barrier();
@@ -2714,8 +2719,8 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionNumElements0", 2) {
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionNumElements1", 2) {
   // Test: Collection number of elements differs
-  rts::DistributedTaskDriver& driver =
-      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  findus::DistributedTaskDriver& driver =
+      findus::create_distributed_task_driver(nullptr, nullptr, false);
   if (driver.current_node_id() == 1) {
     driver.insert_parallel_component_collection<testing::CollectionComponent>(
         42ul, 1);
@@ -2730,7 +2735,7 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionNumElements1", 2) {
         driver.insert_barrier(),
         "Insertion error: Collection component 'CollectionComponent' number of "
         "elements differs: process 0 has 1, process 1 has 2",
-        rts::Exception);
+        findus::Exception);
     driver.barrier();
   } else {
     driver.insert_barrier();
@@ -2739,8 +2744,8 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionNumElements1", 2) {
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionElementId0", 2) {
   // Test: Collection element ID differs
-  rts::DistributedTaskDriver& driver =
-      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  findus::DistributedTaskDriver& driver =
+      findus::create_distributed_task_driver(nullptr, nullptr, false);
   if (driver.current_node_id() == 0) {
     driver.insert_parallel_component_collection<testing::CollectionComponent>(
         43ul, 0);
@@ -2757,7 +2762,7 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionElementId0", 2) {
         driver.insert_barrier(),
         "Insertion error: Collection component 'CollectionComponent', element "
         "0 ID differs: process 0 has 43, process 1 has 42",
-        rts::Exception);
+        findus::Exception);
     driver.barrier();
   } else {
     driver.insert_barrier();
@@ -2766,8 +2771,8 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionElementId0", 2) {
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionElementPid0", 2) {
   // Test: Collection element process ID differs
-  rts::DistributedTaskDriver& driver =
-      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  findus::DistributedTaskDriver& driver =
+      findus::create_distributed_task_driver(nullptr, nullptr, false);
   // Both insert the same indices, but on different processes
   driver.insert_parallel_component_collection<testing::CollectionComponent>(
       42ul, 0);
@@ -2779,7 +2784,7 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionElementPid0", 2) {
         "Insertion error: Collection component 'CollectionComponent', element "
         "1 (ID 43) is on "
         "process 0 for process 0 but on process 1 for process 1",
-        rts::Exception);
+        findus::Exception);
     driver.barrier();
   } else {
     driver.insert_barrier();
@@ -2937,11 +2942,12 @@ template <bool IsCollection>
 struct ReductionComponent1
     : public std::conditional_t<
           IsCollection,
-          rts::DistributedObjectCollection<ReductionComponent1<IsCollection>>,
-          rts::DistributedObject<ReductionComponent1<IsCollection>>> {
+          findus::DistributedObjectCollection<
+              ReductionComponent1<IsCollection>>,
+          findus::DistributedObject<ReductionComponent1<IsCollection>>> {
   ReductionComponent1() = default;
   ~ReductionComponent1() override = default;
-  using rts_collection_index =
+  using findus_collection_index =
       std::conditional_t<IsCollection, std::uint64_t, int>;
 
   static std::string name() {
@@ -2950,7 +2956,8 @@ struct ReductionComponent1
   }
 
   template <class Action, class... Args>
-  void threaded_action(rts::DistributedTaskDriver& task_driver, Args... args) {
+  void threaded_action(findus::DistributedTaskDriver& task_driver,
+                       Args... args) {
     Action::apply(task_driver, std::forward<Args>(args)...);
   }
 
@@ -2961,7 +2968,7 @@ struct ReductionComponent1
    * the callback of the reduction.
    */
   static std::unordered_map<
-      rts_collection_index,
+      findus_collection_index,
       std::pair<std::vector<std::uint64_t>, std::vector<double>>>
       reduction_data;
   /// \brief Mutex for thread-safe access to reduction_data.
@@ -2970,7 +2977,7 @@ struct ReductionComponent1
 
 template <bool IsCollection>
 std::unordered_map<
-    typename ReductionComponent1<IsCollection>::rts_collection_index,
+    typename ReductionComponent1<IsCollection>::findus_collection_index,
     std::pair<std::vector<std::uint64_t>, std::vector<double>>>
     ReductionComponent1<IsCollection>::reduction_data{};
 template <bool IsCollection>
@@ -2978,7 +2985,7 @@ std::mutex ReductionComponent1<IsCollection>::reduction_data_mutex{};
 
 template <bool BroadcastCallback, bool IsCollection, bool UseStdVector>
 struct StartReduction {
-  using rts_index = std::conditional_t<IsCollection, std::uint64_t, int>;
+  using findus_index = std::conditional_t<IsCollection, std::uint64_t, int>;
   /*!
    * \brief Process ID to delay during the reduction (for testing).
    *
@@ -3062,7 +3069,7 @@ struct StartReduction {
   };
 
   struct SetResult {
-    static void apply(rts::DistributedTaskDriver& /*task_driver*/,
+    static void apply(findus::DistributedTaskDriver& /*task_driver*/,
                       const std::uint64_t my_index, const std::uint64_t i,
                       const double d) {
       std::lock_guard lock{
@@ -3070,7 +3077,7 @@ struct StartReduction {
       ReductionComponent1<IsCollection>::reduction_data[my_index] =
           std::pair{std::vector{i}, std::vector{d}};
     }
-    static void apply(rts::DistributedTaskDriver& /*task_driver*/,
+    static void apply(findus::DistributedTaskDriver& /*task_driver*/,
                       const std::uint64_t my_index,
                       const std::vector<std::uint64_t>& i,
                       const std::vector<double>& d) {
@@ -3079,7 +3086,7 @@ struct StartReduction {
       ReductionComponent1<IsCollection>::reduction_data[my_index] =
           std::pair{i, d};
     }
-    static void apply(rts::DistributedTaskDriver& task_driver, const int i,
+    static void apply(findus::DistributedTaskDriver& task_driver, const int i,
                       const double d) {
       std::lock_guard lock{
           ReductionComponent1<IsCollection>::reduction_data_mutex};
@@ -3087,7 +3094,7 @@ struct StartReduction {
           IsCollection>::reduction_data[task_driver.current_node_id()] =
           std::pair{std::vector{static_cast<std::uint64_t>(i)}, std::vector{d}};
     }
-    static void apply(rts::DistributedTaskDriver& task_driver,
+    static void apply(findus::DistributedTaskDriver& task_driver,
                       const std::vector<int>& i, const std::vector<double>& d) {
       std::lock_guard lock{
           ReductionComponent1<IsCollection>::reduction_data_mutex};
@@ -3129,7 +3136,8 @@ struct StartReduction {
    */
   template <bool LocalIsCollection = IsCollection>
   static std::enable_if_t<LocalIsCollection> apply(
-      rts::DistributedTaskDriver& task_driver, const std::uint64_t my_index) {
+      findus::DistributedTaskDriver& task_driver,
+      const std::uint64_t my_index) {
     if (task_driver.current_node_id() == 0) {
       number_of_reductions++;
     }
@@ -3141,9 +3149,9 @@ struct StartReduction {
         task_driver.reduction_over<ReductionComponent1<IsCollection>, MyOp>(
             *(unary_predicate.value()), 100,
             BroadcastCallback
-                ? rts::reduction::ReductionCallback<
+                ? findus::reduction::ReductionCallback<
                       SetResult, ReductionComponent1<IsCollection>>{}
-                : rts::reduction::ReductionCallback<
+                : findus::reduction::ReductionCallback<
                       SetResult,
                       ReductionComponent1<IsCollection>>{invoke_index},
             index_int_data(my_index), index_double_data(my_index));
@@ -3152,9 +3160,9 @@ struct StartReduction {
       task_driver.reduction<ReductionComponent1<IsCollection>, MyOp>(
           100,
           BroadcastCallback
-              ? rts::reduction::ReductionCallback<
+              ? findus::reduction::ReductionCallback<
                     SetResult, ReductionComponent1<IsCollection>>{}
-              : rts::reduction::ReductionCallback<
+              : findus::reduction::ReductionCallback<
                     SetResult, ReductionComponent1<IsCollection>>{invoke_index},
           index_int_data(my_index), index_double_data(my_index));
     }
@@ -3162,7 +3170,7 @@ struct StartReduction {
 
   template <bool LocalIsCollection = IsCollection>
   static std::enable_if_t<not LocalIsCollection> apply(
-      rts::DistributedTaskDriver& task_driver) {
+      findus::DistributedTaskDriver& task_driver) {
     const auto my_index = task_driver.current_node_id();
     if (task_driver.current_node_id() == 0) {
       number_of_reductions++;
@@ -3175,24 +3183,22 @@ struct StartReduction {
         task_driver.reduction_over<ReductionComponent1<IsCollection>, MyOp>(
             *(unary_predicate.value()), 100,
             BroadcastCallback
-                ? rts::reduction::ReductionCallback<
+                ? findus::reduction::ReductionCallback<
                       SetResult, ReductionComponent1<IsCollection>>{}
-                : rts::reduction::ReductionCallback<
-                      SetResult,
-                      ReductionComponent1<IsCollection>>{static_cast<rts_index>(
-                      invoke_index)},
+                : findus::reduction::ReductionCallback<
+                      SetResult, ReductionComponent1<IsCollection>>{static_cast<
+                      findus_index>(invoke_index)},
             index_int_data(my_index), index_double_data(my_index));
       }
     } else {
       task_driver.reduction<ReductionComponent1<IsCollection>, MyOp>(
           100,
           BroadcastCallback
-              ? rts::reduction::ReductionCallback<
+              ? findus::reduction::ReductionCallback<
                     SetResult, ReductionComponent1<IsCollection>>{}
-              : rts::reduction::ReductionCallback<
-                    SetResult,
-                    ReductionComponent1<IsCollection>>{static_cast<rts_index>(
-                    invoke_index)},
+              : findus::reduction::ReductionCallback<
+                    SetResult, ReductionComponent1<IsCollection>>{static_cast<
+                    findus_index>(invoke_index)},
           index_int_data(my_index), index_double_data(my_index));
     }
   }
@@ -3242,7 +3248,7 @@ size_t StartReduction<BroadcastCallback, IsCollection,
  */
 template <bool IsCollection, bool UseStdVector>
 void test_reduction_n_processes_impl(
-    rts::DistributedTaskDriver& driver,
+    findus::DistributedTaskDriver& driver,
     const std::optional<std::function<
         bool(const std::conditional_t<IsCollection, std::uint64_t, int>&)>>&
         maybe_unary_predicate) {
@@ -3406,10 +3412,10 @@ void test_reduction_n_processes_impl(
 }
 
 template <bool IsCollection>
-void test_reduction_over(rts::DistributedTaskDriver& driver,
+void test_reduction_over(findus::DistributedTaskDriver& driver,
                          const std::optional<size_t> max_subset_size) {
   using component = ReductionComponent1<IsCollection>;
-  using Index = typename component::rts_collection_index;
+  using Index = typename component::findus_collection_index;
   // Test over all sets of up to max_subset_size combinations of the IDs
   // contributing to the reduction. Does not test when nobody contributes
   // because that's just "no reduction happens".
@@ -3439,7 +3445,7 @@ void test_reduction_over(rts::DistributedTaskDriver& driver,
 }
 
 template <bool IsCollection, bool UseStdVector>
-void test_reduction_2_processes(rts::DistributedTaskDriver& driver) {
+void test_reduction_2_processes(findus::DistributedTaskDriver& driver) {
   using component = ReductionComponent1<IsCollection>;
 
   if constexpr (IsCollection) {
@@ -3515,8 +3521,8 @@ void test_reduction_2_processes(rts::DistributedTaskDriver& driver) {
 MPI_TEST_CASE("DistributedTaskDriver.Reduction1", 2) {
   // This test checks core reduction capabilities with only 2 processes to
   // provide an easy to debug environment.
-  rts::DistributedTaskDriver& driver =
-      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  findus::DistributedTaskDriver& driver =
+      findus::create_distributed_task_driver(nullptr, nullptr, false);
   if (driver.current_node_id() == 0) {
     test_generate_subsets();
     test_keys_of();
@@ -3577,7 +3583,7 @@ std::string to_string(const std::vector<T>& vec) {
 }
 
 template <bool IsCollection, bool UseStdVector>
-void exhaustive_8_impl(rts::DistributedTaskDriver& driver,
+void exhaustive_8_impl(findus::DistributedTaskDriver& driver,
                        const size_t delay_amount_us) {
   driver.barrier();
   if (driver.current_node_id() == 0) {
@@ -3676,8 +3682,8 @@ MPI_TEST_CASE("DistributedTaskDriver.ExhaustiveReductions8Processes", 8) {
   // permutations of element distributions. This makes the test extremely
   // expensive, but also extremely rigorous.
   const size_t delay_amount_us = 10;
-  rts::DistributedTaskDriver& driver =
-      rts::create_distributed_task_driver(nullptr, nullptr, false);
+  findus::DistributedTaskDriver& driver =
+      findus::create_distributed_task_driver(nullptr, nullptr, false);
 
   driver.barrier();
   driver.insert_parallel_component<ReductionComponent1<false>>();
@@ -3710,5 +3716,5 @@ MPI_TEST_CASE("DistributedTaskDriver.ExhaustiveReductions8Processes", 8) {
 
   driver.force_threads_to_stop();
 }
-}  // namespace rts
+}  // namespace findus
 #endif

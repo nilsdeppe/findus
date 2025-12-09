@@ -14,17 +14,17 @@
 #include "Rts/Serialize/Exception.hpp"
 #include "Rts/Serialize/Serializer.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 #if defined(__cpp_lib_constexpr_string) and \
     (__cpp_lib_constexpr_string >= 201907L)
-#if not defined(RTS_CONSTEXPR_CXX20)
-#define RTS_CONSTEXPR_CXX20 constexpr
-#define RTS_USE_CONSTEXPR_HASH
+#if not defined(FINDUS_CONSTEXPR_CXX20)
+#define FINDUS_CONSTEXPR_CXX20 constexpr
+#define FINDUS_USE_CONSTEXPR_HASH
 #endif
 #else  // __cpp_lib_constexpr_string
-#undef RTS_CONSTEXPR_CXX20
-#define RTS_CONSTEXPR_CXX20
-#undef RTS_USE_CONSTEXPR_HASH
+#undef FINDUS_CONSTEXPR_CXX20
+#define FINDUS_CONSTEXPR_CXX20
+#undef FINDUS_USE_CONSTEXPR_HASH
 #endif
 
 namespace detail {
@@ -49,7 +49,7 @@ fnv1a_hash_multiply(size_t& hash) {
  * \param string The input string to hash.
  * \return The computed hash value as a size_t.
  */
-RTS_CONSTEXPR_CXX20 size_t inline hash(const std::string& string) {
+FINDUS_CONSTEXPR_CXX20 size_t inline hash(const std::string& string) {
   size_t hash = 14695981039346656037ull;
   const char* str = string.c_str();
   while (*str) {
@@ -60,45 +60,46 @@ RTS_CONSTEXPR_CXX20 size_t inline hash(const std::string& string) {
 }
 
 /*!
- * \brief Trait to detect if a type has a static rts_serializable_name() member
- * function.
+ * \brief Trait to detect if a type has a static findus_serializable_name()
+ * member function.
  *
  * Inherits from std::true_type if T has a static member function
- * `rts_serializable_name()`, otherwise inherits from std::false_type.
+ * `findus_serializable_name()`, otherwise inherits from std::false_type.
  *
  * \tparam T The type to check.
  */
 template <class T, class = void>
-struct has_rts_serializable_name : std::false_type {};
+struct has_findus_serializable_name : std::false_type {};
 
 /*!
- * \brief Trait specialization for types with a static rts_serializable_name()
- * member function.
+ * \brief Trait specialization for types with a static
+ * findus_serializable_name() member function.
  *
  * Inherits from std::true_type if T has a static member function
- * `rts_serializable_name()`.
+ * `findus_serializable_name()`.
  */
 template <class T>
-struct has_rts_serializable_name<
-    T, std::void_t<decltype(T::rts_serializable_name())>> : std::true_type {};
+struct has_findus_serializable_name<
+    T, std::void_t<decltype(T::findus_serializable_name())>> : std::true_type {
+};
 }  // namespace detail
 
 /*!
  * \brief Evaluates to true if T has a static member function
- * rts_serializable_name(), false otherwise.
+ * findus_serializable_name(), false otherwise.
  *
  * \tparam T The type to check (usually a derived class in a class hierarchy).
  */
 template <class T>
-constexpr bool has_rts_serializable_name_v =
-    detail::has_rts_serializable_name<T>::value;
+constexpr bool has_findus_serializable_name_v =
+    detail::has_findus_serializable_name<T>::value;
 
 /*!
  * \brief Returns the name for a type for identification during virtual base
  * class serialization.
  *
  * If the type Derived provides a static member function
- * rts_serializable_name(), this function returns its result. Otherwise, it
+ * findus_serializable_name(), this function returns its result. Otherwise, it
  * returns a compiler-generated string representing the type (specifically,
  * `__PRETTY_FUNCTION__`).
  *
@@ -110,9 +111,9 @@ constexpr bool has_rts_serializable_name_v =
  * \return The serializable name as a std::string.
  */
 template <class Derived>
-RTS_CONSTEXPR_CXX20 std::string serializable_name() {
-  if constexpr (has_rts_serializable_name_v<Derived>) {
-    return Derived::rts_serializable_name();
+FINDUS_CONSTEXPR_CXX20 std::string serializable_name() {
+  if constexpr (has_findus_serializable_name_v<Derived>) {
+    return Derived::findus_serializable_name();
   } else {
     return {__PRETTY_FUNCTION__};
   }
@@ -132,7 +133,7 @@ RTS_CONSTEXPR_CXX20 std::string serializable_name() {
  * \return The hash value as a size_t.
  */
 template <class Derived>
-RTS_CONSTEXPR_CXX20 size_t serializable_hash() {
+FINDUS_CONSTEXPR_CXX20 size_t serializable_hash() {
   return detail::hash(serializable_name<Derived>());
 }
 
@@ -151,13 +152,13 @@ class SerializableDerived;
  *
  * Classes inheriting from SerializableBase must implement either a
  * `serialize(Serializer&)` or `pup(PUP::er&)` member function (if
- * `-DRTS_MIMIC_CHARM_PUPER=ON` was passed to CMake).
+ * `-DFINDUS_MIMIC_CHARM_PUPER=ON` was passed to CMake).
  *
  * \tparam Base The base class type for the polymorphic hierarchy.
  *
  * \note This struct is intended to be used with
- * rts::serialize::SerializableDerived and the serialization framework provided
- * in this library.
+ * findus::serialize::SerializableDerived and the serialization framework
+ * provided in this library.
  *
  * Example usage:
  *
@@ -170,7 +171,7 @@ class SerializableDerived;
  * \snippet Virtual.cpp SerializableBaseDataInBase
  *
  * More detailed usage is discussed with the documentation for
- * rts::serialize::Serializer
+ * findus::serialize::Serializer
  *
  * ### Implementation note
  *
@@ -193,7 +194,7 @@ class SerializableBase {
   friend Serializer& serialize_abstract_base(Serializer& serializer,
                                              LocalBase* base);
 
-  virtual size_t rts_derived_class_serialization_id() const = 0;
+  virtual size_t findus_derived_class_serialization_id() const = 0;
 };
 
 /*!
@@ -224,7 +225,7 @@ class SerializableBase {
  * \snippet Virtual.cpp SerializableDerivedDataInBase
  *
  * More detailed usage is discussed with the documentation for
- * rts::serialize::Serializer
+ * findus::serialize::Serializer
  */
 template <class Derived, class Base>
 class SerializableDerived : public virtual SerializableBase<Base> {
@@ -232,7 +233,7 @@ class SerializableDerived : public virtual SerializableBase<Base> {
   virtual ~SerializableDerived() = default;
 
  private:
-  size_t rts_derived_class_serialization_id() const override {
+  size_t findus_derived_class_serialization_id() const override {
     return derived_class_serialization_id_;
   }
 
@@ -240,7 +241,7 @@ class SerializableDerived : public virtual SerializableBase<Base> {
 };
 
 namespace detail {
-#if defined(RTS_USE_CONSTEXPR_HASH)
+#if defined(FINDUS_USE_CONSTEXPR_HASH)
 /*!
  * \brief Compile-time constant for the serialization ID of a derived class.
  *
@@ -352,7 +353,7 @@ template <class Derived, class Base>
 size_t register_derived() {
   static_assert(std::is_base_of_v<Base, Derived>);
   std::unordered_map<size_t, ClassEntry<Base>>& reg = registry<Base>();
-  RTS_CONSTEXPR_CXX20 const size_t hash = serializable_hash<Derived>();
+  FINDUS_CONSTEXPR_CXX20 const size_t hash = serializable_hash<Derived>();
   const auto [it, success] = reg.emplace(
       hash, ClassEntry<Base>(
                 hash, serializable_name<Derived>(),
@@ -442,7 +443,7 @@ std::pair<Base*, bool> create(Serializer& serializer) {
  * This is used for polymorphic serialization, allowing correct identification
  * and reconstruction of derived types from a base class pointer.
  *
- * Use the function rts::serialize::create() for deserialization.
+ * Use the function findus::serialize::create() for deserialization.
  *
  * \tparam Base The base class type, which must inherit from SerializableBase.
  * \param serializer The Serializer instance.
@@ -450,13 +451,13 @@ std::pair<Base*, bool> create(Serializer& serializer) {
  * \return Reference to the Serializer.
  * \throws Exception if neither serialize nor pup member is available.
  *
- * \see rts::serialize::create()
+ * \see findus::serialize::create()
  */
 template <class Base>
 Serializer& serialize_abstract_base(Serializer& serializer, Base* base) {
   static_assert(std::is_base_of_v<SerializableBase<Base>, Base>);
   size_t derived_class_serialization_id =
-      base->rts_derived_class_serialization_id();
+      base->findus_derived_class_serialization_id();
   serializer | derived_class_serialization_id;
   if constexpr (has_serialize_member_v<Base>) {
     return static_cast<Base&>(*base).serialize(serializer);
@@ -511,4 +512,4 @@ Base* deserialize_abstract_base(Serializer& serializer) {
   }
   return base_and_was_deserialized.first;
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize

@@ -21,15 +21,15 @@ enum class SerializerReason : uint16_t {
   Mask = 0b0000'0000'1111'0000
 };
 
-#ifdef RTS_MIMIC_CHARM_PUPER
+#ifdef FINDUS_MIMIC_CHARM_PUPER
 namespace PUP {
 class er {};
 }  // namespace PUP
 #endif
 
-namespace rts {
+namespace findus {
 /*!
- * \brief Serialization infrastructure. See rts::serialize::Serializer for
+ * \brief Serialization infrastructure. See findus::serialize::Serializer for
  * detailed documentation.
  */
 namespace serialize {
@@ -38,7 +38,7 @@ namespace serialize {
  *        functionality for fundamental and user-defined types.
  *
  * The Serializer operates in one of several modes, specified by the
- * rts::serialize::Action enum: Sizing, Packing, Unpacking, or
+ * findus::serialize::Action enum: Sizing, Packing, Unpacking, or
  * MemoryFootprinting. It can compute the size required for serialization, pack
  * data into a buffer, unpack data from a buffer, or compute the memory
  * footprint of data. Memory footprinting provides a mechanism of computing the
@@ -64,7 +64,7 @@ namespace serialize {
  * }
  * ```
  * It is also possible to have different behavior depending on the
- * rts::serialize::Action that the Serializer is taking. The action the
+ * findus::serialize::Action that the Serializer is taking. The action the
  * Serializer is taking can be checked by using the Serializer::action()
  * method, or one of Serializer::isSizing(), Serializer::isPacking(),
  * Serializer::isUnpacking(), or Serializer::isMemoryFootprinting(). As an
@@ -128,7 +128,7 @@ namespace serialize {
  *
  * \snippet Serializer.cpp serializer_pup_example
  *
- * or, if `-D RTS_MIMIC_CHARM_PUPER=ON` is set at CMake time (the default),
+ * or, if `-D FINDUS_MIMIC_CHARM_PUPER=ON` is set at CMake time (the default),
  * then users may also implement a `void pup(PUP::er&)` member function as
  * follows:
  *
@@ -140,7 +140,7 @@ namespace serialize {
  * library. This is currently only possible if that type is default
  * constructible. In that case, you can write a custom `operator|` to
  * serialize the type. The recommended location to write the type is the
- * `rts::serialize` namespace. This is considered defined behavior. Keep in
+ * `findus::serialize` namespace. This is considered defined behavior. Keep in
  * mind that if you link against other libraries that provide conflicting
  * definitions of `operator|` for the type you may hit compiler errors, or
  * worse, violate ODR (one definition rule).
@@ -253,7 +253,7 @@ namespace serialize {
  * registration. Since this is not portable, even if the byte stream itself
  * is, we allow users to define a custom name for derived classes that is
  * hashed for serialization. Classes that implement a
- * `static std::string rts_serializable_name();`
+ * `static std::string findus_serializable_name();`
  * method will have that name hashed. For example,
  *
  * \snippet Virtual.cpp DerivedWithName
@@ -285,10 +285,10 @@ namespace serialize {
  *
  * \note Interoperability with Charm++'s `PUP::er` is provided by rerouting
  * calls to `p | t;` and `pup(p, t);` to this Serializer. This is enabled by
- * default but can be disabled by setting `-D RTS_MIMIC_CHARM_PUPER=OFF`.
+ * default but can be disabled by setting `-D FINDUS_MIMIC_CHARM_PUPER=OFF`.
  */
 class Serializer
-#ifdef RTS_MIMIC_CHARM_PUPER
+#ifdef FINDUS_MIMIC_CHARM_PUPER
     : public PUP::er
 #endif
 {
@@ -393,7 +393,7 @@ class Serializer
   explicit Serializer(MemoryFootprinting_t selector,
                       std::uint64_t extra_info = 0);
 
-  /// Returns the current serialization rts::serialize::Action.
+  /// Returns the current serialization findus::serialize::Action.
   Action action() const { return action_; }
 
   /// Returns true if the Serializer is in Packing mode.
@@ -421,7 +421,7 @@ class Serializer
 
   /*!
    * \brief Serializes or deserializes a View of objects that satisfy
-   * rts::serialization::serialize_as_bytes_v.
+   * findus::serialization::serialize_as_bytes_v.
    *
    * This essentially is used for serializing a "vector" of objects of a
    * single fundamental type. Since all classes can be decomposed into
@@ -451,7 +451,7 @@ class Serializer
 
   /*!
    * \brief Serializes or deserializes a single object that satisfies
-   * rts::serialization::serialize_as_bytes_v.
+   * findus::serialization::serialize_as_bytes_v.
    *
    * For example, here is how one could process an object (note that in
    * general using `s | value` and `operator|` is preferred with this call
@@ -707,13 +707,13 @@ operator|(Serializer& serializer, T& t) {
   return serializer(View{reinterpret_cast<std::byte*>(&t), sizeof(t)});
 }
 }  // namespace serialize
-}  // namespace rts
+}  // namespace findus
 
-#ifdef RTS_MIMIC_CHARM_PUPER
+#ifdef FINDUS_MIMIC_CHARM_PUPER
 namespace PUP {
 template <class T>
 void operator|(er& p, T& t) {
-  static_cast<rts::serialize::Serializer&>(p) | t;
+  static_cast<findus::serialize::Serializer&>(p) | t;
 }
 }  // namespace PUP
 #endif

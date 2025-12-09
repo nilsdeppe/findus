@@ -9,7 +9,7 @@
 
 #include "Rts/Detail/Endian.hpp"
 
-namespace rts::detail {
+namespace findus::detail {
 /*!
  * \brief Class that represents a pointer to a member function.
  *
@@ -19,9 +19,9 @@ namespace rts::detail {
  * addition and subtraction operations on this type (and equivalence) since
  * it is to only be used as a pointer type.
  *
- * The function `rts::detail::to_member_function_ptr()` and
- * `rts::detail::from_member_function_ptr()` are provided to convert between the
- * actual member function pointer and this representation of it.
+ * The function `findus::detail::to_member_function_ptr()` and
+ * `findus::detail::from_member_function_ptr()` are provided to convert between
+ * the actual member function pointer and this representation of it.
  *
  * The values are printed as `(upper:lower)`.
  */
@@ -102,4 +102,4 @@ auto from_member_function_ptr(const MemberFunctionPtr& member_function_ptr)
 inline std::ostream& operator<<(std::ostream& os, const MemberFunctionPtr& t) {
   return os << '(' << t.upper << ':' << t.lower << ')';
 }
-}  // namespace rts::detail
+}  // namespace findus::detail

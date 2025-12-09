@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <iosfwd>
 
-namespace rts {
+namespace findus {
 /*!
  * \brief The type of message being sent.
  *
@@ -29,6 +29,6 @@ enum class MessageType : std::uint8_t {
   ReductionOver = 0b101
 };
 
-/// \brief Stream operator for `rts::MessageType`.
+/// \brief Stream operator for `findus::MessageType`.
 std::ostream& operator<<(std::ostream& os, MessageType t);
-}  // namespace rts
+}  // namespace findus

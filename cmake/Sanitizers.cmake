@@ -2,7 +2,7 @@
 # Distributed under the MIT License.
 # See LICENSE.txt for details.
 
-add_library(RtsSanitizers IMPORTED INTERFACE)
+add_library(FindusSanitizers IMPORTED INTERFACE)
 
 option(SANITIZER "Add sanitizer flags with value, e.g. address, undefined, etc."
   OFF)
@@ -21,7 +21,7 @@ if (SANITIZER)
   endif()
 
   set_property(
-    TARGET RtsSanitizers
+    TARGET FindusSanitizers
     APPEND PROPERTY
     INTERFACE_COMPILE_OPTIONS
     $<$<COMPILE_LANGUAGE:CXX>:-fno-omit-frame-pointer -fsanitize=${SANITIZER}>
@@ -31,7 +31,7 @@ if (SANITIZER)
 endif()
 
 target_link_libraries(
-  RtsFlags
+  FindusFlags
   INTERFACE
-  RtsSanitizers
+  FindusSanitizers
 )

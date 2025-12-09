@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <type_traits>
 
-namespace rts {
+namespace findus {
 std::ostream& operator<<(std::ostream& os, const ActionState action_state) {
   switch (action_state) {
     case ActionState::Uninitialized:
@@ -24,16 +24,16 @@ std::ostream& operator<<(std::ostream& os, const ActionState action_state) {
                 << static_cast<std::uint32_t>(action_state) << ")";
   }
 }
-}  // namespace rts
+}  // namespace findus
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 #include <string>
 
 #include "Rts/Detail/GetOutput.hpp"
 
-namespace rts {
+namespace findus {
 TEST_CASE("ActionState") {
   CHECK(detail::get_output(ActionState::Uninitialized) == "Uninitialized");
   CHECK(detail::get_output(ActionState::Success) == "Success");
@@ -42,5 +42,5 @@ TEST_CASE("ActionState") {
   CHECK(detail::get_output(static_cast<ActionState>(128)) ==
         "unknown_action_state(128)");
 }
-}  // namespace rts
+}  // namespace findus
 #endif

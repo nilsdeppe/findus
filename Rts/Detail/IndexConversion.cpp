@@ -4,7 +4,7 @@
 
 #include "Rts/Detail/IndexConversion.hpp"
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <cstring>
 #include <doctest/doctest.h>
@@ -12,7 +12,7 @@
 
 #include "Rts/DistributedObjectCollection.hpp"
 
-namespace rts::detail {
+namespace findus::detail {
 namespace {
 struct TestUserIndex {
   // 20 bits, 20 bits, 24 bits = 64 bits total
@@ -42,18 +42,18 @@ struct TestUserIndex {
 
 // For static_assert in from_internal
 struct DummyParallelComponentForIndexConversion
-    : rts::DistributedObjectCollection<
+    : findus::DistributedObjectCollection<
           DummyParallelComponentForIndexConversion> {
-  using rts_collection_index = TestUserIndex;
+  using findus_collection_index = TestUserIndex;
 };
 
 struct DummyComponent1
-    : rts::DistributedObject<DummyParallelComponentForIndexConversion> {
-  using rts_collection_index = TestUserIndex;
+    : findus::DistributedObject<DummyParallelComponentForIndexConversion> {
+  using findus_collection_index = TestUserIndex;
 };
 
 struct DummyComponent2 {
-  using rts_collection_index = TestUserIndex;
+  using findus_collection_index = TestUserIndex;
 };
 
 static_assert(std::is_same_v<
@@ -90,5 +90,5 @@ TEST_CASE("UserIndexToFromInternalIndex") {
     }
   }
 }
-}  // namespace rts::detail
+}  // namespace findus::detail
 #endif

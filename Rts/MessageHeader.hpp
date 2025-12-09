@@ -16,7 +16,7 @@
 #include "Rts/HardwareInfo.hpp"
 #include "Rts/MessageType.hpp"
 
-namespace rts {
+namespace findus {
 /*!
  * \brief The header of every message sent between nodes. This is used to
  * identify which distributed object will have the function invoked on it.
@@ -45,17 +45,17 @@ namespace rts {
  *   human-readable name of the distributed object class is recommended.
  * - `data_offset` is the number of bytes from the message's address to the
  *   byte stream of data, which may or may not have been serialized. The
- *   functions `rts::create_data_in_message()` and `rts::data_from_message()`
- *   should be used to access the data rather than doing the calculations
- *   directly.
+ *   functions `findus::create_data_in_message()` and
+ * `findus::data_from_message()` should be used to access the data rather than
+ * doing the calculations directly.
  * - `source_process_id` is the index of the process ID (e.g. MPI rank) that is
  *   sending the message.
  * - `destination_process_id` is the index of the process ID that is receiving
  *   the message.
  *
  * See
- * - `rts::create_data_in_message()`
- * - `rts::data_from_message()`
+ * - `findus::create_data_in_message()`
+ * - `findus::data_from_message()`
  */
 struct alignas(hardware_info::hardware_destructive_interference_size)
     MessageHeader {
@@ -216,9 +216,9 @@ struct alignas(hardware_info::hardware_destructive_interference_size)
   ///
   /// This is used in broadcast operations where the broadcast message has a
   /// placeholder target collection index that is overridden to the specified
-  /// target index that is node-local and the rts::MessageType is changed from
-  /// rts::MessageType::Broadcast or rts::MessageType::BroadcastTo to
-  /// rts::MessageType::Invoke. An Exception is thrown if the message type
+  /// target index that is node-local and the findus::MessageType is changed
+  /// from findus::MessageType::Broadcast or findus::MessageType::BroadcastTo to
+  /// findus::MessageType::Invoke. An Exception is thrown if the message type
   /// isn't for a broadcast.
   void convert_broadcast_to_invoke(std::uint64_t target_collection_index);
 
@@ -231,7 +231,7 @@ struct alignas(hardware_info::hardware_destructive_interference_size)
   /// \brief The bitmask used to retrieve whether the data was serialized.
   static constexpr std::uint64_t data_was_serialized_mask = std::uint64_t{0b1}
                                                             << 63;
-  /// \brief The bitmask used to retrieve the rts::MessageType.
+  /// \brief The bitmask used to retrieve the findus::MessageType.
   static constexpr std::uint64_t message_type_mask = std::uint64_t{0b111} << 60;
   /// \brief The bitmask used to retrieve the data alignment.
   static constexpr std::uint64_t data_alignment_mask =
@@ -282,13 +282,13 @@ struct alignas(hardware_info::hardware_destructive_interference_size)
       std::numeric_limits<std::uint64_t>::max();
 };
 
-/// \brief Equivalence operator for rts::MessageHeader
+/// \brief Equivalence operator for findus::MessageHeader
 bool operator==(const MessageHeader& lhs, const MessageHeader& rhs);
 
-/// \brief Inequivalence operator for rts::MessageHeader
+/// \brief Inequivalence operator for findus::MessageHeader
 bool operator!=(const MessageHeader& lhs, const MessageHeader& rhs);
 
-/// \brief Stream operator for rts::MessageHeader
+/// \brief Stream operator for findus::MessageHeader
 std::ostream& operator<<(std::ostream& os, const MessageHeader& header);
 
 /*!
@@ -373,4 +373,4 @@ auto data_from_message(const MessageHeader& message_header)
       const_cast<MessageHeader&>(message_header));
 }
 /// @}
-}  // namespace rts
+}  // namespace findus

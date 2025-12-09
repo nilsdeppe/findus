@@ -8,7 +8,7 @@
 #include <stack>
 #include <vector>
 
-namespace rts::detail {
+namespace findus::detail {
 /// \brief Holds the info for the specific process ID's parent and children
 /// process IDs.
 struct ParentAndChildren {
@@ -96,16 +96,16 @@ std::vector<int> children_in_subtree(int process_id, int total_process_ids);
  *   - If a branch contains no node that satisfies the predicate, it
  *     contributes zero to the count.
  *   - The tree structure and parent-child relationships are determined by
- *     \ref rts::detail::parent_and_children.
+ *     \ref findus::detail::parent_and_children.
  *
- * \see rts::detail::parent_and_children
+ * \see findus::detail::parent_and_children
  */
 template <class Predicate>
 int count_first_descendants(const int process_id, const int total_processes,
                             const Predicate& predicate) {
   int count = 0;
-  const rts::detail::ParentAndChildren pc =
-      rts::detail::parent_and_children(process_id, total_processes);
+  const findus::detail::ParentAndChildren pc =
+      findus::detail::parent_and_children(process_id, total_processes);
 
   std::stack<int> stack;
   // Start with the immediate children (left and right)
@@ -126,8 +126,9 @@ int count_first_descendants(const int process_id, const int total_processes,
       continue;
     }
 
-    const rts::detail::ParentAndChildren child_pc =
-        rts::detail::parent_and_children(current_process_id, total_processes);
+    const findus::detail::ParentAndChildren child_pc =
+        findus::detail::parent_and_children(current_process_id,
+                                            total_processes);
     if (child_pc.left_process_id != -1) {
       stack.push(child_pc.left_process_id);
     }
@@ -169,9 +170,9 @@ int count_first_descendants(const int process_id, const int total_processes,
  *   - Traversal continues up the tree until a parent satisfies the predicate
  *     or the root is reached.
  *   - The tree structure and parent-child relationships are determined by
- *     \ref rts::detail::parent_and_children.
+ *     \ref findus::detail::parent_and_children.
  *
- * \see rts::detail::parent_and_children
+ * \see findus::detail::parent_and_children
  */
 template <class Predicate>
 int find_first_parent(const int process_id, const int total_processes,
@@ -181,12 +182,12 @@ int find_first_parent(const int process_id, const int total_processes,
     if (pid == -1) {
       return pid;
     }
-    const rts::detail::ParentAndChildren pc =
-        rts::detail::parent_and_children(pid, total_processes);
+    const findus::detail::ParentAndChildren pc =
+        findus::detail::parent_and_children(pid, total_processes);
     if (pc.parent_process_id != -1 and predicate(pc.parent_process_id)) {
       return pc.parent_process_id;
     }
     pid = pc.parent_process_id;
   }
 }
-}  // namespace rts::detail
+}  // namespace findus::detail

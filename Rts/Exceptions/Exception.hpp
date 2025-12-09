@@ -7,10 +7,10 @@
 #include <stdexcept>
 #include <string>
 
-namespace rts {
+namespace findus {
 /// Exception indicating an RTS error occurred.
 class Exception : public std::runtime_error {
  public:
   explicit Exception(const std::string& message);
 };
-}  // namespace rts
+}  // namespace findus

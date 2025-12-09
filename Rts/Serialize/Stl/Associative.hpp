@@ -11,7 +11,7 @@
 #include "Rts/Serialize/Serializer.hpp"
 #include "Rts/Serialize/Stl/Pair.hpp"
 
-namespace rts::serialize::detail {
+namespace findus::serialize::detail {
 template <bool IsUnordered, class T>
 Serializer& associative_map_impl(Serializer& s, T& container) {
   static_assert(not std::is_const_v<T>);
@@ -85,4 +85,4 @@ Serializer& associative_set_impl(Serializer& s, T& container) {
   return s;
 }
 
-}  // namespace rts::serialize::detail
+}  // namespace findus::serialize::detail

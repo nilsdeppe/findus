@@ -8,7 +8,7 @@
 #include <mpi.h>
 #include <string>
 
-namespace rts::detail {
+namespace findus::detail {
 std::string mpi_error_message(const int mpi_result) {
   char error_string[MPI_MAX_ERROR_STRING];
   int error_length = 0;
@@ -20,15 +20,15 @@ std::string mpi_error_and_message(const int mpi_result) {
   return "MPI error code: " + std::to_string(mpi_result) +
          ". MPI error message: " + mpi_error_message(mpi_result);
 }
-}  // namespace rts::detail
+}  // namespace findus::detail
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 #include <doctest/extensions/doctest_mpi.h>
 #include <vector>
 
-namespace rts::detail {
+namespace findus::detail {
 TEST_CASE("MpiErrorMessage" * doctest::skip(true)) {
   // List of standard MPI error codes (see MPI standard)
   const std::vector<std::pair<int, std::string>> mpi_error_codes{
@@ -118,5 +118,5 @@ TEST_CASE("MpiErrorMessage" * doctest::skip(true)) {
     }
   }
 }
-}  // namespace rts::detail
+}  // namespace findus::detail
 #endif

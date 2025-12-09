@@ -9,7 +9,7 @@
 #include "Rts/Serialize/Serializer.hpp"
 #include "Rts/Serialize/Stl/Associative.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 /*!
  * \brief Serializes or deserializes a std::unordered_set using the Serializer.
  *
@@ -60,4 +60,4 @@ std::enable_if_t<is_serializable_v<Key>, Serializer&> operator|(
         unordered_multiset) {
   return detail::associative_set_impl<true>(serializer, unordered_multiset);
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize

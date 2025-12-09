@@ -9,10 +9,10 @@
 
 #include "Rts/Exceptions/Exception.hpp"
 
-namespace rts {
+namespace findus {
 /// Exception indicating a quiescence detection error occurred.
 class QdException : public Exception {
  public:
   explicit QdException(const std::string& message);
 };
-}  // namespace rts
+}  // namespace findus

@@ -12,7 +12,7 @@
 
 #include "Rts/Serialize/Serializer.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 namespace detail {
 /*!
  * \brief Helper function to serialize or deserialize each element of a tuple.
@@ -67,4 +67,4 @@ std::enable_if_t<(... and is_serializable_v<Ts>), Serializer&> operator|(
   }
   return serializer;
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize

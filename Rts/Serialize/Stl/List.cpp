@@ -4,12 +4,12 @@
 
 #include "Rts/Serialize/Stl/List.hpp"
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 #include <list>
 
-namespace rts::serialize {
+namespace findus::serialize {
 namespace {
 struct NoSerialize {};
 static_assert(is_serializable_v<std::list<int>>);
@@ -133,5 +133,5 @@ TEST_CASE("Serialize.List") {
     CHECK(list == list_unpacked);
   }
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize
 #endif

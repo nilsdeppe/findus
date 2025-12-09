@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <iosfwd>
 
-namespace rts {
+namespace findus {
 /*!
  * \brief Represents the result of an action invocation.
  *
@@ -27,6 +27,6 @@ enum class ActionState : std::uint8_t {
   End = 3
 };
 
-/// \brief Stream operator for `rts::ActionState`
+/// \brief Stream operator for `findus::ActionState`
 std::ostream& operator<<(std::ostream& os, const ActionState action_state);
-}  // namespace rts
+}  // namespace findus

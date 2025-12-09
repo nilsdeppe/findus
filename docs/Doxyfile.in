@@ -9,7 +9,7 @@
 # Project related configuration options
 #---------------------------------------------------------------------------
 
-PROJECT_NAME           = ToyRTS
+PROJECT_NAME           = findus
 
 PROJECT_NUMBER         = @CODE_VERSION@
 

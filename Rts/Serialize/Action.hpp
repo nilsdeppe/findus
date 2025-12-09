@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <iosfwd>
 
-namespace rts::serialize {
+namespace findus::serialize {
 /*!
  * \brief Enum representing the type of serialization action to perform.
  *
@@ -33,7 +33,7 @@ enum class Action : std::uint8_t {
 };
 
 /*!
- * \brief Stream insertion operator for rts::serialize::Action.
+ * \brief Stream insertion operator for findus::serialize::Action.
  *
  * Outputs the name of the Action enum value as a string.
  *
@@ -41,5 +41,5 @@ enum class Action : std::uint8_t {
  * \param action The Action enum value to output.
  * \return The output stream.
  */
-std::ostream& operator<<(std::ostream& os, rts::serialize::Action action);
-}  // namespace rts::serialize
+std::ostream& operator<<(std::ostream& os, findus::serialize::Action action);
+}  // namespace findus::serialize

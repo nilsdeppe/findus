@@ -6,20 +6,20 @@
 
 #include <iosfwd>
 
-namespace rts {
+namespace findus {
 /// \brief The MPI tags for different types of messages sent across the system.
 ///
 /// The default offset is `1024`, chosen somewhat arbitrarily but to avoid 0
 /// to reduce collision with other libraries. This can be overridden by passing
-/// `-D RTS_MESSAGE_OFFSET=NUMBER` to CMake when building the RTS. This cannot
-/// be changed at user application compilation time because RTS internals
-/// depend on the underlying values.
+/// `-D FINDUS_MESSAGE_OFFSET=NUMBER` to CMake when building findus. This
+/// cannot be changed at user application compilation time because findus
+/// internals depend on the underlying values.
 enum message_tags : int {
   /// \brief The tag for a regular message between different distributed
   /// objects.
   regular =
-#if defined(RTS_MESSAGE_OFFSET)
-      RTS_MESSAGE_OFFSET
+#if defined(FINDUS_MESSAGE_OFFSET)
+      FINDUS_MESSAGE_OFFSET
 #else
       1024
 #endif
@@ -42,4 +42,4 @@ enum message_tags : int {
 
 /// \brief Stream operator for `message_tags`.
 std::ostream& operator<<(std::ostream& os, message_tags tag);
-}  // namespace rts
+}  // namespace findus

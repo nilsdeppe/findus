@@ -6,7 +6,7 @@
 
 #include <atomic>
 
-namespace rts {
+namespace findus {
 /*!
  * \brief A simple spinlock implemented in `std::atomic`s
  *
@@ -44,4 +44,4 @@ class Spinlock {
  private:
   std::atomic<bool> lock_{false};
 };
-}  // namespace rts
+}  // namespace findus

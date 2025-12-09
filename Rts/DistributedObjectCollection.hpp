@@ -8,7 +8,7 @@
 
 #include "Rts/DistributedObject.hpp"
 
-namespace rts {
+namespace findus {
 /*!
  *
  */
@@ -34,4 +34,4 @@ DistributedObjectCollection<ParallelComponent>::DistributedObjectCollection() {
 template <class ParallelComponent>
 DistributedObjectCollection<ParallelComponent>::~DistributedObjectCollection() =
     default;
-}  // namespace rts
+}  // namespace findus

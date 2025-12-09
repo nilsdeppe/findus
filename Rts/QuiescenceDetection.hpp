@@ -17,7 +17,7 @@
 
 #include "Rts/HardwareInfo.hpp"
 
-namespace rts {
+namespace findus {
 /// Quiescence detection constructs
 namespace qd {
 /*!
@@ -412,4 +412,4 @@ class Global {
   std::optional<MPI_Request> broadcast_right_child_request_{std::nullopt};
 };
 }  // namespace qd
-}  // namespace rts
+}  // namespace findus

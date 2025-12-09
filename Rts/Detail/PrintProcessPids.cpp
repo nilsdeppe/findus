@@ -9,11 +9,11 @@
 #include <string>
 #include <unistd.h>
 
-namespace rts::detail {
+namespace findus::detail {
 void print_process_pids(const int process_id) {
   const char* env_enable_pid_print =
       // NOLINTNEXTLINE(concurrency-mt-unsafe)
-      std::getenv("RTS_PRINT_PID");
+      std::getenv("FINDUS_PRINT_PID");
   if (env_enable_pid_print == nullptr) {
     return;
   }
@@ -22,4 +22,4 @@ void print_process_pids(const int process_id) {
       " RTS pid:" + std::to_string(process_id) + "\n";
   std::cout << output_info << std::flush;
 }
-}  // namespace rts::detail
+}  // namespace findus::detail

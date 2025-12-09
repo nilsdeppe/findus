@@ -7,7 +7,7 @@
 
 #include <ostream>
 
-namespace rts {
+namespace findus {
 std::ostream& operator<<(std::ostream& os, const MessageType t) {
   switch (t) {
     case MessageType::Uninitialized:
@@ -26,15 +26,15 @@ std::ostream& operator<<(std::ostream& os, const MessageType t) {
       return os << "Unknown";
   }
 }
-}  // namespace rts
+}  // namespace findus
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 
 #include "Rts/Detail/GetOutput.hpp"
 
-namespace rts {
+namespace findus {
 TEST_CASE("MessageType") {
   CHECK("Uninitialized" == detail::get_output(MessageType::Uninitialized));
   CHECK("Invoke" == detail::get_output(MessageType::Invoke));
@@ -44,5 +44,5 @@ TEST_CASE("MessageType") {
   CHECK("ReductionOver" == detail::get_output(MessageType::ReductionOver));
   CHECK("Unknown" == detail::get_output(static_cast<MessageType>(0b111)));
 }
-}  // namespace rts
+}  // namespace findus
 #endif

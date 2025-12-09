@@ -10,7 +10,7 @@
 #include <mpi.h>
 #include <new>  // for hardware_destructive_interference_size
 
-namespace rts::hardware_info {
+namespace findus::hardware_info {
 /// \brief Minimum offset between two objects to avoid false sharing.
 ///
 /// Set to 64 bytes if `std::hardware_destructive_interference_size` is not
@@ -19,7 +19,7 @@ namespace rts::hardware_info {
 /// \warning std::hardware_destructive_interference_size is not actually
 /// portably implemented by GCC so we have to roll our own.
 static constexpr std::size_t hardware_destructive_interference_size =
-    RTS_CACHE_LINE_SIZE;
+    FINDUS_CACHE_LINE_SIZE;
 
 /*!
  * \brief Info about the cache.
@@ -122,11 +122,11 @@ void bind_current_thread_to_core(size_t core_id);
  * \param comm The MPI communicator over which to gather and print hardware
  * information.
  *
- * \throws rts::MpiException if MPI calls fail.
- * \throws rts::Exception if hardware information cannot be retrieved.
+ * \throws findus::MpiException if MPI calls fail.
+ * \throws findus::Exception if hardware information cannot be retrieved.
  *
- * \see rts::hardware_info::cpu_info
- * \see rts::hardware_info::cache_info
+ * \see findus::hardware_info::cpu_info
+ * \see findus::hardware_info::cache_info
  */
 void print_hardware_info(MPI_Comm comm);
-}  // namespace rts::hardware_info
+}  // namespace findus::hardware_info

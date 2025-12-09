@@ -10,7 +10,7 @@
 #include "Rts/Serialize/Stl/Associative.hpp"
 #include "Rts/Serialize/Stl/Pair.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 /*!
  * \brief Serializes or deserializes a std::unordered_map using the Serializer.
  *
@@ -64,4 +64,4 @@ operator|(Serializer& serializer,
               unordered_multimap) {
   return detail::associative_map_impl<true>(serializer, unordered_multimap);
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize

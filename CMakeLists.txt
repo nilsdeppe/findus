@@ -2,7 +2,7 @@
 # Distributed under the MIT License.
 # See LICENSE.txt for details.
 
-set(CODE_NAME ToyRts)
+set(CODE_NAME findus)
 set(CODE_VERSION 0.1.0)
 
 cmake_minimum_required(VERSION 3.12.0)
@@ -16,25 +16,25 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 
 if (CMAKE_VERSION VERSION_GREATER_EQUAL 3.25)
-  set(RTS_FETCHCONTENT_BASE_ARGS SYSTEM)
+  set(FINDUS_FETCHCONTENT_BASE_ARGS SYSTEM)
 else()
-  set(RTS_FETCHCONTENT_BASE_ARGS "")
+  set(FINDUS_FETCHCONTENT_BASE_ARGS "")
 endif()
 
-option(RTS_BUILD_DOCS "Enable building documentation" ON)
+option(FINDUS_BUILD_DOCS "Enable building documentation" ON)
 option(
-  RTS_DOCS_ONLY
+  FINDUS_DOCS_ONLY
   "Skip all initialization not required for rendering documentation"
   OFF
 )
-if (RTS_BUILD_DOCS)
+if (FINDUS_BUILD_DOCS)
   include(Documentation)
-  if (RTS_DOCS_ONLY)
+  if (FINDUS_DOCS_ONLY)
     return()
   endif()
 endif()
 
-include(RtsFlags)
+include(FindusFlags)
 include(CharmInterop)
 include(CTest)
 if (BUILD_TESTING)
@@ -56,5 +56,5 @@ target_link_libraries(
   Main
   PUBLIC
   MPI::MPI_CXX
-  ToyRTS
+  findus
 )

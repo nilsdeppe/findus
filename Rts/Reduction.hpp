@@ -29,7 +29,7 @@
 #include "Rts/ParentAndChildren.hpp"
 #include "Rts/Serialize/Serializer.hpp"
 
-namespace rts::reduction {
+namespace findus::reduction {
 namespace detail {
 struct ReductionCallbackImpl {
   std::uint64_t collection_index_{std::numeric_limits<std::uint64_t>::max()};
@@ -65,29 +65,29 @@ class ReductionCallback : public detail::ReductionCallbackImpl {
   /// \brief Create an Invoke reduction callback.
   template <class T = ParallelComponent>
   explicit ReductionCallback(
-      rts::detail::get_collection_index<T> collection_index);
+      findus::detail::get_collection_index<T> collection_index);
 };
 
 template <class Action, class ParallelComponent>
 template <class T>
 ReductionCallback<Action, ParallelComponent>::ReductionCallback(
-    const rts::detail::get_collection_index<T> collection_index)
+    const findus::detail::get_collection_index<T> collection_index)
     : detail::ReductionCallbackImpl{
-          [](const rts::detail::get_collection_index<T> index) {
+          [](const findus::detail::get_collection_index<T> index) {
             if constexpr (is_collection_v<ParallelComponent>) {
-              return rts::detail::to_internal(index);
+              return findus::detail::to_internal(index);
             } else {
               return static_cast<std::uint64_t>(index);
             }
           }(collection_index),
-          rts::detail::distributed_object_index<ParallelComponent>(),
+          findus::detail::distributed_object_index<ParallelComponent>(),
           MessageType::Invoke} {}
 
 template <class Action, class ParallelComponent>
 ReductionCallback<Action, ParallelComponent>::ReductionCallback()
     : detail::ReductionCallbackImpl{
           MessageHeader::no_collection_index(),
-          rts::detail::distributed_object_index<ParallelComponent>(),
+          findus::detail::distributed_object_index<ParallelComponent>(),
           MessageType::Broadcast} {}
 
 /// \brief Equivalence operator for `ReductionCallback`.
@@ -165,8 +165,8 @@ void combine_impl(Message_t& message0, const Message_t& message1,
   const auto get_data = [](const Message_t& message) {
     if (message.get_header()->data_was_serialized()) {
       Data_t data{};
-      rts::serialize::Serializer unpacker{
-          rts::serialize::Serializer::Unpacking,
+      findus::serialize::Serializer unpacker{
+          findus::serialize::Serializer::Unpacking,
           const_cast<std::byte*>(
               reduction::get_data_pointer<std::byte>(message)),
           reduction::get_data_size(message)};
@@ -180,8 +180,8 @@ void combine_impl(Message_t& message0, const Message_t& message1,
   if (message0.get_header()->data_was_serialized()) {
     Data_t message0_data = get_data(message0);
     BinaryOp{}(message0_data, std::get<Is>(message1_data)...);
-    rts::serialize::Serializer packer{
-        rts::serialize::Serializer::Packing,
+    findus::serialize::Serializer packer{
+        findus::serialize::Serializer::Packing,
         reduction::get_data_pointer<std::byte>(message0),
         reduction::get_data_size(message0)};
     packer | message0_data;
@@ -239,7 +239,7 @@ void combine(Message_t& message0, const Message_t& message1) {
  * The class is aligned to the hardware's destructive interference size to
  * minimize false sharing and improve performance in multi-threaded scenarios.
  */
-class alignas(rts::hardware_info::hardware_destructive_interference_size)
+class alignas(findus::hardware_info::hardware_destructive_interference_size)
     DataHandler {
  public:
   /*!
@@ -279,7 +279,8 @@ class alignas(rts::hardware_info::hardware_destructive_interference_size)
    * \return InsertAction indicating whether a new entry was inserted or data
    *         was combined.
    *
-   * \throws `rts::Exception` if the reduction ID is zero or if insertion fails.
+   * \throws `findus::Exception` if the reduction ID is zero or if insertion
+   * fails.
    */
   template <class BinaryOp, class BroadcastAction,
             class BroadcastParallelComponent, class... Args>
@@ -299,7 +300,7 @@ class alignas(rts::hardware_info::hardware_destructive_interference_size)
    * \param reduction_id The unique reduction ID.
    * \return The message associated with the reduction ID.
    *
-   * \throws `rts::Exception` if the reduction ID is not found.
+   * \throws `findus::Exception` if the reduction ID is not found.
    */
   Message_t pop(std::uint64_t reduction_id);
 
@@ -329,17 +330,17 @@ class alignas(rts::hardware_info::hardware_destructive_interference_size)
    * The class is aligned to the hardware's destructive interference size to
    * minimize false sharing and improve performance in multi-threaded scenarios.
    */
-  struct alignas(rts::hardware_info::hardware_destructive_interference_size)
+  struct alignas(findus::hardware_info::hardware_destructive_interference_size)
       ReductionIdAndData {
     std::atomic<std::uint64_t> reduction_id{0};
     Message_t callback_and_data{};
     std::array<std::byte,
-               rts::hardware_info::hardware_destructive_interference_size %
+               findus::hardware_info::hardware_destructive_interference_size %
                    (sizeof(std::atomic<std::uint64_t>) + sizeof(Message_t))>
         cacheline_fill{};
   };
 
-  alignas(rts::hardware_info::hardware_destructive_interference_size)
+  alignas(findus::hardware_info::hardware_destructive_interference_size)
       std::vector<ReductionIdAndData> entries_{};
 };
 
@@ -362,7 +363,7 @@ InsertAction DataHandler::insert_or_combine(
     throw Exception{
         "MessageType passed to DataHandler::insert_or_combine must be "
         "Reduction or ReductionOver but got " +
-        rts::detail::get_output(message_type)};
+        findus::detail::get_output(message_type)};
   }
   using Data_t = std::tuple<std::decay_t<Args>...>;
 
@@ -445,9 +446,9 @@ InsertAction DataHandler::insert_or_combine(
  * - Intra-process reduction data is managed with atomic operations to ensure
  *   safe concurrent access.
  *
- * \see `rts::reduction::DataHandler`
- * \see `rts::reduction::InsertAction`
- * \see `rts::reduction::ReductionCallback`
+ * \see `findus::reduction::DataHandler`
+ * \see `findus::reduction::InsertAction`
+ * \see `findus::reduction::ReductionCallback`
  */
 class Handler {
  public:
@@ -522,9 +523,9 @@ class Handler {
    *
    * An example of a binary operator is:
    *
-   * \snippet Rts/Reduction.cpp rts_reduction_sump_op_functor
+   * \snippet Rts/Reduction.cpp findus_reduction_sump_op_functor
    *
-   * \throws rts::Exception
+   * \throws findus::Exception
    *   - If the reduction ID is zero (reserved as a sentinel value).
    *   - If insertion or combination fails due to a full container or other
    *     error.
@@ -540,16 +541,16 @@ class Handler {
    *   - After completion, reduction data is removed from all thread-local
    *     `DataHandlers`.
    *   - The reduction callback is stored in the message and can be retrieved
-   *     using `rts::reduction::get_callback()`.
+   *     using `findus::reduction::get_callback()`.
    *   - If the container is full, insertion will fail and
    *     `InsertAction::AtCapacity` will be returned by
    *     `DataHandler::insert_or_combine()`.
    *   - This function only combines data within a single node.
    *
-   * \see rts::reduction::DataHandler
-   * \see rts::reduction::detail::Counter
-   * \see rts::reduction::InsertAction
-   * \see rts::reduction::get_callback()
+   * \see findus::reduction::DataHandler
+   * \see findus::reduction::detail::Counter
+   * \see findus::reduction::InsertAction
+   * \see findus::reduction::get_callback()
    */
   template <class BinaryOp, class ComputeExpected, class BroadcastAction,
             class BroadcastParallelComponent, class... Args>
@@ -676,14 +677,14 @@ class Handler {
    * `std::nullopt` if not yet complete.
    */
   std::optional<Message_t> combine_inter_process(
-      Message_t message, rts::detail::ParentAndChildren p_and_c);
+      Message_t message, findus::detail::ParentAndChildren p_and_c);
 
  private:
-  alignas(rts::hardware_info::hardware_destructive_interference_size)
+  alignas(findus::hardware_info::hardware_destructive_interference_size)
       detail::Counter reduction_counter_;
   [[maybe_unused]] std::byte cacheline_interference_padding_
-      [2 * rts::hardware_info::hardware_destructive_interference_size];
-  alignas(rts::hardware_info::hardware_destructive_interference_size)
+      [2 * findus::hardware_info::hardware_destructive_interference_size];
+  alignas(findus::hardware_info::hardware_destructive_interference_size)
       std::vector<DataHandler> per_thread_data_handlers_;
 
   struct InterprocessData {
@@ -692,7 +693,7 @@ class Handler {
     Message_t message{};
   };
 
-  alignas(rts::hardware_info::hardware_destructive_interference_size)
+  alignas(findus::hardware_info::hardware_destructive_interference_size)
       std::vector<InterprocessData> inter_process_entries_{};
 };
 
@@ -762,18 +763,18 @@ void Handler::set_interprocess_message_info(
         elements_on_pid[static_cast<size_t>(pid)].end(),
         [&element_predicate](const std::uint64_t internal_id) {
           return element_predicate(
-              rts::detail::from_internal<ParallelComponent>(internal_id));
+              findus::detail::from_internal<ParallelComponent>(internal_id));
         });
   };
 
   const std::int32_t parent_to_send_to =
       process_id == 0 ? -1
-                      : rts::detail::find_first_parent(
+                      : findus::detail::find_first_parent(
                             process_id, total_processes, pid_predicate);
   set_target_process_id(message, std::max(parent_to_send_to, 0));
   const std::int32_t number_of_expected_contributions =
-      rts::detail::count_first_descendants(process_id, total_processes,
-                                           pid_predicate) +
+      findus::detail::count_first_descendants(process_id, total_processes,
+                                              pid_predicate) +
       1;
   set_expected_number_of_contributions(message,
                                        number_of_expected_contributions);
@@ -781,7 +782,8 @@ void Handler::set_interprocess_message_info(
       ((parent_to_send_to == 0 or parent_to_send_to == -1) and
        not pid_predicate(0))) {
     const std::int32_t number_of_expected_contributions_to_root =
-        rts::detail::count_first_descendants(0, total_processes, pid_predicate);
+        findus::detail::count_first_descendants(0, total_processes,
+                                                pid_predicate);
     set_expected_number_of_root_contributions(
         message, number_of_expected_contributions_to_root);
   }
@@ -804,12 +806,12 @@ void Handler::set_interprocess_message_info(
 
   const std::int32_t parent_to_send_to =
       process_id == 0 ? -1
-                      : rts::detail::find_first_parent(
+                      : findus::detail::find_first_parent(
                             process_id, total_processes, pid_predicate);
   set_target_process_id(message, std::max(parent_to_send_to, 0));
   const std::int32_t number_of_expected_contributions =
-      rts::detail::count_first_descendants(process_id, total_processes,
-                                           pid_predicate) +
+      findus::detail::count_first_descendants(process_id, total_processes,
+                                              pid_predicate) +
       1;
   set_expected_number_of_contributions(message,
                                        number_of_expected_contributions);
@@ -817,7 +819,8 @@ void Handler::set_interprocess_message_info(
       ((parent_to_send_to == 0 or parent_to_send_to == -1) and
        not pid_predicate(0))) {
     const std::int32_t number_of_expected_contributions_to_root =
-        rts::detail::count_first_descendants(0, total_processes, pid_predicate);
+        findus::detail::count_first_descendants(0, total_processes,
+                                                pid_predicate);
     set_expected_number_of_root_contributions(
         message, number_of_expected_contributions_to_root);
   }
@@ -826,4 +829,4 @@ void Handler::set_interprocess_message_info(
   reduction::set_contributed_metadata(
       message, reduction::Contribution::self_contributed);
 }
-}  // namespace rts::reduction
+}  // namespace findus::reduction

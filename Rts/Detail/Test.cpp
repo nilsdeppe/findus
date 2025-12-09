@@ -2,14 +2,14 @@
 // Distributed under the MIT License.
 // See LICENSE.txt for details.
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/extensions/doctest_mpi.h>
 
 namespace {
-bool has_rts_mpi_test_flag(int argc, char** argv) {
+bool has_findus_mpi_test_flag(int argc, char** argv) {
   for (int i = 1; i < argc; ++i) {
-    if (std::string(argv[i]) == "--rts-mpi-test") {
+    if (std::string(argv[i]) == "--findus-mpi-test") {
       return true;
     }
   }
@@ -18,7 +18,7 @@ bool has_rts_mpi_test_flag(int argc, char** argv) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (has_rts_mpi_test_flag(argc, argv)) {
+  if (has_findus_mpi_test_flag(argc, argv)) {
     // Note: the definitions are all in the _DocTestImpl library that we link.
     doctest::mpi_init_thread(argc, argv, MPI_THREAD_MULTIPLE);
 

@@ -4,7 +4,7 @@
 
 #pragma once
 
-namespace rts::detail {
+namespace findus::detail {
 /*!
  * \brief The internally used type-erased base class for distributed objects.
  *
@@ -17,4 +17,4 @@ class DistributedObjectBase {
  public:
   virtual ~DistributedObjectBase() = 0;
 };
-}  // namespace rts::detail
+}  // namespace findus::detail

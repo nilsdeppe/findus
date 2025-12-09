@@ -19,7 +19,7 @@
 #include "Rts/QuiescenceDetection.hpp"
 #include "Spinlock.hpp"
 
-namespace rts {
+namespace findus {
 /*!
  *
  *
@@ -116,7 +116,7 @@ class ThreadPool {
 
  private:
   static constexpr std::size_t hardware_destructive_interference_size =
-      RTS_CACHE_LINE_SIZE;
+      FINDUS_CACHE_LINE_SIZE;
 
   // Task design:
   // - We have a list of tasks for each thread. Another design is to have one
@@ -324,4 +324,4 @@ inline void ThreadPool<MessageType, ProcessLocalDataType>::add_tasks(
     throw std::runtime_error("Failed to enqueue a message onto the thread");
   }
 }
-}  // namespace rts
+}  // namespace findus

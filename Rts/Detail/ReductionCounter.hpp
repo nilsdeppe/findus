@@ -14,7 +14,7 @@
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/HardwareInfo.hpp"
 
-namespace rts::reduction::detail {
+namespace findus::reduction::detail {
 /*!
  * \brief Tracks completion of reductions for a parallel component using unique
  * keys.
@@ -52,7 +52,7 @@ namespace rts::reduction::detail {
  *   constructor is not thread-safe.
  */
 class alignas(
-    rts::hardware_info::hardware_destructive_interference_size) Counter {
+    findus::hardware_info::hardware_destructive_interference_size) Counter {
  public:
   /*!
    * \brief Because of the need for thread-safety, there is no useful case
@@ -70,7 +70,7 @@ class alignas(
    *   The maximum number of unique reduction keys that can be tracked.
    *   Must be a power of two greater than zero.
    *
-   * \throws rts::Exception
+   * \throws findus::Exception
    *   If `max_entries` is zero.
    *   If `max_entries` is not a power of two.
    *
@@ -265,4 +265,4 @@ bool Counter::increment(const std::uint64_t hashed_key,
                   " because the container is full. Max entries is " +
                   std::to_string(entries_.size())};
 }
-}  // namespace rts::reduction::detail
+}  // namespace findus::reduction::detail

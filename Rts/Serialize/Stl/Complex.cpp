@@ -4,7 +4,7 @@
 
 #include "Rts/Serialize/Stl/Complex.hpp"
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <complex>
 #include <doctest/doctest.h>
@@ -12,7 +12,7 @@
 
 #include "Rts/Serialize/Serializer.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 namespace {
 struct NoSerialize {};
 static_assert(is_serializable_v<std::complex<int>>);
@@ -136,5 +136,5 @@ TEST_CASE("Serialize.Complex") {
     CHECK(c.imag().value == c_unpacked.imag().value);
   }
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize
 #endif

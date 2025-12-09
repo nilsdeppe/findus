@@ -4,7 +4,7 @@
 
 #pragma once
 
-namespace rts::detail {
+namespace findus::detail {
 /// \brief Print the system process ID for each rts process ID.
 void print_process_pids(int process_id);
-}  // namespace rts::detail
+}  // namespace findus::detail

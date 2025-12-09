@@ -18,7 +18,7 @@
 #include "Rts/Detail/MemberFunctionPtr.hpp"
 #include "Rts/Exceptions/Exception.hpp"
 
-namespace rts {
+namespace findus {
 namespace {
 void set_data_was_serialized(std::uint64_t& metadata,
                              const bool data_was_serialized) {
@@ -142,14 +142,14 @@ std::ostream& operator<<(std::ostream& os, const MessageHeader& header) {
 static_assert(std::alignment_of_v<MessageHeader> == 64);
 static_assert(
     std::is_same_v<std::underlying_type_t<MessageType>, std::uint8_t>);
-}  // namespace rts
+}  // namespace findus
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 #include <memory>
 
-namespace rts {
+namespace findus {
 namespace {
 struct alignas(64) TestClass {
   void foo() {}
@@ -176,7 +176,7 @@ TEST_CASE("MessageHeader") {
                              const bool expected_data_was_serialized,
                              const auto& expected_data) {
     using T = std::decay_t<decltype(expected_data)>;
-    T* message_data = rts::create_data_in_message<T>(message_header);
+    T* message_data = findus::create_data_in_message<T>(message_header);
     *message_data = expected_data;
     CHECK(message_header.member_function_ptr() == foo_ptr);
     CHECK(message_header.target_collection_index() ==
@@ -374,25 +374,25 @@ TEST_CASE("MessageHeader") {
     CHECK(output.find("message_type: Broadcast") != std::string::npos);
   }
 
-  const rts::detail::MemberFunctionPtr dummy_ptr1{};
-  rts::detail::MemberFunctionPtr dummy_ptr2{};
+  const findus::detail::MemberFunctionPtr dummy_ptr1{};
+  findus::detail::MemberFunctionPtr dummy_ptr2{};
   dummy_ptr2.lower = 1;  // Make it different
 
   const std::uint64_t target_collection_index = 42;
-  const std::uint64_t num_bytes = sizeof(rts::MessageHeader) + 16;
+  const std::uint64_t num_bytes = sizeof(findus::MessageHeader) + 16;
   const std::uint32_t distributed_object_index = 7;
-  const std::uint32_t data_offset = sizeof(rts::MessageHeader);
+  const std::uint32_t data_offset = sizeof(findus::MessageHeader);
   const std::int32_t source_id = 1;
   const std::int32_t dest_id = 2;
   const std::uint64_t sweep = 123;
   const bool was_serialized = false;
-  const rts::MessageType type = rts::MessageType::Invoke;
+  const findus::MessageType type = findus::MessageType::Invoke;
 
-  const rts::MessageHeader base(
+  const findus::MessageHeader base(
       dummy_ptr1, target_collection_index, num_bytes, distributed_object_index,
       data_offset, source_id, dest_id, sweep, was_serialized, type);
 
-  const rts::MessageHeader identical(
+  const findus::MessageHeader identical(
       dummy_ptr1, target_collection_index, num_bytes, distributed_object_index,
       data_offset, source_id, dest_id, sweep, was_serialized, type);
 
@@ -401,59 +401,59 @@ TEST_CASE("MessageHeader") {
 
   {
     // member_function_ptr
-    CHECK(base != rts::MessageHeader(dummy_ptr2, target_collection_index,
-                                     num_bytes, distributed_object_index,
-                                     data_offset, source_id, dest_id, sweep,
-                                     was_serialized, type));
+    CHECK(base != findus::MessageHeader(dummy_ptr2, target_collection_index,
+                                        num_bytes, distributed_object_index,
+                                        data_offset, source_id, dest_id, sweep,
+                                        was_serialized, type));
   }
   {
     // target_collection_index
-    CHECK(base != rts::MessageHeader(dummy_ptr1, target_collection_index + 1,
-                                     num_bytes, distributed_object_index,
-                                     data_offset, source_id, dest_id, sweep,
-                                     was_serialized, type));
+    CHECK(base != findus::MessageHeader(dummy_ptr1, target_collection_index + 1,
+                                        num_bytes, distributed_object_index,
+                                        data_offset, source_id, dest_id, sweep,
+                                        was_serialized, type));
   }
   {
     // number_of_bytes_in_message
-    CHECK(base != rts::MessageHeader(dummy_ptr1, target_collection_index,
-                                     num_bytes + 1, distributed_object_index,
-                                     data_offset, source_id, dest_id, sweep,
-                                     was_serialized, type));
+    CHECK(base != findus::MessageHeader(dummy_ptr1, target_collection_index,
+                                        num_bytes + 1, distributed_object_index,
+                                        data_offset, source_id, dest_id, sweep,
+                                        was_serialized, type));
   }
   {
     // distributed_object_index
-    CHECK(base != rts::MessageHeader(dummy_ptr1, target_collection_index,
-                                     num_bytes, distributed_object_index + 1,
-                                     data_offset, source_id, dest_id, sweep,
-                                     was_serialized, type));
+    CHECK(base != findus::MessageHeader(dummy_ptr1, target_collection_index,
+                                        num_bytes, distributed_object_index + 1,
+                                        data_offset, source_id, dest_id, sweep,
+                                        was_serialized, type));
   }
   {
     // data_offset
-    CHECK(base != rts::MessageHeader(dummy_ptr1, target_collection_index,
-                                     num_bytes, distributed_object_index,
-                                     data_offset + 1, source_id, dest_id, sweep,
-                                     was_serialized, type));
+    CHECK(base != findus::MessageHeader(dummy_ptr1, target_collection_index,
+                                        num_bytes, distributed_object_index,
+                                        data_offset + 1, source_id, dest_id,
+                                        sweep, was_serialized, type));
   }
   {
     // source_process_id
-    CHECK(base != rts::MessageHeader(dummy_ptr1, target_collection_index,
-                                     num_bytes, distributed_object_index,
-                                     data_offset, source_id + 1, dest_id, sweep,
-                                     was_serialized, type));
+    CHECK(base != findus::MessageHeader(dummy_ptr1, target_collection_index,
+                                        num_bytes, distributed_object_index,
+                                        data_offset, source_id + 1, dest_id,
+                                        sweep, was_serialized, type));
   }
   {
     // destination_process_id
-    CHECK(base != rts::MessageHeader(dummy_ptr1, target_collection_index,
-                                     num_bytes, distributed_object_index,
-                                     data_offset, source_id, dest_id + 1, sweep,
-                                     was_serialized, type));
+    CHECK(base != findus::MessageHeader(dummy_ptr1, target_collection_index,
+                                        num_bytes, distributed_object_index,
+                                        data_offset, source_id, dest_id + 1,
+                                        sweep, was_serialized, type));
   }
   {
     // quiescence_detection_sweep_number
-    CHECK(base != rts::MessageHeader(dummy_ptr1, target_collection_index,
-                                     num_bytes, distributed_object_index,
-                                     data_offset, source_id, dest_id, sweep + 1,
-                                     was_serialized, type));
+    CHECK(base != findus::MessageHeader(dummy_ptr1, target_collection_index,
+                                        num_bytes, distributed_object_index,
+                                        data_offset, source_id, dest_id,
+                                        sweep + 1, was_serialized, type));
   }
   {
     // data_alignment
@@ -462,49 +462,50 @@ TEST_CASE("MessageHeader") {
     };
     std::unique_ptr<std::byte[], decltype(deleter)> buffer1{
         new (std::align_val_t(alignof(MessageHeader)))
-            std::byte[sizeof(rts::MessageHeader) + sizeof(double)],
+            std::byte[sizeof(findus::MessageHeader) + sizeof(double)],
         deleter};
-    // std::make_unique<char[]>(sizeof(rts::MessageHeader) + alignof(double));
+    // std::make_unique<char[]>(sizeof(findus::MessageHeader) +
+    // alignof(double));
     auto* header1 = new (buffer1.get())
-        rts::MessageHeader(dummy_ptr1, target_collection_index, num_bytes,
-                           distributed_object_index, data_offset, source_id,
-                           dest_id, sweep, was_serialized, type);
-    rts::create_data_in_message<double>(*header1);
+        findus::MessageHeader(dummy_ptr1, target_collection_index, num_bytes,
+                              distributed_object_index, data_offset, source_id,
+                              dest_id, sweep, was_serialized, type);
+    findus::create_data_in_message<double>(*header1);
 
     std::unique_ptr<std::byte[], decltype(deleter)> buffer2{
         new (std::align_val_t(alignof(MessageHeader)))
-            std::byte[sizeof(rts::MessageHeader) + sizeof(int)],
+            std::byte[sizeof(findus::MessageHeader) + sizeof(int)],
         deleter};
     auto* header2 = new (buffer2.get())
-        rts::MessageHeader(dummy_ptr1, target_collection_index, num_bytes,
-                           distributed_object_index, data_offset, source_id,
-                           dest_id, sweep, was_serialized, type);
-    rts::create_data_in_message<int>(*header2);
+        findus::MessageHeader(dummy_ptr1, target_collection_index, num_bytes,
+                              distributed_object_index, data_offset, source_id,
+                              dest_id, sweep, was_serialized, type);
+    findus::create_data_in_message<int>(*header2);
 
     CHECK_FALSE(*header1 == *header2);
     CHECK(*header1 != *header2);
   }
   {
     // data_was_serialized
-    CHECK(base != rts::MessageHeader(dummy_ptr1, target_collection_index,
-                                     num_bytes, distributed_object_index,
-                                     data_offset, source_id, dest_id, sweep,
-                                     not was_serialized, type));
+    CHECK(base != findus::MessageHeader(dummy_ptr1, target_collection_index,
+                                        num_bytes, distributed_object_index,
+                                        data_offset, source_id, dest_id, sweep,
+                                        not was_serialized, type));
   }
   {
     // message_type
-    CHECK(base != rts::MessageHeader(
+    CHECK(base != findus::MessageHeader(
                       dummy_ptr1, target_collection_index, num_bytes,
                       distributed_object_index, data_offset, source_id, dest_id,
-                      sweep, was_serialized, rts::MessageType::Broadcast));
+                      sweep, was_serialized, findus::MessageType::Broadcast));
   }
   {
     // Check special collection index values
-    CHECK(rts::MessageHeader::no_collection_index() != 0);
-    CHECK(rts::MessageHeader::reduction_message_collection_index() != 0);
-    CHECK(rts::MessageHeader::no_collection_index() !=
-          rts::MessageHeader::reduction_message_collection_index());
+    CHECK(findus::MessageHeader::no_collection_index() != 0);
+    CHECK(findus::MessageHeader::reduction_message_collection_index() != 0);
+    CHECK(findus::MessageHeader::no_collection_index() !=
+          findus::MessageHeader::reduction_message_collection_index());
   }
 }
-}  // namespace rts
+}  // namespace findus
 #endif

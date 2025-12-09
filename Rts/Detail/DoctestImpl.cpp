@@ -2,7 +2,7 @@
 // Distributed under the MIT License.
 // See LICENSE.txt for details.
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 #include <doctest/extensions/doctest_mpi.h>

@@ -4,14 +4,14 @@
 
 #include "Rts/Serialize/Stl/UniquePtr.hpp"
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 #include <memory>
 
 #include "Rts/Serialize/Stl/Vector.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 namespace {
 struct NoSerialize {};
 static_assert(is_serializable_v<std::unique_ptr<int>>);
@@ -21,7 +21,7 @@ static_assert(not is_serializable_v<std::unique_ptr<NoSerialize>>);
 }  // namespace
 
 namespace {
-class BaseLeft : public virtual rts::serialize::SerializableBase<BaseLeft> {
+class BaseLeft : public virtual findus::serialize::SerializableBase<BaseLeft> {
  public:
   ~BaseLeft() override = default;
 
@@ -31,14 +31,15 @@ class BaseLeft : public virtual rts::serialize::SerializableBase<BaseLeft> {
 
   virtual Serializer& serialize(Serializer& s) { return s | left_data; }
 
-#if defined(RTS_MIMIC_CHARM_PUPER)
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
   virtual void pup(PUP::er& p) { p | left_data; }
 #endif
 
   int left_data = -2;
 };
 
-class BaseRight : public virtual rts::serialize::SerializableBase<BaseRight> {
+class BaseRight
+    : public virtual findus::serialize::SerializableBase<BaseRight> {
  public:
   ~BaseRight() override = default;
 
@@ -48,17 +49,18 @@ class BaseRight : public virtual rts::serialize::SerializableBase<BaseRight> {
 
   virtual Serializer& serialize(Serializer& s) { return s | right_data; }
 
-#if defined(RTS_MIMIC_CHARM_PUPER)
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
   virtual void pup(PUP::er& p) { p | right_data; }
 #endif
 
   int right_data = -2;
 };
 
-class Derived : public rts::serialize::SerializableDerived<Derived, BaseLeft>,
-                public BaseLeft,
-                public rts::serialize::SerializableDerived<Derived, BaseRight>,
-                public BaseRight {
+class Derived
+    : public findus::serialize::SerializableDerived<Derived, BaseLeft>,
+      public BaseLeft,
+      public findus::serialize::SerializableDerived<Derived, BaseRight>,
+      public BaseRight {
  public:
   Derived(Serializer& s) : BaseLeft(s), BaseRight(s) { s | data; }
 
@@ -71,7 +73,7 @@ class Derived : public rts::serialize::SerializableDerived<Derived, BaseLeft>,
     return s | data;
   }
 
-#if defined(RTS_MIMIC_CHARM_PUPER)
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
   void pup(PUP::er& p) override {
     BaseLeft::pup(p);
     BaseRight::pup(p);
@@ -148,5 +150,5 @@ TEST_CASE("Serialize.UniquePtr") {
   test_abstract();
   test_concrete();
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize
 #endif

@@ -4,12 +4,12 @@
 
 #include "Rts/Serialize/Stl/Vector.hpp"
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 #include <vector>
 
-namespace rts::serialize {
+namespace findus::serialize {
 namespace {
 struct NoSerialize {};
 static_assert(is_serializable_v<std::vector<int>>);
@@ -190,5 +190,5 @@ TEST_CASE("Serialize.Vector") {
     CHECK(vec == vec_unpacked);
   }
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize
 #endif

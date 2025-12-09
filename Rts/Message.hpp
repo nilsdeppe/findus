@@ -22,7 +22,7 @@
 #include "Rts/Serialize/Serializer.hpp"
 #include "Rts/Serialize/Stl/Tuple.hpp"
 
-namespace rts {
+namespace findus {
 /// \cond
 class DistributedTaskDriver;
 template <class MessageType, class ProcessLocalDataType>
@@ -76,7 +76,7 @@ struct Message_t {
 
   /// \brief Executes the message.
   static bool execute(
-      rts::ThreadPool<Message_t, rts::DistributedTaskDriver*>& /*pool*/,
+      findus::ThreadPool<Message_t, findus::DistributedTaskDriver*>& /*pool*/,
       const std::uint32_t thread_id, Message_t& message,
       DistributedTaskDriver* distributed_task_driver);
 };
@@ -143,7 +143,7 @@ Message_t create_message(const detail::MemberFunctionPtr member_function_ptr,
   constexpr std::size_t data_alignment = alignof(Data_t);
 
   // Compute offset for data to ensure correct alignment after header.
-  constexpr std::size_t header_size = sizeof(rts::MessageHeader);
+  constexpr std::size_t header_size = sizeof(findus::MessageHeader);
   const std::size_t data_offset =
       header_size
       // Add extra bytes to make sure we can align Data_t
@@ -165,7 +165,7 @@ Message_t create_message(const detail::MemberFunctionPtr member_function_ptr,
         throw Exception{
             "Attempting to serialize arguments for creating a message but one "
             "the arguments cannot be serialized. Make sure all arguments have "
-            "rts::serialize::is_serializable_v<T> evaluate to true."};
+            "findus::serialize::is_serializable_v<T> evaluate to true."};
       }
     } else {
       if (not std::is_same_v<Data_t, std::tuple<Args...>>) {
@@ -185,7 +185,7 @@ Message_t create_message(const detail::MemberFunctionPtr member_function_ptr,
           std::byte[number_of_bytes_in_message]);
 
   // Placement-new copy-construct the header at the start of the buffer
-  auto* header_ptr = new (buffer.get()) rts::MessageHeader(
+  auto* header_ptr = new (buffer.get()) findus::MessageHeader(
       member_function_ptr, target_collection_index, number_of_bytes_in_message,
       distributed_object_index, data_offset, source_process_id,
       destination_process_id, quiescence_detection_sweep_number, was_serialized,
@@ -201,10 +201,10 @@ Message_t create_message(const detail::MemberFunctionPtr member_function_ptr,
       throw Exception{
           "Attempting to serialize arguments for creating a message but one "
           "the arguments cannot be serialized. Make sure all arguments have "
-          "rts::serialize::is_serializable_v<T> evaluate to true."};
+          "findus::serialize::is_serializable_v<T> evaluate to true."};
     }
   } else {
-    *rts::create_data_in_message<Data_t>(*header_ptr) = std::move(args);
+    *findus::create_data_in_message<Data_t>(*header_ptr) = std::move(args);
   }
 
   return {std::move(buffer)};
@@ -233,7 +233,7 @@ Message_t create_message(const detail::MemberFunctionPtr member_function_ptr,
  * data.
  */
 Message_t create_broadcast_to_message(
-    const rts::detail::MemberFunctionPtr& member_function_ptr,
+    const findus::detail::MemberFunctionPtr& member_function_ptr,
     std::uint32_t distributed_object_index, std::int32_t source_process_id,
     std::int32_t destination_process_id,
     std::uint64_t quiescence_detection_sweep_number, bool was_serialized,
@@ -262,7 +262,7 @@ Message_t create_broadcast_to_message(
  * \return Message_t containing the allocated buffer with header and data.
  */
 Message_t create_message(
-    const rts::detail::MemberFunctionPtr& member_function_ptr,
+    const findus::detail::MemberFunctionPtr& member_function_ptr,
     std::uint64_t collection_index, std::uint32_t distributed_object_index,
     std::int32_t source_process_id, std::int32_t destination_process_id,
     std::uint64_t quiescence_detection_sweep_number, bool was_serialized,
@@ -393,7 +393,7 @@ T* get_data_pointer(Message_t& message) {
         "Cannot retrieve the data pointer with a type other than std::byte "
           "for a serialized message."};
     }
-    static_assert(::rts::detail::is_std_tuple_v<T>);
+    static_assert(::findus::detail::is_std_tuple_v<T>);
     return reinterpret_cast<T*>(ptr);
   }
 }
@@ -667,13 +667,13 @@ std::int32_t get_expected_number_of_root_contributions(
  * ```
  * The metadata sent along is
  * 1. The reduction id (`std::uint64_t`, 8 bytes). Retrieve using
- *    `rts::reduction::get_id()`.
+ *    `findus::reduction::get_id()`.
  * 2. The offset of the data relative to the MessageHeader address
  *    (`std::uint32_t`, 4 bytes).Retrieve using
- *    `rts::reduction::get_data_offset()`.
+ *    `findus::reduction::get_data_offset()`.
  * 3. The offset of the callback relative to the MessageHeader address
  *    (`std::uint32_t`, 4 bytes). Retrieve using
- *    `rts::reduction::get_callback_offset()`.
+ *    `findus::reduction::get_callback_offset()`.
  *
  * The function computes the correct offsets and alignments for the data and
  * callback, constructs them in-place, and sets the appropriate metadata fields
@@ -794,4 +794,4 @@ Message_t create_message(
   return message;
 }
 }  // namespace reduction
-}  // namespace rts
+}  // namespace findus

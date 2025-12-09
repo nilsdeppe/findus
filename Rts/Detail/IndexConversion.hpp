@@ -11,7 +11,7 @@
 
 #include "Rts/IsCollection.hpp"
 
-namespace rts::detail {
+namespace findus::detail {
 /*!
  * \brief Helper struct to determine the collection index type for a parallel
  * component.
@@ -19,7 +19,7 @@ namespace rts::detail {
  * This struct is used internally to select the appropriate type for the
  * collection index based on whether the given parallel component is a
  * collection. If the boolean template parameter `S` is true, the type alias `f`
- * resolves to the `rts_collection_index` type defined by the parallel
+ * resolves to the `findus_collection_index` type defined by the parallel
  * component. Otherwise, it defaults to `int`.
  *
  * \tparam S Boolean value indicating whether the parallel component is a
@@ -33,12 +33,12 @@ struct get_collection_index_impl {
    * \brief Type alias for the collection index type.
    *
    * If the parallel component is a collection, this resolves to the
-   * `rts_collection_index` type defined by the component.
+   * `findus_collection_index` type defined by the component.
    *
    * \tparam ParallelComponent The parallel component type.
    */
   template <class ParallelComponent>
-  using f = typename ParallelComponent::rts_collection_index;
+  using f = typename ParallelComponent::findus_collection_index;
 };
 
 /// \cond
@@ -55,13 +55,13 @@ struct get_collection_index_impl<false> {
  *
  * This type alias resolves to the type used as the collection index for a given
  * parallel component. If the parallel component is a collection, it uses the
- * `rts_collection_index` type defined by the component. Otherwise, it defaults
- * to `int`.
+ * `findus_collection_index` type defined by the component. Otherwise, it
+ * defaults to `int`.
  *
  * \tparam ParallelComponent The parallel component type for which to obtain the
  *         collection index type.
  *
- * \see rts::is_collection
+ * \see findus::is_collection
  */
 template <class ParallelComponent>
 using get_collection_index = typename get_collection_index_impl<
@@ -110,10 +110,11 @@ std::uint64_t to_internal(const IndexType& collection_index) {
  * is compatible.
  */
 template <class ParallelComponent>
-typename ParallelComponent::rts_collection_index from_internal(
+typename ParallelComponent::findus_collection_index from_internal(
     const std::uint64_t& collection_index) {
   return *std::launder(
-      reinterpret_cast<const typename ParallelComponent::rts_collection_index*>(
+      reinterpret_cast<
+          const typename ParallelComponent::findus_collection_index*>(
           std::addressof(collection_index)));
 }
-}  // namespace rts::detail
+}  // namespace findus::detail

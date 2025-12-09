@@ -6,9 +6,9 @@
 
 #include <ostream>
 
-namespace rts::serialize {
-std::ostream& operator<<(std::ostream& os, rts::serialize::Action action) {
-  using rts::serialize::Action;
+namespace findus::serialize {
+std::ostream& operator<<(std::ostream& os, findus::serialize::Action action) {
+  using findus::serialize::Action;
   switch (action) {
     case Action::Uninitialized:
       os << "Uninitialized";
@@ -34,15 +34,15 @@ std::ostream& operator<<(std::ostream& os, rts::serialize::Action action) {
   }
   return os;
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 #include <sstream>
 
 TEST_CASE("Serialize.Action") {
-  using rts::serialize::Action;
+  using findus::serialize::Action;
   std::ostringstream os;
 
   os.str("");

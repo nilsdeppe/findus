@@ -4,7 +4,7 @@
 
 #pragma once
 
-namespace rts::reduction::detail {
+namespace findus::reduction::detail {
 /// \brief Predicate that always returns `true`.
 ///
 /// Used internally for `reduction()`, which calls
@@ -16,4 +16,4 @@ struct AllElements {
     return true;
   }
 };
-}  // namespace rts::reduction::detail
+}  // namespace findus::reduction::detail

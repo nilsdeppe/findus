@@ -7,7 +7,7 @@
 #include <ostream>
 #include <vector>
 
-namespace rts::detail {
+namespace findus::detail {
 /// \brief Internally used stream operator for std::vector.
 ///
 /// Intentionally not in the global namespace and should be used explicitly in
@@ -23,4 +23,4 @@ std::ostream& operator<<(std::ostream& os, const std::vector<T, A>& v) {
   os << "]";
   return os;
 }
-}  // namespace rts::detail
+}  // namespace findus::detail

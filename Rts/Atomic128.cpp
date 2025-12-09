@@ -6,7 +6,7 @@
 
 #include <type_traits>
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <array>
 #include <atomic>
@@ -18,7 +18,7 @@
 #include <thread>
 #include <vector>
 
-namespace rts {
+namespace findus {
 /*!
  * Pattern: 128-bit payload with utility functions.
  * Up to 8 bit patterns are used for atomic stress test.
@@ -342,5 +342,5 @@ TEST_CASE("Atomic128") {
         number_of_load_threads, number_of_store_threads, cas_single_arg);
   }
 }
-}  // namespace rts
+}  // namespace findus
 #endif

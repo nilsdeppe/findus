@@ -10,7 +10,7 @@
 
 #include "Rts/Serialize/Serializer.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 /*!
  * \brief Serializes or deserializes a std::basic_string using the Serializer.
  *
@@ -40,4 +40,4 @@ Serializer& operator|(Serializer& serializer,
   }
   return serializer(View{const_cast<CharT*>(string.data()), size});
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize

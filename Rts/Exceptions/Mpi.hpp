@@ -9,10 +9,10 @@
 
 #include "Rts/Exceptions/Exception.hpp"
 
-namespace rts {
+namespace findus {
 /// Exception indicating an MPI error occurred.
 class MpiException : public Exception {
  public:
   explicit MpiException(const std::string& message);
 };
-}  // namespace rts
+}  // namespace findus

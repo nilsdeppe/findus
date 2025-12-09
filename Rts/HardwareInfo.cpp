@@ -18,7 +18,7 @@
 #include "Rts/Exceptions/Exception.hpp"
 #include "Rts/Exceptions/Mpi.hpp"
 
-namespace rts::hardware_info {
+namespace findus::hardware_info {
 namespace {
 std::array<CacheInfo, 3> cache_info() {
   hwloc_topology_t topology_;
@@ -244,19 +244,19 @@ std::string process_ids_to_ranges(const std::vector<int>& process_ids) {
   return result;
 }
 }  // namespace
-}  // namespace rts::hardware_info
+}  // namespace findus::hardware_info
 
 template <>
-struct std::hash<rts::hardware_info::GatheredHardwareInfo> {
+struct std::hash<findus::hardware_info::GatheredHardwareInfo> {
   std::size_t operator()(
-      const rts::hardware_info::GatheredHardwareInfo& x) const noexcept {
+      const findus::hardware_info::GatheredHardwareInfo& x) const noexcept {
     return std::hash<std::string_view>{}(
         std::string_view{reinterpret_cast<const char*>(&x),
-                         sizeof(rts::hardware_info::GatheredHardwareInfo)});
+                         sizeof(findus::hardware_info::GatheredHardwareInfo)});
   }
 };
 
-namespace rts::hardware_info {
+namespace findus::hardware_info {
 void print_hardware_info(const MPI_Comm comm) {
   int this_process_id = -1;
   if (MPI_Comm_rank(comm, &this_process_id) != MPI_SUCCESS) {
@@ -299,34 +299,37 @@ void print_hardware_info(const MPI_Comm comm) {
     constexpr size_t print_width = 9;
     for (const auto& [group, process_ids] : groups) {
       // Print the hardware info for this group of process IDs.
-      std::cout
-          << "rts: Hardware info from processes "
-          << process_ids_to_ranges(process_ids)
-          << ":\nrts:   Number of processors:       " << std::setw(print_width)
-          << group.cpu_info.number_of_processors
-          << "\nrts:   Number of NUMA nodes:       " << std::setw(print_width)
-          << group.cpu_info.number_of_numa_nodes
-          << "\nrts:   Number of cores:            " << std::setw(print_width)
-          << group.cpu_info.number_of_cores
-          << "\nrts:   Number of hardware threads: " << std::setw(print_width)
-          << group.cpu_info.number_of_processing_units
-          << "\nrts:   L1 cache size (kB):         " << std::setw(print_width)
-          << static_cast<int>(group.cache_info[0].size) / 1024
-          << "\nrts:   L2 cache size (kB):         " << std::setw(print_width)
-          << static_cast<int>(group.cache_info[1].size) / 1024
-          << "\nrts:   L3 cache size (kB):         " << std::setw(print_width)
-          << static_cast<int>(group.cache_info[2].size) / 1024 << "\n";
+      std::cout << "findus: Hardware info from processes "
+                << process_ids_to_ranges(process_ids)
+                << ":\nfindus:   Number of processors:       "
+                << std::setw(print_width) << group.cpu_info.number_of_processors
+                << "\nfindus:   Number of NUMA nodes:       "
+                << std::setw(print_width) << group.cpu_info.number_of_numa_nodes
+                << "\nfindus:   Number of cores:            "
+                << std::setw(print_width) << group.cpu_info.number_of_cores
+                << "\nfindus:   Number of hardware threads: "
+                << std::setw(print_width)
+                << group.cpu_info.number_of_processing_units
+                << "\nfindus:   L1 cache size (kB):         "
+                << std::setw(print_width)
+                << static_cast<int>(group.cache_info[0].size) / 1024
+                << "\nfindus:   L2 cache size (kB):         "
+                << std::setw(print_width)
+                << static_cast<int>(group.cache_info[1].size) / 1024
+                << "\nfindus:   L3 cache size (kB):         "
+                << std::setw(print_width)
+                << static_cast<int>(group.cache_info[2].size) / 1024 << "\n";
     }
   }
 }
-}  // namespace rts::hardware_info
+}  // namespace findus::hardware_info
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 #include <doctest/extensions/doctest_mpi.h>
 
-namespace rts::hardware_info {
+namespace findus::hardware_info {
 TEST_CASE("HardwareInfo") {
   CHECK_THROWS_AS(cache_info(4), Exception);
   try {
@@ -424,7 +427,7 @@ MPI_TEST_CASE("HardwareInfoParallel", 2) {
     std::streambuf* old_cout = std::cout.rdbuf(buffer.rdbuf());
 
     // Call the function
-    rts::hardware_info::print_hardware_info(test_comm);
+    findus::hardware_info::print_hardware_info(test_comm);
 
     // Restore std::cout
     std::cout.rdbuf(old_cout);
@@ -433,19 +436,19 @@ MPI_TEST_CASE("HardwareInfoParallel", 2) {
     std::string output = buffer.str();
 
     // Check that some expected substrings are present
-    CHECK(output.find("rts: Hardware info") != std::string::npos);
-    CHECK(output.find("rts:   Number of processors:") != std::string::npos);
-    CHECK(output.find("rts:   Number of NUMA nodes:") != std::string::npos);
-    CHECK(output.find("rts:   Number of cores:") != std::string::npos);
-    CHECK(output.find("rts:   Number of hardware threads:") !=
+    CHECK(output.find("findus: Hardware info") != std::string::npos);
+    CHECK(output.find("findus:   Number of processors:") != std::string::npos);
+    CHECK(output.find("findus:   Number of NUMA nodes:") != std::string::npos);
+    CHECK(output.find("findus:   Number of cores:") != std::string::npos);
+    CHECK(output.find("findus:   Number of hardware threads:") !=
           std::string::npos);
-    CHECK(output.find("rts:   L1 cache size (kB):") != std::string::npos);
-    CHECK(output.find("rts:   L2 cache size (kB):") != std::string::npos);
-    CHECK(output.find("rts:   L3 cache size (kB):") != std::string::npos);
+    CHECK(output.find("findus:   L1 cache size (kB):") != std::string::npos);
+    CHECK(output.find("findus:   L2 cache size (kB):") != std::string::npos);
+    CHECK(output.find("findus:   L3 cache size (kB):") != std::string::npos);
   } else {
     // On other ranks, just call the function (no output to check)
-    rts::hardware_info::print_hardware_info(test_comm);
+    findus::hardware_info::print_hardware_info(test_comm);
   }
 }
-}  // namespace rts::hardware_info
+}  // namespace findus::hardware_info
 #endif

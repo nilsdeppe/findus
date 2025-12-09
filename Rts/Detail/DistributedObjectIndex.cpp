@@ -7,7 +7,7 @@
 #include <ostream>
 #include <string>
 
-namespace rts::detail {
+namespace findus::detail {
 std::ostream& operator<<(std::ostream& os, const DistributedObjectIndex index) {
   switch (index) {
     case Regular:
@@ -20,16 +20,16 @@ std::ostream& operator<<(std::ostream& os, const DistributedObjectIndex index) {
       return os << "Unknown";
   }
 }
-}  // namespace rts::detail
+}  // namespace findus::detail
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 
 #include "Rts/Detail/DistributedObjectIndex.hpp"
 #include "Rts/Detail/GetOutput.hpp"
 
-namespace rts::detail {
+namespace findus::detail {
 TEST_CASE("DistributedObjectIndex stream operator") {
   struct {
     DistributedObjectIndex value;
@@ -43,5 +43,5 @@ TEST_CASE("DistributedObjectIndex stream operator") {
     CHECK(get_output(c.value) == c.expected);
   }
 }
-}  // namespace rts::detail
+}  // namespace findus::detail
 #endif

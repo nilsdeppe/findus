@@ -8,7 +8,7 @@
 #include <string>
 #include <type_traits>
 
-namespace rts {
+namespace findus {
 std::ostream& operator<<(std::ostream& os, const message_tags tag) {
   switch (tag) {
     case message_tags::regular:
@@ -31,16 +31,16 @@ std::ostream& operator<<(std::ostream& os, const message_tags tag) {
 }
 
 static_assert(std::is_same_v<std::underlying_type_t<message_tags>, int>);
-}  // namespace rts
+}  // namespace findus
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 #include <string>
 
 #include "Rts/Detail/GetOutput.hpp"
 
-namespace rts {
+namespace findus {
 TEST_CASE("MessageTags") {
   CHECK(detail::get_output(message_tags::regular) == "regular");
   CHECK(detail::get_output(message_tags::debugger_attach) == "debugger_attach");
@@ -52,5 +52,5 @@ TEST_CASE("MessageTags") {
   CHECK(detail::get_output(static_cast<message_tags>(-100)) ==
         "unknown_tag(-100)");
 }
-}  // namespace rts
+}  // namespace findus
 #endif

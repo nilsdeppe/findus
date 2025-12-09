@@ -4,7 +4,7 @@
 
 #include "Rts/Serialize/Stl/ForwardList.hpp"
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <array>
 #include <doctest/doctest.h>
@@ -16,7 +16,7 @@
 #include "Rts/Serialize/Stl/Array.hpp"
 #include "Rts/Serialize/Stl/Vector.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 namespace {
 struct NoSerialize {};
 static_assert(is_serializable_v<std::forward_list<int>>);
@@ -202,5 +202,5 @@ TEST_CASE("Serialize.ForwardList") {
   //   CHECK(dq == dq_unpacked);
   // }
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize
 #endif

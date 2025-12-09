@@ -12,7 +12,7 @@
 
 #include "Rts/Detail/BitCast.hpp"
 
-namespace rts {
+namespace findus {
 namespace detail {
 #if defined(__x86_64__) || defined(_M_X64)
 inline bool x86_cpu_supports_16_byte_atomic() {
@@ -70,7 +70,7 @@ inline bool x86_cpu_supports_16_byte_atomic() {
  * struct alignas(16) MyData {
  *   uint64_t a, b;
  * };
- * rts::Atomic128<MyData> atomic_data;
+ * findus::Atomic128<MyData> atomic_data;
  * MyData value = atomic_data.load();
  * \endcode
  */
@@ -109,14 +109,14 @@ class Atomic128 {
    */
   constexpr Atomic128() noexcept(std::is_nothrow_default_constructible_v<T>) {
     T desired{};
-    data_ = rts::detail::bit_cast<InternalData>(desired);
+    data_ = findus::detail::bit_cast<InternalData>(desired);
   }
   /*!
    * \brief Initializes the underlying object with desired. The initialization
    * is not atomic.
    */
   constexpr Atomic128(const T& desired) noexcept {
-    data_ = rts::detail::bit_cast<InternalData>(desired);
+    data_ = findus::detail::bit_cast<InternalData>(desired);
   }
   /*!
    * \brief Atomic variables are not copy constructible.
@@ -161,13 +161,13 @@ class Atomic128 {
              std::memory_order_seq_cst) const noexcept {
     InternalData internal_result{0, 0};
     load_store_impl<false>(internal_result, data_, memory_order);
-    return rts::detail::bit_cast<T>(internal_result);
+    return findus::detail::bit_cast<T>(internal_result);
   }
   T load(const std::memory_order memory_order = std::memory_order_seq_cst) const
       volatile noexcept {
     InternalData internal_result{0, 0};
     load_store_impl<false>(internal_result, data_, memory_order);
-    return rts::detail::bit_cast<T>(internal_result);
+    return findus::detail::bit_cast<T>(internal_result);
   }
   /// @}
 
@@ -186,14 +186,14 @@ class Atomic128 {
   void store(const T& desired, const std::memory_order memory_order =
                                    std::memory_order_seq_cst) noexcept {
     const InternalData internal_desired =
-        rts::detail::bit_cast<InternalData>(desired);
+        findus::detail::bit_cast<InternalData>(desired);
     load_store_impl<true>(data_, internal_desired, memory_order);
   }
   void store(const T& desired,
              const std::memory_order memory_order =
                  std::memory_order_seq_cst) volatile noexcept {
     const InternalData internal_desired =
-        rts::detail::bit_cast<InternalData>(desired);
+        findus::detail::bit_cast<InternalData>(desired);
     load_store_impl<true>(data_, internal_desired, memory_order);
   }
   /// @}
@@ -210,14 +210,14 @@ class Atomic128 {
   T exchange(const T& desired, const std::memory_order memory_order =
                                    std::memory_order_seq_cst) noexcept {
     const InternalData internal_desired =
-        rts::detail::bit_cast<InternalData>(desired);
+        findus::detail::bit_cast<InternalData>(desired);
     return exchange_impl(data_, internal_desired, memory_order);
   }
   T exchange(const T& desired,
              const std::memory_order memory_order =
                  std::memory_order_seq_cst) volatile noexcept {
     const InternalData internal_desired =
-        rts::detail::bit_cast<InternalData>(desired);
+        findus::detail::bit_cast<InternalData>(desired);
     return exchange_impl(data_, internal_desired, memory_order);
   }
   /// @}
@@ -316,7 +316,7 @@ class Atomic128 {
 #if defined(__AVX__)
             true;
 #else
-            rts::detail::x86_cpu_supports_16_byte_atomic();
+            findus::detail::x86_cpu_supports_16_byte_atomic();
 #endif
         avx_supported and memory_order == std::memory_order_relaxed) {
       // Atomically load `source` into `destination` with
@@ -426,7 +426,7 @@ class Atomic128 {
                                     const std::memory_order failure) noexcept {
 #if defined(__x86_64__) || defined(_M_X64)
     InternalData internal_expected =
-        rts::detail::bit_cast<InternalData>(expected);
+        findus::detail::bit_cast<InternalData>(expected);
 
     // If our failure memory order is not seq_cst, then we first try a load
     // operation and comparison. This is the best we can do on x86-64 since we
@@ -471,7 +471,7 @@ class Atomic128 {
     //   - The Zero Flag (ZF) is used to indicate success, and is
     //     captured by the `sete` instruction.
     const InternalData internal_desired =
-        rts::detail::bit_cast<InternalData>(desired);
+        findus::detail::bit_cast<InternalData>(desired);
     __asm__ __volatile__(
         "lock cmpxchg16b %1\n\t"
         "sete %0"
@@ -544,9 +544,9 @@ class Atomic128 {
 #else
 #error "Unsupported architecture."
 #endif
-    return rts::detail::bit_cast<T>(result_data);
+    return findus::detail::bit_cast<T>(result_data);
   }
 
   InternalData data_{};
 };
-}  // namespace rts
+}  // namespace findus

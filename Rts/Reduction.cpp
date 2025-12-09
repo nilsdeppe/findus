@@ -15,7 +15,7 @@
 #include "Rts/MessageType.hpp"
 #include "Rts/Serialize/Serializer.hpp"
 
-namespace rts::reduction {
+namespace findus::reduction {
 std::ostream& operator<<(std::ostream& os, const InsertAction action) {
   switch (action) {
     case InsertAction::Insert:
@@ -77,12 +77,12 @@ Handler::Handler(const size_t number_of_threads,
 }
 
 std::optional<Message_t> Handler::combine_inter_process(
-    Message_t message, const rts::detail::ParentAndChildren p_and_c) {
+    Message_t message, const findus::detail::ParentAndChildren p_and_c) {
   if (message.get_header()->message_type() != MessageType::Reduction and
       message.get_header()->message_type() != MessageType::ReductionOver) {
     throw Exception{
         "The message must be a Reduction or ReductionOver but got " +
-        rts::detail::get_output(message.get_header()->message_type())};
+        findus::detail::get_output(message.get_header()->message_type())};
   }
   const auto reduction_id = get_id(message);
   std::uint64_t index = reduction_id;
@@ -159,9 +159,9 @@ std::optional<Message_t> Handler::combine_inter_process(
   }
   return std::nullopt;
 }
-}  // namespace rts::reduction
+}  // namespace findus::reduction
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 #include <random>
@@ -175,10 +175,10 @@ std::optional<Message_t> Handler::combine_inter_process(
 #include "Rts/Reduction.hpp"
 #include "Rts/Serialize/Stl/Vector.hpp"
 
-namespace rts::reduction {
+namespace findus::reduction {
 namespace {
 void test_insert_action_stream_operator() {
-  using rts::detail::get_output;
+  using findus::detail::get_output;
 
   CHECK(get_output(InsertAction::Insert) == "Insert");
   CHECK(get_output(InsertAction::Combine) == "Combine");
@@ -188,8 +188,8 @@ void test_insert_action_stream_operator() {
 
 struct DummyAction {};
 struct DummyComponent
-    : public rts::DistributedObjectCollection<DummyComponent> {
-  using rts_collection_index = std::int64_t;
+    : public findus::DistributedObjectCollection<DummyComponent> {
+  using findus_collection_index = std::int64_t;
 };
 
 template <class Action, class Component, class... Args>
@@ -202,7 +202,7 @@ struct DummyCallback {
 };
 
 void test_combine_function() {
-  using namespace rts::reduction;
+  using namespace findus::reduction;
   using DataTuple = std::tuple<int, double>;
   using DataTupleVector = std::tuple<std::vector<int>, std::vector<double>>;
 
@@ -259,7 +259,7 @@ void test_combine_function() {
 
     // Check result: (2+5, 3.0*4.0) = (7, 12.0)
     const DataTuple* result =
-        rts::data_from_message<DataTuple>(*msg0.get_header());
+        findus::data_from_message<DataTuple>(*msg0.get_header());
     CHECK(std::get<0>(*result) == 7);
     CHECK(std::get<1>(*result) == 12.0);
 
@@ -270,7 +270,7 @@ void test_combine_function() {
     CHECK_THROWS_WITH_AS((detail::combine<SumProductOp, DataTuple>(msg0, msg2)),
                          "The reduction id in the two reduction messages must "
                          "match but message0 has: 1234 and message1 has: 1235",
-                         rts::Exception);
+                         findus::Exception);
   }
 
   {
@@ -299,8 +299,8 @@ void test_combine_function() {
     {
       serialize::Serializer unpacker{
           serialize::Serializer::Unpacking,
-          rts::reduction::get_data_pointer<std::byte>(msg0),
-          rts::reduction::get_data_size(msg0)};
+          findus::reduction::get_data_pointer<std::byte>(msg0),
+          findus::reduction::get_data_size(msg0)};
       unpacker | result;
     }
 
@@ -309,7 +309,7 @@ void test_combine_function() {
   }
 }
 
-/// [rts_reduction_sump_op_functor]
+/// [findus_reduction_sump_op_functor]
 struct SumOp {
   void operator()(std::tuple<int, double>& lhs, const int rhs_int,
                   const double rhs_double) const {
@@ -317,7 +317,7 @@ struct SumOp {
     std::get<1>(lhs) += rhs_double;
   }
 };
-/// [rts_reduction_sump_op_functor]
+/// [findus_reduction_sump_op_functor]
 
 void test_data_handler_parallel(const size_t num_reductions,
                                 const size_t max_entries = 0) {
@@ -405,7 +405,7 @@ void test_data_handler_parallel(const size_t num_reductions,
   for (size_t r = 0; r < num_reductions; ++r) {
     const std::string msg =
         "Could not find reduction ID " + std::to_string(r + 1);
-    CHECK_THROWS_WITH_AS(handler.pop(r + 1), msg.c_str(), rts::Exception);
+    CHECK_THROWS_WITH_AS(handler.pop(r + 1), msg.c_str(), findus::Exception);
   }
 }
 
@@ -421,13 +421,13 @@ void test_data_handler_exceptions() {
                                        CallbackType{}, 1, 2.0),
       "The key value of 0 is not supported in reductions because it is used as "
       "a sentinel.",
-      rts::Exception);
+      findus::Exception);
   CHECK_THROWS_WITH_AS(
       handler.insert_or_combine<SumOp>(MessageType::Invoke, 42, 1,
                                        CallbackType(1), 1, 2.0),
       "MessageType passed to DataHandler::insert_or_combine must be "
       "Reduction or ReductionOver but got Invoke",
-      rts::Exception);
+      findus::Exception);
 
   // Fill all slots
   handler.insert_or_combine<SumOp>(MessageType::Reduction, 42, 1,
@@ -448,15 +448,15 @@ void test_reduction_callback() {
   const Callback cb_broadcast{};
   CHECK(cb_broadcast.collection_index_ == MessageHeader::no_collection_index());
   CHECK(cb_broadcast.distributed_object_index_ ==
-        rts::detail::distributed_object_index<DummyComponent>());
+        findus::detail::distributed_object_index<DummyComponent>());
   CHECK(cb_broadcast.message_type_ == MessageType::Broadcast);
 
   // Test constructor with collection index (Invoke)
   const std::int64_t index = 42;
   const Callback cb_invoke{index};
-  CHECK(cb_invoke.collection_index_ == rts::detail::to_internal(index));
+  CHECK(cb_invoke.collection_index_ == findus::detail::to_internal(index));
   CHECK(cb_invoke.distributed_object_index_ ==
-        rts::detail::distributed_object_index<DummyComponent>());
+        findus::detail::distributed_object_index<DummyComponent>());
   CHECK(cb_invoke.message_type_ == MessageType::Invoke);
 
   // Test equality and inequality
@@ -468,17 +468,17 @@ void test_reduction_callback() {
   CHECK(cb_invoke == Callback{index});
 }
 }  // namespace
-}  // namespace rts::reduction
+}  // namespace findus::reduction
 
 TEST_CASE("Reduction") {
-  rts::reduction::test_insert_action_stream_operator();
-  rts::reduction::test_combine_function();
+  findus::reduction::test_insert_action_stream_operator();
+  findus::reduction::test_combine_function();
 
   for (const auto num_reductions : {0ul, 1ul, 2ul, 8ul, 16ul, 32ul}) {
-    rts::reduction::test_data_handler_parallel(num_reductions);
+    findus::reduction::test_data_handler_parallel(num_reductions);
   }
-  rts::reduction::test_data_handler_exceptions();
-  rts::reduction::test_reduction_callback();
+  findus::reduction::test_data_handler_exceptions();
+  findus::reduction::test_reduction_callback();
 }
 
 #endif

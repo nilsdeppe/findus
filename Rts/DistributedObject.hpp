@@ -8,7 +8,7 @@
 
 #include "Rts/Detail/DistributedObjectBase.hpp"
 
-namespace rts {
+namespace findus {
 template <class ParallelComponent>
 class DistributedObject : public detail::DistributedObjectBase {
  public:
@@ -23,4 +23,4 @@ DistributedObject<ParallelComponent>::DistributedObject() {
                 "The ParallelComponent must inherit from "
                 "DistributedObject<ParallelComponent>");
 }
-}  // namespace rts
+}  // namespace findus

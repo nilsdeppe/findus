@@ -6,7 +6,7 @@
 
 #include <string>
 
-namespace rts::detail {
+namespace findus::detail {
 /*!
  * \brief Returns a human-readable error message for a given MPI error code.
  *
@@ -48,4 +48,4 @@ std::string mpi_error_message(int mpi_result);
  * truncated.)
  */
 std::string mpi_error_and_message(int mpi_result);
-}  // namespace rts::detail
+}  // namespace findus::detail

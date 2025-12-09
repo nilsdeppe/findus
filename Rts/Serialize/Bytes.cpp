@@ -4,7 +4,7 @@
 
 #include "Rts/Serialize/Bytes.hpp"
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <array>
 #include <cstddef>
@@ -12,7 +12,7 @@
 
 TEST_CASE("Serialize.Bytes") {
   std::array<int, 4> data{1, 2, 3, 4};
-  rts::serialize::Bytes bytes;
+  findus::serialize::Bytes bytes;
   bytes.item_ = reinterpret_cast<std::byte*>(data.data());
   bytes.size_of_item_ = sizeof(int);
   bytes.number_of_items_ = 4;
@@ -32,7 +32,7 @@ TEST_CASE("Serialize.Bytes") {
     double b;
   };
   std::array<ComplexType, 2> complex_data{{{5, 6.7}, {8, 9.1}}};
-  rts::serialize::Bytes complex_bytes;
+  findus::serialize::Bytes complex_bytes;
   complex_bytes.item_ = reinterpret_cast<std::byte*>(complex_data.data());
   complex_bytes.size_of_item_ = sizeof(ComplexType);
   complex_bytes.number_of_items_ = 2;

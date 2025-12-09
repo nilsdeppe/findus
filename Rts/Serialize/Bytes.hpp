@@ -7,7 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace rts::serialize {
+namespace findus::serialize {
 /*!
  * \brief Represents a non-owning view of a contiguous block of memory
  *        for serialization.
@@ -30,4 +30,4 @@ struct Bytes {
   /// Number of items in the block.
   int number_of_items_;
 };
-}  // namespace rts::serialize
+}  // namespace findus::serialize

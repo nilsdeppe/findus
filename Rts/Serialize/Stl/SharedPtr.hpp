@@ -10,7 +10,7 @@
 #include "Rts/Serialize/Serializer.hpp"
 #include "Rts/Serialize/Virtual.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 /*!
  * \brief Serializes or deserializes a std::shared_ptr using the Serializer.
  *
@@ -60,4 +60,4 @@ std::enable_if_t<is_serializable_v<T>, Serializer&> operator|(
   }
   return s;
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize

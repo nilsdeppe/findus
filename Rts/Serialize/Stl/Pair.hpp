@@ -10,7 +10,7 @@
 
 #include "Rts/Serialize/Serializer.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 template <class T, class U>
 struct as_bytes<std::pair<T, U>>
     : std::bool_constant<serialize_as_bytes_v<T> and serialize_as_bytes_v<U>> {
@@ -59,4 +59,4 @@ operator|(Serializer& serializer, std::pair<const T, U>& pair) {
   return serializer;
 }
 /// @}
-}  // namespace rts::serialize
+}  // namespace findus::serialize

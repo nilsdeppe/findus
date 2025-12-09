@@ -4,7 +4,7 @@
 
 #include "Rts/Serialize/Virtual.hpp"
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 #include <memory>
@@ -12,24 +12,24 @@
 
 #include "Rts/Serialize/Serializer.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 namespace {
 namespace no_data_in_base {
 //! [SerializableBaseNoDataInBase]
-class Base0 : public virtual rts::serialize::SerializableBase<Base0> {
+class Base0 : public virtual findus::serialize::SerializableBase<Base0> {
  public:
   ~Base0() override = default;
 
   virtual Serializer& serialize(Serializer& s) = 0;
 
-#if defined(RTS_MIMIC_CHARM_PUPER)
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
   virtual void pup(PUP::er& p) = 0;
 #endif
 };
 //! [SerializableBaseNoDataInBase]
 
 //! [SerializableDerivedNoDataInBase]
-class Derived0 : public rts::serialize::SerializableDerived<Derived0, Base0>,
+class Derived0 : public findus::serialize::SerializableDerived<Derived0, Base0>,
                  public Base0 {
  public:
   Derived0() = default;
@@ -37,7 +37,7 @@ class Derived0 : public rts::serialize::SerializableDerived<Derived0, Base0>,
 
   Serializer& serialize(Serializer& s) override { return s | data_; }
 
-#if defined(RTS_MIMIC_CHARM_PUPER)
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
   void pup(PUP::er& p) override { p | data_; }
 #endif
 
@@ -48,7 +48,7 @@ class Derived0 : public rts::serialize::SerializableDerived<Derived0, Base0>,
 };
 //! [SerializableDerivedNoDataInBase]
 
-class Derived1 : public rts::serialize::SerializableDerived<Derived1, Base0>,
+class Derived1 : public findus::serialize::SerializableDerived<Derived1, Base0>,
                  public Base0 {
  public:
   Derived1() = default;
@@ -57,7 +57,7 @@ class Derived1 : public rts::serialize::SerializableDerived<Derived1, Base0>,
 
   Serializer& serialize(Serializer& s) override { return s | data_ | data2_; }
 
-#if defined(RTS_MIMIC_CHARM_PUPER)
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
   void pup(PUP::er& p) override {
     p | data_;
     p | data2_;
@@ -107,7 +107,7 @@ void test() {
 
 namespace data_in_base {
 //! [SerializableBaseDataInBase]
-class Base0 : public virtual rts::serialize::SerializableBase<Base0> {
+class Base0 : public virtual findus::serialize::SerializableBase<Base0> {
  public:
   ~Base0() override = default;
   Base0() = default;
@@ -115,7 +115,7 @@ class Base0 : public virtual rts::serialize::SerializableBase<Base0> {
 
   virtual Serializer& serialize(Serializer& s) { return s | data_base_; }
 
-#if defined(RTS_MIMIC_CHARM_PUPER)
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
   virtual void pup(PUP::er& p) { p | data_base_; }
 #endif
 
@@ -124,7 +124,7 @@ class Base0 : public virtual rts::serialize::SerializableBase<Base0> {
 //! [SerializableBaseDataInBase]
 
 //! [SerializableDerivedDataInBase]
-class Derived0 : public rts::serialize::SerializableDerived<Derived0, Base0>,
+class Derived0 : public findus::serialize::SerializableDerived<Derived0, Base0>,
                  public Base0 {
  public:
   Derived0() = default;
@@ -135,7 +135,7 @@ class Derived0 : public rts::serialize::SerializableDerived<Derived0, Base0>,
     return s | data_;
   }
 
-#if defined(RTS_MIMIC_CHARM_PUPER)
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
   void pup(PUP::er& p) override {
     Base0::pup(p);
     p | data_;
@@ -149,7 +149,7 @@ class Derived0 : public rts::serialize::SerializableDerived<Derived0, Base0>,
 };
 //! [SerializableDerivedDataInBase]
 
-class Derived1 : public rts::serialize::SerializableDerived<Derived1, Base0>,
+class Derived1 : public findus::serialize::SerializableDerived<Derived1, Base0>,
                  public Base0 {
  public:
   Derived1() = default;
@@ -161,7 +161,7 @@ class Derived1 : public rts::serialize::SerializableDerived<Derived1, Base0>,
     return s | data_ | data2_;
   }
 
-#if defined(RTS_MIMIC_CHARM_PUPER)
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
   void pup(PUP::er& p) override {
     Base0::pup(p);
     p | data_;
@@ -215,25 +215,25 @@ void test() {
 namespace name_in_class {
 //! [DerivedWithName]]
 struct A0 {
-  static std::string rts_serializable_name() { return "A0"; }
+  static std::string findus_serializable_name() { return "A0"; }
 };
 
 struct A1 {
-  static std::string rts_serializable_name() { return "A1"; }
+  static std::string findus_serializable_name() { return "A1"; }
 };
 
 struct A2 {
-  static std::string rts_serializable_name() { return "A2"; }
+  static std::string findus_serializable_name() { return "A2"; }
 };
 //! [DerivedWithName]]
 
-class Base0 : public virtual rts::serialize::SerializableBase<Base0> {
+class Base0 : public virtual findus::serialize::SerializableBase<Base0> {
  public:
   ~Base0() override = default;
 
   virtual Serializer& serialize(Serializer& s) { return s; }
 
-#if defined(RTS_MIMIC_CHARM_PUPER)
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
   virtual void pup(PUP::er& p) = 0;
 #endif
 };
@@ -241,45 +241,47 @@ class Base0 : public virtual rts::serialize::SerializableBase<Base0> {
 //! [DerivedTemplateWithName]]
 template <class... Ts>
 class Derived
-    : public rts::serialize::SerializableDerived<Derived<Ts...>, Base0>,
+    : public findus::serialize::SerializableDerived<Derived<Ts...>, Base0>,
       public Base0 {
  public:
-  static std::string rts_serializable_name() {
-    return (... + Ts::rts_serializable_name());
+  static std::string findus_serializable_name() {
+    return (... + Ts::findus_serializable_name());
   }
 
   Serializer& serialize(Serializer& s) override { return s; }
 
-#if defined(RTS_MIMIC_CHARM_PUPER)
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
   void pup(PUP::er& /*p*/) override {}
 #endif
 };
 //! [DerivedTemplateWithName]]
 
 void test() {
-  CHECK(Derived<A0>::rts_serializable_name() == A0::rts_serializable_name());
+  CHECK(Derived<A0>::findus_serializable_name() ==
+        A0::findus_serializable_name());
   CHECK(serializable_hash<Derived<A0>>() == serializable_hash<A0>());
   CHECK(serializable_hash<Derived<A0>>() ==
-        detail::hash(A0::rts_serializable_name()));
+        detail::hash(A0::findus_serializable_name()));
   CHECK(serializable_hash<Derived<A1>>() != serializable_hash<A0>());
   CHECK(serializable_hash<Derived<A1>>() == serializable_hash<A1>());
   CHECK(serializable_hash<Derived<A1>>() ==
-        detail::hash(A1::rts_serializable_name()));
+        detail::hash(A1::findus_serializable_name()));
   CHECK(serializable_hash<Derived<A2>>() != serializable_hash<A0>());
   CHECK(serializable_hash<Derived<A1>>() != serializable_hash<A2>());
 
-  CHECK(
-      serializable_hash<Derived<A0, A1>>() ==
-      detail::hash(A0::rts_serializable_name() + A1::rts_serializable_name()));
+  CHECK(serializable_hash<Derived<A0, A1>>() ==
+        detail::hash(A0::findus_serializable_name() +
+                     A1::findus_serializable_name()));
   CHECK(serializable_hash<Derived<A0, A1, A2>>() ==
-        detail::hash(A0::rts_serializable_name() + A1::rts_serializable_name() +
-                     A2::rts_serializable_name()));
+        detail::hash(A0::findus_serializable_name() +
+                     A1::findus_serializable_name() +
+                     A2::findus_serializable_name()));
 }
 }  // namespace name_in_class
 
 namespace triangle_hierarchy {
 //! [MultipleBase]
-class BaseLeft : public virtual rts::serialize::SerializableBase<BaseLeft> {
+class BaseLeft : public virtual findus::serialize::SerializableBase<BaseLeft> {
  public:
   ~BaseLeft() override = default;
 
@@ -289,14 +291,15 @@ class BaseLeft : public virtual rts::serialize::SerializableBase<BaseLeft> {
 
   virtual Serializer& serialize(Serializer& s) { return s | left_data; }
 
-#if defined(RTS_MIMIC_CHARM_PUPER)
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
   virtual void pup(PUP::er& p) { p | left_data; }
 #endif
 
   int left_data = -2;
 };
 
-class BaseRight : public virtual rts::serialize::SerializableBase<BaseRight> {
+class BaseRight
+    : public virtual findus::serialize::SerializableBase<BaseRight> {
  public:
   ~BaseRight() override = default;
 
@@ -306,7 +309,7 @@ class BaseRight : public virtual rts::serialize::SerializableBase<BaseRight> {
 
   virtual Serializer& serialize(Serializer& s) { return s | right_data; }
 
-#if defined(RTS_MIMIC_CHARM_PUPER)
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
   virtual void pup(PUP::er& p) { p | right_data; }
 #endif
 
@@ -315,10 +318,11 @@ class BaseRight : public virtual rts::serialize::SerializableBase<BaseRight> {
 //! [MultipleBase]
 
 //! [MultipleBaseDerived]
-class Derived : public rts::serialize::SerializableDerived<Derived, BaseLeft>,
-                public BaseLeft,
-                public rts::serialize::SerializableDerived<Derived, BaseRight>,
-                public BaseRight {
+class Derived
+    : public findus::serialize::SerializableDerived<Derived, BaseLeft>,
+      public BaseLeft,
+      public findus::serialize::SerializableDerived<Derived, BaseRight>,
+      public BaseRight {
  public:
   Derived(Serializer& s) : BaseLeft(s), BaseRight(s) { s | data; }
 
@@ -331,7 +335,7 @@ class Derived : public rts::serialize::SerializableDerived<Derived, BaseLeft>,
     return s | data;
   }
 
-#if defined(RTS_MIMIC_CHARM_PUPER)
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
   void pup(PUP::er& p) override {
     BaseLeft::pup(p);
     BaseRight::pup(p);
@@ -379,9 +383,9 @@ void test() {
 }
 }  // namespace triangle_hierarchy
 
-#if defined(RTS_MIMIC_CHARM_PUPER)
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
 namespace charm_interop_virtual {
-class BaseLeft : public virtual rts::serialize::SerializableBase<BaseLeft> {
+class BaseLeft : public virtual findus::serialize::SerializableBase<BaseLeft> {
  public:
   BaseLeft() = default;
   ~BaseLeft() override = default;
@@ -393,7 +397,8 @@ class BaseLeft : public virtual rts::serialize::SerializableBase<BaseLeft> {
   int left_data = -2;
 };
 
-class BaseRight : public virtual rts::serialize::SerializableBase<BaseRight> {
+class BaseRight
+    : public virtual findus::serialize::SerializableBase<BaseRight> {
  public:
   BaseRight() = default;
   ~BaseRight() override = default;
@@ -405,10 +410,11 @@ class BaseRight : public virtual rts::serialize::SerializableBase<BaseRight> {
   int right_data = -2;
 };
 
-class Derived : public rts::serialize::SerializableDerived<Derived, BaseLeft>,
-                public BaseLeft,
-                public rts::serialize::SerializableDerived<Derived, BaseRight>,
-                public BaseRight {
+class Derived
+    : public findus::serialize::SerializableDerived<Derived, BaseLeft>,
+      public BaseLeft,
+      public findus::serialize::SerializableDerived<Derived, BaseRight>,
+      public BaseRight {
  public:
   Derived() = default;
 
@@ -466,10 +472,10 @@ TEST_CASE("Serialize.Virtual") {
   data_in_base::test();
   name_in_class::test();
   triangle_hierarchy::test();
-#if defined(RTS_MIMIC_CHARM_PUPER)
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
   charm_interop_virtual::test();
 #endif
 }
 }  // namespace
-}  // namespace rts::serialize
+}  // namespace findus::serialize
 #endif

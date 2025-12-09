@@ -9,7 +9,7 @@
 #include "Rts/Serialize/Serializer.hpp"
 #include "Rts/Serialize/Stl/Associative.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 /*!
  * \brief Serializes or deserializes a std::set using the Serializer.
  *
@@ -53,4 +53,4 @@ std::enable_if_t<is_serializable_v<Key>, Serializer&> operator|(
     Serializer& serializer, std::multiset<Key, Compare, Allocator>& multiset) {
   return detail::associative_set_impl<false>(serializer, multiset);
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize

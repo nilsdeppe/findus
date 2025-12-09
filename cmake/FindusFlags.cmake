@@ -2,9 +2,9 @@
 # Distributed under the MIT License.
 # See LICENSE.txt for details.
 
-add_library(RtsFlags INTERFACE)
+add_library(FindusFlags INTERFACE)
 
-set(_RTS_CXX_FLAGS
+set(_FINDUS_CXX_FLAGS
   "-W;\
 -Wall;\
 -Wcast-align;\
@@ -36,27 +36,27 @@ set(_RTS_CXX_FLAGS
 -Wwrite-strings;")
 
 if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  set(_RTS_CXX_FLAGS "${_RTS_CXX_FLAGS}\
+  set(_FINDUS_CXX_FLAGS "${_FINDUS_CXX_FLAGS}\
 -Wdocumentation;\
 -Wnewline-eof;\
 -Werror=undefined-internal;")
 endif()
 
-option(RTS_DEBUG_SYMBOLS "Add -g to CMAKE_CXX_FLAGS if ON, -g0 if OFF." ON)
+option(FINDUS_DEBUG_SYMBOLS "Add -g to CMAKE_CXX_FLAGS if ON, -g0 if OFF." ON)
 
-if(NOT ${RTS_DEBUG_SYMBOLS})
+if(NOT ${FINDUS_DEBUG_SYMBOLS})
   string(REPLACE "-g " "-g0 " CMAKE_CXX_FLAGS_DEBUG ${CMAKE_CXX_FLAGS_DEBUG})
 endif()
 
 # Always build with -g so we can view backtraces, etc. when production code
 # fails. This can be overridden by passing `-D DEBUG_SYMBOLS=OFF` to CMake
-if(${RTS_DEBUG_SYMBOLS})
-  set_property(TARGET RtsFlags
+if(${FINDUS_DEBUG_SYMBOLS})
+  set_property(TARGET FindusFlags
     APPEND PROPERTY INTERFACE_COMPILE_OPTIONS -g)
-endif(${RTS_DEBUG_SYMBOLS})
+endif(${FINDUS_DEBUG_SYMBOLS})
 
-foreach(_FLAG ${_RTS_CXX_FLAGS})
-  set_property(TARGET RtsFlags
+foreach(_FLAG ${_FINDUS_CXX_FLAGS})
+  set_property(TARGET FindusFlags
     APPEND PROPERTY
     INTERFACE_COMPILE_OPTIONS
     "$<$<COMPILE_LANGUAGE:CXX>:${_FLAG}>")
@@ -101,16 +101,16 @@ if(NOT CACHE_LINE_SIZE OR CACHE_LINE_SIZE STREQUAL "")
   set(CACHE_LINE_SIZE 64)
 endif()
 message(STATUS "Detected cache line size: ${CACHE_LINE_SIZE}")
-add_library(ToyRts::CacheLineSize IMPORTED INTERFACE)
-target_compile_definitions(ToyRts::CacheLineSize
+add_library(findus::CacheLineSize IMPORTED INTERFACE)
+target_compile_definitions(findus::CacheLineSize
   INTERFACE
-  RTS_CACHE_LINE_SIZE=${CACHE_LINE_SIZE})
+  FINDUS_CACHE_LINE_SIZE=${CACHE_LINE_SIZE})
 
 
 target_link_libraries(
-  RtsFlags
+  FindusFlags
   INTERFACE
   Profiling::EnableProfiling
   Profiling::KeepFramePointer
-  ToyRts::CacheLineSize
+  findus::CacheLineSize
 )

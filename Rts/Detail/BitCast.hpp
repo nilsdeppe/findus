@@ -8,7 +8,7 @@
 #include <cstring>
 #include <type_traits>
 
-namespace rts::detail {
+namespace findus::detail {
 #if defined(__cpp_lib_bit_cast) and (__cpp_lib_bit_cast >= 201806L)
 using std::bit_cast;
 #else
@@ -27,4 +27,4 @@ bit_cast(const From& src) noexcept {
   return dst;
 }
 #endif
-}  // namespace rts::detail
+}  // namespace findus::detail

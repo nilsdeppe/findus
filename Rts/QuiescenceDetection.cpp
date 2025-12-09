@@ -18,7 +18,7 @@
 #include "Rts/MessageTags.hpp"
 #include "Rts/ParentAndChildren.hpp"
 
-namespace rts::qd {
+namespace findus::qd {
 bool Local::is_quiescent(const std::int64_t total_number_of_threads) {
   if (phase_ == 1) {
     if (number_of_idle_threads_.load(std::memory_order_acquire) !=
@@ -81,8 +81,8 @@ Global::~Global() = default;
 
 Global::Global(const int my_process, const int total_processes,
                const size_t max_simultaneous_qds) {
-  const rts::detail::ParentAndChildren pnc =
-      rts::detail::parent_and_children(my_process, total_processes);
+  const findus::detail::ParentAndChildren pnc =
+      findus::detail::parent_and_children(my_process, total_processes);
   self_process_ = pnc.self_process_id;
   parent_process_ = pnc.parent_process_id;
   child_left_process_ = pnc.left_process_id;
@@ -590,13 +590,13 @@ void Global::send_quiescence_broadcast_to(
                        " for quiescence detection broadcast."};
   }
 }
-}  // namespace rts::qd
+}  // namespace findus::qd
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 
-namespace rts::qd {
+namespace findus::qd {
 namespace {
 void test_local_qd() {
   // Note: Testing for race conditions is inherently difficult, since they
@@ -690,5 +690,5 @@ TEST_CASE("QuiescenceDetection") {
   test_local_qd();
   test_safe_add();
 }
-}  // namespace rts::qd
+}  // namespace findus::qd
 #endif

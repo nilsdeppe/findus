@@ -4,7 +4,7 @@
 
 #include "Rts/Serialize/Stl/Pair.hpp"
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 #include <memory>
@@ -14,7 +14,7 @@
 #include "Rts/Serialize/Serializer.hpp"
 #include "Rts/Serialize/Stl/Vector.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 namespace {
 struct NoSerialize {};
 static_assert(is_serializable_v<std::pair<int, double>>);
@@ -229,5 +229,5 @@ TEST_CASE("Serialize.Pair") {
     CHECK(p == p_unpacked);
   }
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize
 #endif

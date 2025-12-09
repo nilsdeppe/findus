@@ -4,7 +4,7 @@
 
 #include "Rts/Serialize/Stl/Array.hpp"
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <array>
 #include <doctest/doctest.h>
@@ -14,7 +14,7 @@
 #include "Rts/Serialize/Serializer.hpp"
 #include "Rts/Serialize/Stl/Vector.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 namespace {
 struct NoSerialize {};
 static_assert(is_serializable_v<std::array<int, 3>>);
@@ -171,5 +171,5 @@ TEST_CASE("Serialize.Array") {
 
   test_array_of_vector_of_array();
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize
 #endif

@@ -6,7 +6,7 @@
 
 #include <cstdint>
 
-namespace rts::detail {
+namespace findus::detail {
 /*!
  * \brief Counter used to assign each distributed object a unique integer ID.
  *
@@ -23,4 +23,4 @@ uint32_t distributed_object_index() {
   static uint32_t index = (distributed_object_index_counter++);
   return index;
 }
-}  // namespace rts::detail
+}  // namespace findus::detail

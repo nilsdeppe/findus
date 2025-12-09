@@ -4,7 +4,7 @@
 
 #include "Rts/Serialize/Stl/Deque.hpp"
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <array>
 #include <deque>
@@ -16,7 +16,7 @@
 #include "Rts/Serialize/Stl/Array.hpp"
 #include "Rts/Serialize/Stl/Vector.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 namespace {
 struct NoSerialize {};
 static_assert(is_serializable_v<std::deque<int>>);
@@ -209,5 +209,5 @@ TEST_CASE("Serialize.Deque") {
     CHECK(dq == dq_unpacked);
   }
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize
 #endif

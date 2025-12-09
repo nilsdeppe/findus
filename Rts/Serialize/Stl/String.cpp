@@ -4,7 +4,7 @@
 
 #include "Rts/Serialize/Stl/String.hpp"
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 #include <memory>
@@ -12,7 +12,7 @@
 
 #include "Rts/Serialize/Serializer.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 namespace {
 template <typename StringType>
 void test_serialize_string(StringType original) {
@@ -61,5 +61,5 @@ TEST_CASE("Serialize.String") {
   long_str.reserve(20000);
   test_serialize_string(long_str);
 }
-}  // namespace rts::serialize
+}  // namespace findus::serialize
 #endif

@@ -6,22 +6,22 @@
 
 #include <ostream>
 
-namespace rts::detail {
+namespace findus::detail {
 std::ostream& operator<<(std::ostream& os, const ActiveObject& obj) {
   os << "ActiveObject { distributed_object_index: "
      << obj.distributed_object_index
      << ", target_collection_index: " << obj.target_collection_index << " }";
   return os;
 }
-}  // namespace rts::detail
+}  // namespace findus::detail
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 #include <sstream>
 
 TEST_CASE("ActiveObject") {
-  const rts::detail::ActiveObject obj{};
+  const findus::detail::ActiveObject obj{};
   CHECK(obj.distributed_object_index ==
         std::numeric_limits<std::uint32_t>::max());
   CHECK(obj.target_collection_index ==
@@ -41,7 +41,7 @@ TEST_CASE("ActiveObject") {
   }
 
   // Test with custom values
-  const rts::detail::ActiveObject obj2{4444, 123456};
+  const findus::detail::ActiveObject obj2{4444, 123456};
   std::ostringstream oss2;
   oss2 << obj2;
   const std::string output2 = oss2.str();

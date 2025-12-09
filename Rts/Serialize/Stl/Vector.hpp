@@ -10,7 +10,7 @@
 
 #include "Rts/Serialize/Serializer.hpp"
 
-namespace rts::serialize {
+namespace findus::serialize {
 /// @{
 /*!
  * \brief Serializes or deserializes a std::vector using the Serializer.
@@ -81,4 +81,4 @@ Serializer& operator|(Serializer& serializer, std::vector<bool, A>& vector) {
 }
 // [serializer_bool_definition]
 /// @}
-}  // namespace rts::serialize
+}  // namespace findus::serialize

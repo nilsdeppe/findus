@@ -4,7 +4,7 @@
 
 #include "Rts/Detail/VectorStream.hpp"
 
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <doctest/doctest.h>
 #include <string>
@@ -12,7 +12,7 @@
 
 #include "Rts/Detail/GetOutput.hpp"
 
-namespace rts::detail {
+namespace findus::detail {
 TEST_CASE("StdVectorStream") {
   SUBCASE("empty vector") {
     std::vector<int> v;
@@ -39,5 +39,5 @@ TEST_CASE("StdVectorStream") {
     CHECK(get_output(v) == "[1.5, 2.5]");
   }
 }
-}  // namespace rts::detail
+}  // namespace findus::detail
 #endif

@@ -4,6 +4,6 @@
 
 #include "Rts/Detail/DistributedObjectBase.hpp"
 
-namespace rts::detail {
+namespace findus::detail {
 DistributedObjectBase::~DistributedObjectBase() = default;
-}  // namespace rts::detail
+}  // namespace findus::detail

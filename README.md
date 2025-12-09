@@ -1,11 +1,11 @@
-# Toy RTS - A Toy (Parallel) Runtime System(-ish)
+# findus - An efficient minimal parallel runtime system
 
-ToyRTS is a fun little thought experiment turned implementation. The goal is to
+findus started as a fun little thought experiment turned implementation. The goal is to
 provide something akin to a task-parallel runtime system, but keeping the
 implementation as simple as possible, and forcing users to deal with MPI for
 inter-node communication. Abstracting away all layers of a large parallel system
 is difficult, and an active area of research and development in many companies
-and universities. Instead, ToyRTS explores some of the basic features that one
+and universities. Instead, findus explores some of the basic features that one
 might want for a hyperbolic PDE solver that runs on a tasking system.
 
 ### Intranode/Intraprocess Communication
@@ -26,23 +26,23 @@ optimization is available to elide memory allocations for small messages.
 
 #### NUMA nodes
 
-ToyRTS is currently not NUMA aware, and so it is recommended that you spawn one
+findus is currently not NUMA aware, and so it is recommended that you spawn one
 MPI rank per NUMA node and pin threads to each NUMA node. In the future we will
 provide the NUMA awareness to the runtime system, likely through virtual
 node-like behavior.
 
 ### Task driver and thread pool
 
-ToyRTS is built up of multiple pieces that work together to provide a parallel
+findus is built up of multiple pieces that work together to provide a parallel
 runtime system with dynamic load balancing. The intraprocess threads and tasks
 are managed by a `ThreadPool` which has two template parameters
 1. `MessageType`: the type of the message that is stored by the
-   `ThreadPool`. ToyRTS uses a `struct Message_t { std::unique_ptr<char[]> };`
-   where the initial `sizeof(rts::MessageHeader)` bytes are an object of type
-   `rts::MessageHeader` (described below). A `MessageType` must be movable,
+   `ThreadPool`. findus uses a `struct Message_t { std::unique_ptr<char[]> };`
+   where the initial `sizeof(findus::MessageHeader)` bytes are an object of type
+   `findus::MessageHeader` (described below). A `MessageType` must be movable,
    default-constructible, and have an `execute` function (described below).
 2. `ProcessLocalData`: this is additional data passed to the `execute`
-   function. In the context of ToyRTS this is usually the task driver.
+   function. In the context of findus this is usually the task driver.
    **Note: ND thinks we can get rid of this feature completely.**
 A `ThreadPool` calls the static method
 ```cpp
@@ -57,12 +57,12 @@ Interprocess messages are handled by the `DistributedTaskDriver` (DTD for
 short). This is actually the runtime system and _all_ communication goes through
 it. The `DTD` holds a `ThreadPool` object to drive the local tasking, a
 `std::vector<DistributedObjectHolder>`, and various internal bookkeeping
-quantities. The central entity in ToyRTS is a `DistributedObject`, discussed
+quantities. The central entity in findus is a `DistributedObject`, discussed
 next.
 
 ### Distributed Objects
 
-The central entity in ToyRTS is a `DistributedObject`. This is an object in a
+The central entity in findus is a `DistributedObject`. This is an object in a
 process and can be invoked remotely by a `Proxy` handle. You can have
 multiple different `DistributedObject`s on a node because the
 `DistributedObject` takes a `ParallelComponent` as a template parameter. A
@@ -91,12 +91,12 @@ There are two types of distributed objects:
    are indexed only with which node they are on.
 2. `DistributedObjectCollection`: there are multiple objects of this type per
    process and they can be indexed by a custom index that is convertible to a
-   `uint64_t`. ToyRTS will always use `uint64_t` as the index into the
-   collection, and the collection can be sparse. ToyRTS will track which node
+   `uint64_t`. findus will always use `uint64_t` as the index into the
+   collection, and the collection can be sparse. findus will track which node
    the target parallel component with a specific index is on for communication
    so that users can only use their own index type. It is a diagnosed error to
    send a message to an element of a collection that does not exist. The
-   exception type `rts::MissingElement` is raised upon send attempts and are
+   exception type `findus::MissingElement` is raised upon send attempts and are
    propagated to user code for handling. If the exception is not handled then
    execution terminates.
    
@@ -110,16 +110,16 @@ collections. Broadcasts on a `DO` will be sent once to each node, while on a
 use
 ```cpp
 template <class Action, class ParallelComponent, class... Args>
-void rts::invoke(Args&&... args);
+void findus::invoke(Args&&... args);
 
 // or for a DistributedObjectCollection
 template <class Action, class ParallelComponent, class... Args>
-void rts::invoke(const uint64_t index, Args&&... args);
+void findus::invoke(const uint64_t index, Args&&... args);
 ```
 Broadcasts are done using
 ```cpp
 template <class Action, class ParallelComponent, class... Args>
-void rts::broadcast(Args&&... args);
+void findus::broadcast(Args&&... args);
 ```
 
 However, distributed objects must get registered with the RTS so that
@@ -134,7 +134,7 @@ OBJECT_CONTAINER>` to store the objects. If the `object_id()` approach is used
 then it is up to the user to ensure all registering distributed objects have a
 unique ID. To use the `object_id()` define
 ```cpp
-namespace rts {
+namespace findus {
 static constexpr bool use_object_id = true;
 ```
 (we intentionally avoid using macros to improve forward portability with C++

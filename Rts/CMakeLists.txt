@@ -2,7 +2,7 @@
 # Distributed under the MIT License.
 # See LICENSE.txt for details.
 
-set(LIBRARY ToyRTS)
+set(LIBRARY findus)
 
 add_library(
   ${LIBRARY}
@@ -61,29 +61,29 @@ target_link_libraries(
   ${LIBRARY}
   PUBLIC
   MPI::MPI_CXX
-  ToyRts::CacheLineSize
+  findus::CacheLineSize
   PRIVATE
-  RtsFlags
+  FindusFlags
   hwloc::hwloc
 )
 
 if (BUILD_TESTING AND TARGET doctest::doctest)
   # Configure a library that holds just the implementation of the doctest
-  # functions. This can then be linked privately into the ToyRts library
+  # functions. This can then be linked privately into the findus library
   # so that any library or executable linked against it can safely ignore
   # whether or not doctest is needed.
-  add_library(_RtsDoctestImpl
+  add_library(_FindusDoctestImpl
     Detail/DoctestImpl.cpp
   )
-  target_link_libraries(_RtsDoctestImpl
+  target_link_libraries(_FindusDoctestImpl
     PRIVATE
     MPI::MPI_CXX
-    RtsFlags
+    FindusFlags
     doctest::doctest
   )
-  target_link_libraries(ToyRTS
+  target_link_libraries(findus
     PRIVATE
-    _RtsDoctestImpl
+    _FindusDoctestImpl
     doctest::doctest
   )
 
@@ -94,16 +94,16 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
   )
   target_link_libraries(Test
     PRIVATE
-    RtsFlags
-    ToyRTS
-    _RtsDoctestImpl
+    FindusFlags
+    findus
+    _FindusDoctestImpl
     doctest::doctest
   )
   # There are issues with self-registering Test when using static libraries.
   # This is a common issue across all testing libraries that have
   # self-registering Test. doctest provides a nice workaround for it.
   if (NOT BUILD_SHARED_LIBS)
-    doctest_force_link_static_lib_in_target(Test ToyRTS)
+    doctest_force_link_static_lib_in_target(Test findus)
   endif()
   # Discover the Test and add them to CTest so we don't have to.
   doctest_discover_tests(Test)
@@ -114,20 +114,20 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
     NAME HardwareInfoParallel.2Processes
     COMMAND
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
-    $<TARGET_FILE:Test> --test-case=HardwareInfoParallel --rts-mpi-test
+    $<TARGET_FILE:Test> --test-case=HardwareInfoParallel --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.2Processes
     COMMAND
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.2Processes
-    --rts-mpi-test
+    --findus-mpi-test
   )
   add_test(
     NAME MpiErrorMessage
     COMMAND
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1
-    $<TARGET_FILE:Test> --test-case=MpiErrorMessage --rts-mpi-test --no-skip
+    $<TARGET_FILE:Test> --test-case=MpiErrorMessage --findus-mpi-test --no-skip
   )
 
   add_test(
@@ -135,35 +135,35 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
     COMMAND
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.InsertErrorRegular0
-    --rts-mpi-test
+    --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.InsertErrorRegular1
     COMMAND
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.InsertErrorRegular1
-    --rts-mpi-test
+    --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.InsertErrorCollection0
     COMMAND
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.InsertErrorCollection0
-    --rts-mpi-test
+    --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.InsertErrorCollection1
     COMMAND
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.InsertErrorCollection1
-    --rts-mpi-test
+    --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.InsertErrorRegularName
     COMMAND
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.InsertErrorRegularName
-    --rts-mpi-test
+    --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.InsertError_CollectionName0
@@ -171,7 +171,7 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test>
     --test-case=DistributedTaskDriver.InsertError_CollectionName0
-    --rts-mpi-test
+    --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.InsertError_CollectionName1
@@ -179,7 +179,7 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test>
     --test-case=DistributedTaskDriver.InsertError_CollectionName1
-    --rts-mpi-test
+    --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.InsertError_CollectionNumElements0
@@ -187,7 +187,7 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test>
     --test-case=DistributedTaskDriver.InsertError_CollectionNumElements0
-    --rts-mpi-test
+    --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.InsertError_CollectionNumElements1
@@ -195,7 +195,7 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test>
     --test-case=DistributedTaskDriver.InsertError_CollectionNumElements1
-    --rts-mpi-test
+    --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.InsertError_CollectionElementId0
@@ -203,7 +203,7 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test>
     --test-case=DistributedTaskDriver.InsertError_CollectionElementId0
-    --rts-mpi-test
+    --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.InsertError_CollectionElementPid0
@@ -211,7 +211,7 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test>
     --test-case=DistributedTaskDriver.InsertError_CollectionElementPid0
-    --rts-mpi-test
+    --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.Reduction1
@@ -219,6 +219,6 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
     ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test>
     --test-case=DistributedTaskDriver.Reduction1
-    --rts-mpi-test
+    --findus-mpi-test
   )
 endif()

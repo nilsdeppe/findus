@@ -16,9 +16,9 @@
 #include "Rts/MessageHeader.hpp"
 #include "Rts/Serialize/Serializer.hpp"
 
-namespace rts {
+namespace findus {
 bool Message_t::execute(
-    rts::ThreadPool<Message_t, rts::DistributedTaskDriver*>& /*pool*/,
+    findus::ThreadPool<Message_t, findus::DistributedTaskDriver*>& /*pool*/,
     const std::uint32_t thread_id, Message_t& message,
     DistributedTaskDriver* distributed_task_driver) {
   distributed_task_driver->invoke(message, thread_id);
@@ -38,7 +38,7 @@ Message_t copy(const Message_t& message) {
 }
 
 Message_t create_broadcast_to_message(
-    const rts::detail::MemberFunctionPtr& member_function_ptr,
+    const findus::detail::MemberFunctionPtr& member_function_ptr,
     const std::uint32_t distributed_object_index,
     const std::int32_t source_process_id,
     const std::int32_t destination_process_id,
@@ -51,7 +51,7 @@ Message_t create_broadcast_to_message(
       sizeof(std::uint64_t) *
       (2 + static_cast<std::uint32_t>(number_of_elements_on_pid));
 
-  const std::uint32_t header_size = sizeof(rts::MessageHeader);
+  const std::uint32_t header_size = sizeof(findus::MessageHeader);
   const std::uint32_t data_offset =
       header_size +
       extra_metadata_bytes
@@ -75,7 +75,7 @@ Message_t create_broadcast_to_message(
                     MessageHeader::no_collection_index(), buffer_size,
                     distributed_object_index, data_offset, source_process_id,
                     destination_process_id, quiescence_detection_sweep_number,
-                    was_serialized, rts::MessageType::BroadcastTo);
+                    was_serialized, findus::MessageType::BroadcastTo);
 
   // Write extra metadata after the header for the PIDs
   std::uint64_t* meta_ptr =
@@ -93,7 +93,7 @@ Message_t create_broadcast_to_message(
 }
 
 Message_t create_message(
-    const rts::detail::MemberFunctionPtr& member_function_ptr,
+    const findus::detail::MemberFunctionPtr& member_function_ptr,
     const std::uint64_t collection_index,
     const std::uint32_t distributed_object_index,
     const std::int32_t source_process_id,
@@ -102,20 +102,21 @@ Message_t create_message(
     const bool was_serialized, const MessageType message_type,
     const std::uint64_t data_alignment, const std::uint64_t data_size,
     const void* const data_ptr) {
-  const std::uint32_t header_size = sizeof(rts::MessageHeader);
+  const std::uint32_t header_size = sizeof(findus::MessageHeader);
   const std::uint32_t data_offset =
       header_size + (data_alignment - (header_size % data_alignment));
   const std::uint64_t buffer_size = data_offset + data_size;
 
   std::unique_ptr<std::byte[]> buffer(new (std::align_val_t(std::max(
-      alignof(rts::MessageHeader), data_alignment))) std::byte[buffer_size]);
+      alignof(findus::MessageHeader), data_alignment))) std::byte[buffer_size]);
 
   // Placement-new construct the header at the start of the buffer
-  rts::MessageHeader* const header_ptr = new (buffer.get()) rts::MessageHeader(
-      member_function_ptr, collection_index, buffer_size,
-      distributed_object_index, data_offset, source_process_id,
-      destination_process_id, quiescence_detection_sweep_number, was_serialized,
-      message_type);
+  findus::MessageHeader* const header_ptr = new (buffer.get())
+      findus::MessageHeader(member_function_ptr, collection_index, buffer_size,
+                            distributed_object_index, data_offset,
+                            source_process_id, destination_process_id,
+                            quiescence_detection_sweep_number, was_serialized,
+                            message_type);
 
   // Copy the data tuple into the correct location using memcpy
   std::memcpy(header_ptr->data_location(), data_ptr, data_size);
@@ -378,10 +379,9 @@ std::int32_t get_expected_number_of_root_contributions(
                 root_expected_contributions_jump_in_bytes));
 }
 }  // namespace reduction
-}  // namespace rts
+}  // namespace findus
 
-
-#if defined(RTS_ENABLE_TESTING)
+#if defined(FINDUS_ENABLE_TESTING)
 
 #include <bitset>
 #include <doctest/doctest.h>
@@ -390,9 +390,9 @@ std::int32_t get_expected_number_of_root_contributions(
 #include "Rts/Reduction.hpp"
 #include "Rts/Serialize/Stl/Vector.hpp"
 
-namespace rts {
+namespace findus {
 namespace {
-struct alignas(rts::hardware_info::hardware_destructive_interference_size)
+struct alignas(findus::hardware_info::hardware_destructive_interference_size)
     AlignedStruct {
   int a;
   double b;
@@ -414,14 +414,14 @@ void test_create_message_alignment_and_values() {
   DataTuple args_tuple{int_value, double_value, size_t_value, struct_value};
 
   // Dummy member function pointer and header fields
-  const rts::detail::MemberFunctionPtr dummy_ptr{};
+  const findus::detail::MemberFunctionPtr dummy_ptr{};
   const std::uint64_t target_collection_index = 0;
   const std::uint32_t distributed_object_index = 1;
   const std::int32_t source_process_id = 2;
   const std::int32_t destination_process_id = 3;
   const std::uint64_t sweep_number = 4;
   const bool was_serialized = false;
-  const rts::MessageType message_type = rts::MessageType::Invoke;
+  const findus::MessageType message_type = findus::MessageType::Invoke;
 
   // Create the message
   Message_t message = create_message(
@@ -483,14 +483,14 @@ void test_create_message_serialized() {
   }();
 
   // Dummy member function pointer and header fields
-  const rts::detail::MemberFunctionPtr dummy_ptr{};
+  const findus::detail::MemberFunctionPtr dummy_ptr{};
   const std::uint64_t target_collection_index = 0;
   const std::uint32_t distributed_object_index = 1;
   const std::int32_t source_process_id = 2;
   const std::int32_t destination_process_id = 3;
   const std::uint64_t sweep_number = 4;
   const bool was_serialized = true;
-  const rts::MessageType message_type = rts::MessageType::Invoke;
+  const findus::MessageType message_type = findus::MessageType::Invoke;
 
   {
     const std::string msg =
@@ -503,7 +503,7 @@ void test_create_message_serialized() {
                        distributed_object_index, source_process_id,
                        destination_process_id, sweep_number, false,
                        message_type, args_tuple),
-        msg.c_str(), rts::Exception);
+        msg.c_str(), findus::Exception);
   }
 
   // Create the message
@@ -559,7 +559,7 @@ void test_create_broadcast_to_message() {
   const DataTuple data_value{42, 3.14, 'z'};
 
   // Prepare dummy member function pointer and header fields
-  const rts::detail::MemberFunctionPtr dummy_ptr{};
+  const findus::detail::MemberFunctionPtr dummy_ptr{};
   const std::uint32_t distributed_object_index = 5;
   const std::int32_t source_process_id = 1;
   const std::int32_t destination_process_id = 2;
@@ -623,7 +623,7 @@ void test_create_message() {
   const DataTuple data_value{123, 4.56, 'a'};
 
   // Prepare dummy member function pointer and header fields
-  const rts::detail::MemberFunctionPtr dummy_ptr{};
+  const findus::detail::MemberFunctionPtr dummy_ptr{};
   const std::uint64_t collection_index = 99;
   const std::uint32_t distributed_object_index = 7;
   const std::int32_t source_process_id = 1;
@@ -637,7 +637,7 @@ void test_create_message() {
   Message_t message = create_message(
       dummy_ptr, collection_index, distributed_object_index, source_process_id,
       destination_process_id, sweep_number, was_serialized,
-      rts::MessageType::Invoke, data_alignment, data_size, &data_value);
+      findus::MessageType::Invoke, data_alignment, data_size, &data_value);
 
   // Check header fields
   const MessageHeader* header = message.get_header();
@@ -670,22 +670,22 @@ void test_create_message() {
 void test_copy_message() {
   INFO("Test Copy Message_t");
   // Setup a dummy MessageHeader
-  const rts::detail::MemberFunctionPtr dummy_ptr{};
+  const findus::detail::MemberFunctionPtr dummy_ptr{};
   const std::uint64_t target_collection_index = 42;
-  const std::uint64_t num_bytes = sizeof(rts::MessageHeader) + 16;
+  const std::uint64_t num_bytes = sizeof(findus::MessageHeader) + 16;
   const std::uint32_t distributed_object_index = 7;
-  const std::uint32_t data_offset = sizeof(rts::MessageHeader);
+  const std::uint32_t data_offset = sizeof(findus::MessageHeader);
   const std::int32_t source_id = 1;
   const std::int32_t dest_id = 2;
   const std::uint64_t sweep = 123;
   const bool was_serialized = false;
-  const rts::MessageType type = rts::MessageType::Invoke;
+  const findus::MessageType type = findus::MessageType::Invoke;
 
   // Allocate buffer for message
   std::unique_ptr<std::byte[]> buffer(
       new (std::align_val_t(alignof(MessageHeader))) std::byte[num_bytes]);
   // Placement new for header
-  const MessageHeader* header = new (buffer.get()) rts::MessageHeader(
+  const MessageHeader* header = new (buffer.get()) findus::MessageHeader(
       dummy_ptr, target_collection_index, num_bytes, distributed_object_index,
       data_offset, source_id, dest_id, sweep, was_serialized, type);
 
@@ -719,8 +719,8 @@ namespace {
 struct DummyAction {};
 
 struct DummyComponent
-    : public rts::DistributedObjectCollection<DummyComponent> {
-  using rts_collection_index = std::int64_t;
+    : public findus::DistributedObjectCollection<DummyComponent> {
+  using findus_collection_index = std::int64_t;
 };
 
 template <class Action, class Component, class... Args>
@@ -772,13 +772,13 @@ void test_set_and_get_data_offset() {
       get_data_pointer<std::tuple<int>>(message),
       "Cannot convert the data to the requested type because the internal "
       "size 16 does not match the size of the type 4",
-      rts::Exception);
+      findus::Exception);
   message.get_header()->data_was_serialized(true);
   CHECK_THROWS_WITH_AS(
       get_data_pointer<DataTuple>(message),
       "Cannot retrieve the data pointer with a type other than std::byte "
       "for a serialized message.",
-      rts::Exception);
+      findus::Exception);
   message.get_header()->data_was_serialized(false);
 
   const std::uint32_t dummy_offset = 305419896;
@@ -948,7 +948,7 @@ void test_get_callback_address_and_get_callback() {
 void test_set_and_get_combine_function_pointer() {
   INFO("Test set_combine_function_pointer and get_combine_function_pointer");
 
-  using namespace rts::reduction;
+  using namespace findus::reduction;
 
   // Dummy combine function for testing
   static bool called = false;
@@ -987,7 +987,7 @@ void test_set_and_get_combine_function_pointer() {
 }
 
 void test_contribution_metadata() {
-  using rts::detail::get_output;
+  using findus::detail::get_output;
   CHECK(get_output(Contribution::self_contributed) == "self_contributed");
   CHECK(get_output(Contribution::left_child_contributed) ==
         "left_child_contributed");
@@ -1044,7 +1044,7 @@ void test_contribution_metadata() {
           std::bitset<8>{
               *reinterpret_cast<std::uint8_t*>(std::next(
                   reinterpret_cast<std::byte*>(message.get_header()),
-                  rts::reduction::contributed_metadata_jump_in_bytes))}
+                  findus::reduction::contributed_metadata_jump_in_bytes))}
               .to_string();
       CAPTURE(bits_string);
       const bool should_be_set = (mask bitand (0b1 << i)) != 0;
@@ -1057,7 +1057,7 @@ void test_contribution_metadata() {
     // Check that no extra bits are set
     CHECK((*reinterpret_cast<std::uint8_t*>(std::next(
                reinterpret_cast<std::byte*>(message.get_header()),
-               rts::reduction::contributed_metadata_jump_in_bytes)) bitand
+               findus::reduction::contributed_metadata_jump_in_bytes)) bitand
            ~0b11111) == 0);  // Only lower 5 bits should be set
 
     // Unset flags according to mask
@@ -1072,7 +1072,7 @@ void test_contribution_metadata() {
           std::bitset<8>{
               *reinterpret_cast<std::uint8_t*>(std::next(
                   reinterpret_cast<std::byte*>(message.get_header()),
-                  rts::reduction::contributed_metadata_jump_in_bytes))}
+                  findus::reduction::contributed_metadata_jump_in_bytes))}
               .to_string();
       CAPTURE(bits_string);
       CHECK_FALSE(get_contributed_metadata(message, flags[i]));
@@ -1081,7 +1081,7 @@ void test_contribution_metadata() {
     // Check that no extra bits are set
     CHECK((*reinterpret_cast<std::uint8_t*>(std::next(
                reinterpret_cast<std::byte*>(message.get_header()),
-               rts::reduction::contributed_metadata_jump_in_bytes)) bitand
+               findus::reduction::contributed_metadata_jump_in_bytes)) bitand
            ~0b11111) == 0);  // Only lower 5 bits should be set
   }
 }
@@ -1130,23 +1130,23 @@ void test_reduction_contribution_counters() {
 }
 }  // namespace
 }  // namespace reduction
-}  // namespace rts
+}  // namespace findus
 
 TEST_CASE("Message") {
-  rts::test_create_message_alignment_and_values();
-  rts::test_create_message_serialized();
-  rts::test_create_broadcast_to_message();
-  rts::test_create_message();
-  rts::test_copy_message();
+  findus::test_create_message_alignment_and_values();
+  findus::test_create_message_serialized();
+  findus::test_create_broadcast_to_message();
+  findus::test_create_message();
+  findus::test_copy_message();
 
-  rts::reduction::test_set_and_get_id();
-  rts::reduction::test_set_and_get_data_offset();
-  rts::reduction::test_set_and_get_callback_offset();
-  rts::reduction::test_create_message();
-  rts::reduction::test_get_callback_address_and_get_callback();
-  rts::reduction::test_set_and_get_combine_function_pointer();
-  rts::reduction::test_contribution_metadata();
-  rts::reduction::test_reduction_contribution_counters();
+  findus::reduction::test_set_and_get_id();
+  findus::reduction::test_set_and_get_data_offset();
+  findus::reduction::test_set_and_get_callback_offset();
+  findus::reduction::test_create_message();
+  findus::reduction::test_get_callback_address_and_get_callback();
+  findus::reduction::test_set_and_get_combine_function_pointer();
+  findus::reduction::test_contribution_metadata();
+  findus::reduction::test_reduction_contribution_counters();
 }
 
 #endif
