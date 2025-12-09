@@ -819,8 +819,8 @@ void DistributedTaskDriver::invoke(Message_t& message,
   active_object_[thread_id_] =
       detail::ActiveObject{message_header->distributed_object_index(),
                            message_header->target_collection_index()};
-  (this->*threaded_action_absolute_ptr(message_header->member_function_ptr()))(
-      message);
+  (this->*findus_invoke_action_absolute_ptr(
+              message_header->member_function_ptr()))(message);
   active_object_[thread_id_] = detail::ActiveObject{};
 }
 
@@ -1636,18 +1636,18 @@ struct RegularComponent : public findus::DistributedObject<RegularComponent> {
   static std::string name() { return "RegularComponent"; }
 
   template <class Action, class... Args>
-  void threaded_action(findus::DistributedTaskDriver&, Args... args);
+  void findus_invoke_action(findus::DistributedTaskDriver&, Args... args);
 };
 
 template <>
-void RegularComponent::threaded_action<TestAction>(
+void RegularComponent::findus_invoke_action<TestAction>(
     findus::DistributedTaskDriver&, const int a, const int b) {
   last_args = std::make_tuple(a, b);
   last_result += static_cast<int>(a + b);
 }
 
 template <>
-void RegularComponent::threaded_action<TestAction>(
+void RegularComponent::findus_invoke_action<TestAction>(
     findus::DistributedTaskDriver&, const std::vector<int> a) {
   last_args =
       std::tuple{static_cast<int>(a.size()), static_cast<int>(a.capacity())};
@@ -1656,7 +1656,7 @@ void RegularComponent::threaded_action<TestAction>(
 
 // Specialization for broadcast (int, int, double)
 template <>
-void RegularComponent::threaded_action<TestBroadcastAction>(
+void RegularComponent::findus_invoke_action<TestBroadcastAction>(
     findus::DistributedTaskDriver&, const int a, const int b, const double d) {
   last_broadcast_args = std::make_tuple(a, b, d);
   last_result = static_cast<int>(a + b + d);
@@ -1664,7 +1664,7 @@ void RegularComponent::threaded_action<TestBroadcastAction>(
 
 // Specialization for broadcast (int, int, double, std::vector<int>)
 template <>
-void RegularComponent::threaded_action<TestBroadcastAction>(
+void RegularComponent::findus_invoke_action<TestBroadcastAction>(
     findus::DistributedTaskDriver&, const int a, const int b, const double d,
     const std::vector<int> vec) {
   last_broadcast_args = std::make_tuple(a, b, d);
@@ -1684,12 +1684,12 @@ struct CollectionComponent
   static std::string name() { return "CollectionComponent"; }
 
   template <class Action, class... Args>
-  void threaded_action(findus::DistributedTaskDriver&,
-                       findus_collection_index my_index, Args... args);
+  void findus_invoke_action(findus::DistributedTaskDriver&,
+                            findus_collection_index my_index, Args... args);
 };
 
 template <>
-void CollectionComponent::threaded_action<TestAction>(
+void CollectionComponent::findus_invoke_action<TestAction>(
     findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const int a, const int b) {
   CHECK(my_index != 0);
@@ -1699,7 +1699,7 @@ void CollectionComponent::threaded_action<TestAction>(
 }
 
 template <>
-void CollectionComponent::threaded_action<TestAction>(
+void CollectionComponent::findus_invoke_action<TestAction>(
     findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const std::vector<int> a) {
   CHECK(my_index != 0);
@@ -1711,7 +1711,7 @@ void CollectionComponent::threaded_action<TestAction>(
 
 // Specialization for broadcast (int, int, double)
 template <>
-void CollectionComponent::threaded_action<TestBroadcastAction>(
+void CollectionComponent::findus_invoke_action<TestBroadcastAction>(
     findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const int a, const int b, const double d) {
   CHECK(my_index != 0);
@@ -1722,7 +1722,7 @@ void CollectionComponent::threaded_action<TestBroadcastAction>(
 
 // Specialization for broadcast (int, int, double, std::vector<int>)
 template <>
-void CollectionComponent::threaded_action<TestBroadcastAction>(
+void CollectionComponent::findus_invoke_action<TestBroadcastAction>(
     findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const int a, const int b, const double d, const std::vector<int> vec) {
   CHECK(my_index != 0);
@@ -1734,7 +1734,7 @@ void CollectionComponent::threaded_action<TestBroadcastAction>(
 
 // Specialization for broadcast_to (int, double)
 template <>
-void CollectionComponent::threaded_action<TestBroadcastToAction>(
+void CollectionComponent::findus_invoke_action<TestBroadcastToAction>(
     findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const int a, const double d) {
   CHECK(my_index != 0);
@@ -1745,7 +1745,7 @@ void CollectionComponent::threaded_action<TestBroadcastToAction>(
 
 // Specialization for broadcast_to (int, double, std::vector<int>)
 template <>
-void CollectionComponent::threaded_action<TestBroadcastToAction>(
+void CollectionComponent::findus_invoke_action<TestBroadcastToAction>(
     findus::DistributedTaskDriver&, const findus_collection_index my_index,
     const int a, const double d, const std::vector<int> vec) {
   CHECK(my_index != 0);
@@ -2956,8 +2956,8 @@ struct ReductionComponent1
   }
 
   template <class Action, class... Args>
-  void threaded_action(findus::DistributedTaskDriver& task_driver,
-                       Args... args) {
+  void findus_invoke_action(findus::DistributedTaskDriver& task_driver,
+                            Args... args) {
     Action::apply(task_driver, std::forward<Args>(args)...);
   }
 

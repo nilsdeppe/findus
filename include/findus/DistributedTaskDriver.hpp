@@ -376,19 +376,20 @@ class DistributedTaskDriver {
    * which the action should be invoked.
    *
    * The `args...` are the argument with which the member function
-   * `threaded_action` on the receiving parallel component will be
+   * `findus_invoke_action` on the receiving parallel component will be
    * invoked. An example of a threaded action member function of a parallel
    * component is
    * ```cpp
    * template <class Action, class... Args>
-   * void threaded_action(findus::DistributedTaskDriver& driver, Args... args);
+   * void findus_invoke_action(findus::DistributedTaskDriver& driver, Args...
+   * args);
    * ```
    * Specialization to specific actions is essentially providing remotely
    * callable member functions. For example,
    * ```cpp
    * template <>
-   * void threaded_action<MyAction>(findus::DistributedTaskDriver& task_driver,
-   *                                const int t)
+   * void findus_invoke_action<MyAction>(findus::DistributedTaskDriver&
+   * task_driver, const int t)
    * ```
    * provides remotely callable member function labeled or tagged by the
    * "action" struct/class/type, `MyAction` in this case.
@@ -403,19 +404,20 @@ class DistributedTaskDriver {
    *
    * Allows invoking/calling `Actions` on all elements of a (collection)
    * parallel component. The arguments `args...` are forwarded to the member
-   * function `threaded_action` on each receiving distributed object.
+   * function `findus_invoke_action` on each receiving distributed object.
    *
    * An example of a threaded action member function of a parallel component is:
    * ```cpp
    * template <class Action, class... Args>
-   * void threaded_action(findus::DistributedTaskDriver& driver, Args... args);
+   * void findus_invoke_action(findus::DistributedTaskDriver& driver, Args...
+   * args);
    * ```
    * Specialization to specific actions is essentially providing remotely
    * callable member functions. For example,
    * ```cpp
    * template <>
-   * void threaded_action<MyAction>(findus::DistributedTaskDriver& task_driver,
-   *                                const int t)
+   * void findus_invoke_action<MyAction>(findus::DistributedTaskDriver&
+   * task_driver, const int t)
    * ```
    * provides a remotely callable member function labeled or tagged by the
    * "action" struct/class/type, `MyAction` in this case.
@@ -436,8 +438,8 @@ class DistributedTaskDriver {
    * This function allows invoking/calling `Actions` on a subset of elements of
    * a collection parallel component, as selected by a user-provided predicate.
    * The arguments `args...` are forwarded to the member function
-   * `threaded_action` on each receiving distributed object that matches the
-   * predicate.
+   * `findus_invoke_action` on each receiving distributed object that matches
+   * the predicate.
    *
    * The predicate must be callable with a collection index of type
    * `ParallelComponent::findus_collection_index` and return a `bool` indicating
@@ -446,14 +448,15 @@ class DistributedTaskDriver {
    * An example of a threaded action member function of a parallel component is:
    * ```cpp
    * template <class Action, class... Args>
-   * void threaded_action(findus::DistributedTaskDriver& driver, Args... args);
+   * void findus_invoke_action(findus::DistributedTaskDriver& driver, Args...
+   * args);
    * ```
    * Specialization to specific actions is essentially providing remotely
    * callable member functions. For example,
    * ```cpp
    * template <>
-   * void threaded_action<MyAction>(findus::DistributedTaskDriver& task_driver,
-   *                                const int t)
+   * void findus_invoke_action<MyAction>(findus::DistributedTaskDriver&
+   * task_driver, const int t)
    * ```
    * provides a remotely callable member function labeled or tagged by the
    * "action" struct/class/type, `MyAction` in this case.
@@ -717,7 +720,7 @@ class DistributedTaskDriver {
    * \brief Invokes the action encoded in `message` on the thread with ID
    * `thread_id`.
    *
-   * This uses `threaded_action_absolute_ptr` to get which threaded action
+   * This uses `findus_invoke_action_absolute_ptr` to get which threaded action
    * overload needs to be called and invokes it.
    */
   void invoke(Message_t& message, uint32_t thread_id);
@@ -770,15 +773,15 @@ class DistributedTaskDriver {
   /// invoke_impl is invoked _by_ the thread pool on the task driver to
   /// initiate the action on the distributed action.
   template <class Action, class ParallelComponent, class... ArgIndexes>
-  void threaded_action_impl(Message_t& message);
+  void findus_invoke_action_impl(Message_t& message);
 
   // Compute the threaded action member function pointer location relative to
   // the anchor() member function pointer. This is then sent to other nodes.
   template <class Action, class ParallelComponent, class... Args, size_t... Is>
-  detail::MemberFunctionPtr threaded_action_relative_ptr(
+  detail::MemberFunctionPtr findus_invoke_action_relative_ptr(
       std::index_sequence<Is...> /*meta*/) {
     return {detail::to_member_function_ptr<void, DistributedTaskDriver>(
-                &DistributedTaskDriver::template threaded_action_impl<
+                &DistributedTaskDriver::template findus_invoke_action_impl<
                     Action, ParallelComponent, detail::ArgIndex<Args, Is>...>) -
             detail::to_member_function_ptr<void, DistributedTaskDriver>(
                 &DistributedTaskDriver::anchor)};
@@ -786,7 +789,7 @@ class DistributedTaskDriver {
 
   // Compute the threaded action member function pointer absolute address from
   // the address relative to the anchor() function.
-  auto threaded_action_absolute_ptr(
+  auto findus_invoke_action_absolute_ptr(
       const detail::MemberFunctionPtr& theaded_action_rel_ptr)
       -> void (DistributedTaskDriver::*)(Message_t&) {
     return detail::from_member_function_ptr<void, DistributedTaskDriver,
@@ -1292,8 +1295,8 @@ void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
     send_data(
         target_node,
         findus::create_message(
-            threaded_action_relative_ptr<Action, ParallelComponent,
-                                         std::decay_t<Args>...>(
+            findus_invoke_action_relative_ptr<Action, ParallelComponent,
+                                              std::decay_t<Args>...>(
                 std::make_index_sequence<sizeof...(Args)>{}),
             collection_index,
             detail::distributed_object_index<ParallelComponent>(),
@@ -1303,8 +1306,8 @@ void DistributedTaskDriver::invoke(const IndexType& user_index_or_target_node,
   } else {
     send_data(target_node,
               findus::create_message(
-                  threaded_action_relative_ptr<Action, ParallelComponent,
-                                               std::decay_t<Args>...>(
+                  findus_invoke_action_relative_ptr<Action, ParallelComponent,
+                                                    std::decay_t<Args>...>(
                       std::make_index_sequence<sizeof...(Args)>{}),
                   collection_index,
                   detail::distributed_object_index<ParallelComponent>(),
@@ -1337,8 +1340,8 @@ void DistributedTaskDriver::broadcast(Args&&... args) {
     send_data(
         broadcast_process_id,
         findus::create_message(
-            threaded_action_relative_ptr<Action, ParallelComponent,
-                                         std::decay_t<Args>...>(
+            findus_invoke_action_relative_ptr<Action, ParallelComponent,
+                                              std::decay_t<Args>...>(
                 std::make_index_sequence<sizeof...(Args)>{}),
             MessageHeader::no_collection_index(),
             detail::distributed_object_index<ParallelComponent>(),
@@ -1351,8 +1354,8 @@ void DistributedTaskDriver::broadcast(Args&&... args) {
   } else {
     send_data(broadcast_process_id,
               findus::create_message(
-                  threaded_action_relative_ptr<Action, ParallelComponent,
-                                               std::decay_t<Args>...>(
+                  findus_invoke_action_relative_ptr<Action, ParallelComponent,
+                                                    std::decay_t<Args>...>(
                       std::make_index_sequence<sizeof...(Args)>{}),
                   MessageHeader::no_collection_index(),
                   detail::distributed_object_index<ParallelComponent>(),
@@ -1468,8 +1471,8 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
       continue;
     }
     broadcast_to_messages.emplace_back(create_broadcast_to_message(
-        threaded_action_relative_ptr<Action, ParallelComponent,
-                                     std::decay_t<Args>...>(
+        findus_invoke_action_relative_ptr<Action, ParallelComponent,
+                                          std::decay_t<Args>...>(
             std::make_index_sequence<sizeof...(Args)>{}),
         detail::distributed_object_index<ParallelComponent>(),
         current_node_id(), pid, global_qd_.local_sweep_number(),
@@ -1503,8 +1506,8 @@ void DistributedTaskDriver::broadcast_to(UnaryPredicate&& predicate,
     if (predicate(detail::from_internal<ParallelComponent>(collection_index))) {
       if (collection_holder.process_id == current_node_id()) {
         broadcast_to_messages.emplace_back(create_message(
-            threaded_action_relative_ptr<Action, ParallelComponent,
-                                         std::decay_t<Args>...>(
+            findus_invoke_action_relative_ptr<Action, ParallelComponent,
+                                              std::decay_t<Args>...>(
                 std::make_index_sequence<sizeof...(Args)>{}),
             collection_index,
             detail::distributed_object_index<ParallelComponent>(),
@@ -1681,8 +1684,8 @@ void DistributedTaskDriver::reduction_over(
             local_message, current_node_id(), number_of_nodes(),
             holder.ids_per_process, predicate);
     local_message.get_header()->member_function_ptr(
-        threaded_action_relative_ptr<CallbackAction, CallbackParallelComponent,
-                                     std::decay_t<Args>...>(
+        findus_invoke_action_relative_ptr<
+            CallbackAction, CallbackParallelComponent, std::decay_t<Args>...>(
             std::make_index_sequence<sizeof...(Args)>{}));
     if constexpr (data_is_trivially_copyable) {
       outgoing_messages_.enqueue(std::tuple<int, Message_t>{
@@ -1752,8 +1755,8 @@ void DistributedTaskDriver::reduction_over(
         ->set_interprocess_message_info<ContributingParallelComponent>(
             message, current_node_id(), number_of_nodes(), predicate);
     message.get_header()->member_function_ptr(
-        threaded_action_relative_ptr<CallbackAction, CallbackParallelComponent,
-                                     std::decay_t<Args>...>(
+        findus_invoke_action_relative_ptr<
+            CallbackAction, CallbackParallelComponent, std::decay_t<Args>...>(
             std::make_index_sequence<sizeof...(Args)>{}));
     reduction::set_combine_function_pointer(
         message,
@@ -1825,7 +1828,7 @@ void DistributedTaskDriver::compute_elements_per_pid(
 }
 
 template <class Action, class ParallelComponent, class... ArgIndexes>
-void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
+void DistributedTaskDriver::findus_invoke_action_impl(Message_t& message) {
   MessageHeader* header = message.get_header();
   if (header->distributed_object_index() >= distributed_objects_.size()) {
     throw findus::Exception{"Requested distributed object with index " +
@@ -1855,7 +1858,7 @@ void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
             header->target_collection_index());
         it != distributed_object_collection.end()) {
       dynamic_cast<ParallelComponent&>(*it->second.object)
-          .template threaded_action<Action>(
+          .template findus_invoke_action<Action>(
               *this,
               detail::from_internal<ParallelComponent>(
                   header->target_collection_index()),
@@ -1874,7 +1877,7 @@ void DistributedTaskDriver::threaded_action_impl(Message_t& message) {
     dynamic_cast<ParallelComponent&>(
         *std::get<0>(
             distributed_objects_[header->distributed_object_index()].objects))
-        .template threaded_action<Action>(
+        .template findus_invoke_action<Action>(
             *this, std::move(std::get<ArgIndexes::index>(*args))...);
   }
 }
