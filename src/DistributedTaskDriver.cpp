@@ -1628,7 +1628,7 @@ struct TestBroadcastAction {};
 struct TestBroadcastToAction {};
 
 // Regular parallel component
-struct RegularComponent : public findus::detail::DistributedObjectBase {
+struct RegularComponent : public findus::DistributedObject<RegularComponent> {
   int last_result = 0;
   std::tuple<int, int> last_args{0, 0};
   std::tuple<int, int, double> last_broadcast_args{0, 0, 0.0};
