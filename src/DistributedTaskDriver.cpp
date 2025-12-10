@@ -1508,6 +1508,19 @@ thread_local std::uint32_t DistributedTaskDriver::thread_id_ =
 
 static const std::unique_ptr<DistributedTaskDriver> task_driver = nullptr;
 
+namespace detail {
+// Silence compiler warning about forward declaration missing.
+DistributedTaskDriver* get_task_driver_ptr();
+// This should _really_ not be used and is why there's no documentation or
+// forward declaration in a header file.
+DistributedTaskDriver* get_task_driver_ptr() {
+  if (task_driver == nullptr) {
+    return nullptr;
+  }
+  return task_driver.get();
+}
+}  // namespace detail
+
 DistributedTaskDriver& create_distributed_task_driver(
     int* argc, char** argv[], const bool initialize_mpi) {
   if (task_driver != nullptr) {
