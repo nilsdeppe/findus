@@ -17,7 +17,13 @@ bool has_findus_mpi_test_flag(int argc, char** argv) {
 }
 }  // namespace
 
+namespace findus::detail {
+// Necessary to get doctest to show unit tests with shared libs.
+void findus_force_link_for_tests();
+}  // namespace findus::detail
+
 int main(int argc, char** argv) {
+  findus::detail::findus_force_link_for_tests();
   if (has_findus_mpi_test_flag(argc, argv)) {
     // Note: the definitions are all in the _DocTestImpl library that we link.
     doctest::mpi_init_thread(argc, argv, MPI_THREAD_MULTIPLE);

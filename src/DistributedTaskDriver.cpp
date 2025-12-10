@@ -1577,6 +1577,12 @@ DistributedTaskDriver& CallbackBase::get_task_driver() const {
 #include "findus/Serialize/Stl/Vector.hpp"
 
 namespace findus {
+namespace detail {
+void findus_force_link_for_tests();
+// Necessary to get doctest to show unit tests with shared libs.
+void findus_force_link_for_tests() {}
+}  // namespace detail
+
 namespace {
 namespace testing {
 void test_bulk_enequeue_iterator_exceptions() {
