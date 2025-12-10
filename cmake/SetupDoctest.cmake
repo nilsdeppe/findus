@@ -4,7 +4,9 @@
 
 option(FINDUS_FETCH_DOCTEST "If ON, then we fetch doctest." OFF)
 
-if (FINDUS_FETCH_DOCTEST)
+find_package(doctest CONFIG QUIET)
+
+if (NOT doctest_FOUND AND FINDUS_FETCH_DOCTEST)
   set(DOCTEST_NO_INSTALL YES CACHE BOOL "Disable doctest install" FORCE)
   include(FetchContent)
   FetchContent_Declare(
@@ -15,15 +17,14 @@ if (FINDUS_FETCH_DOCTEST)
     ${FINDUS_FETCHCONTENT_BASE_ARGS}
   )
   FetchContent_MakeAvailable(doctest)
+endif()
+
+if (TARGET doctest::doctest)
   # Include cmake config from doctest
   include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
   # We need to use a hack to deal with static libs.
   # This hack is even provided by doctest.
   include(${doctest_SOURCE_DIR}/examples/exe_with_static_libs/doctest_force_link_static_lib_in_target.cmake)
-  set_property(TARGET FindusFlags
-    APPEND PROPERTY
-    INTERFACE_COMPILE_DEFINITIONS
-    "$<$<COMPILE_LANGUAGE:CXX>:FINDUS_ENABLE_TESTING>")
 else(FINDUS_FETCH_DOCTEST)
   message(STATUS
     "doctest not found. Set -DFINDUS_FETCH_DOCTEST=ON if you want to "

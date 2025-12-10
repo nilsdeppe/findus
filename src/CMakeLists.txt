@@ -51,6 +51,10 @@ add_library(
   Serialize/Virtual.cpp
 )
 
+add_library(findus::findus ALIAS ${LIBRARY})
+
+target_compile_features(findus PUBLIC cxx_std_20)
+
 target_include_directories(
   ${LIBRARY}
   PUBLIC
@@ -63,42 +67,22 @@ target_link_libraries(
   PUBLIC
   MPI::MPI_CXX
   findus::CacheLineSize
+  findus::Flags
   PRIVATE
-  FindusFlags
+  $<BUILD_INTERFACE:findus::WarningFlags>
   hwloc::hwloc
 )
 
-install(
-  DIRECTORY ${PROJECT_SOURCE_DIR}/include/findus/
-  DESTINATION include/findus
-)
-
-install(TARGETS findus
-  EXPORT findus
-  LIBRARY DESTINATION lib
-  ARCHIVE DESTINATION lib
-  RUNTIME DESTINATION bin
-)
-
-if (BUILD_TESTING AND TARGET doctest::doctest)
-  # Configure a library that holds just the implementation of the doctest
-  # functions. This can then be linked privately into the findus library
-  # so that any library or executable linked against it can safely ignore
-  # whether or not doctest is needed.
-  add_library(_FindusDoctestImpl
-    Detail/DoctestImpl.cpp
-  )
-  target_link_libraries(_FindusDoctestImpl
+if (PROJECT_IS_TOP_LEVEL AND BUILD_TESTING AND TARGET doctest::doctest)
+  target_sources(findus
     PRIVATE
-    MPI::MPI_CXX
-    FindusFlags
-    doctest::doctest
+    Detail/DoctestImpl.cpp
   )
   target_link_libraries(findus
     PRIVATE
-    _FindusDoctestImpl
-    doctest::doctest
+    $<BUILD_INTERFACE:doctest::doctest>
   )
+  list(APPEND FINDUS_EXPORT_TARGETS_LIST doctest)
 
   # Add a separate testing executable for the unit tests.
   add_executable(
@@ -107,11 +91,16 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
   )
   target_link_libraries(Test
     PRIVATE
-    FindusFlags
+    findusFlags
+    $<BUILD_INTERFACE:findus::WarningFlags>
     findus
-    _FindusDoctestImpl
     doctest::doctest
   )
+
+  set_property(TARGET findus Test
+    APPEND PROPERTY
+    COMPILE_DEFINITIONS
+    "$<$<COMPILE_LANGUAGE:CXX>:FINDUS_ENABLE_TESTING>")
   # There are issues with self-registering Test when using static libraries.
   # This is a common issue across all testing libraries that have
   # self-registering Test. doctest provides a nice workaround for it.
@@ -235,3 +224,5 @@ if (BUILD_TESTING AND TARGET doctest::doctest)
     --findus-mpi-test
   )
 endif()
+
+set(FINDUS_EXPORT_TARGETS_LIST "${FINDUS_EXPORT_TARGETS_LIST}" PARENT_SCOPE)

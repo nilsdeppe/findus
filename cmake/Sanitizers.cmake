@@ -2,7 +2,7 @@
 # Distributed under the MIT License.
 # See LICENSE.txt for details.
 
-add_library(FindusSanitizers IMPORTED INTERFACE)
+add_library(findusSanitizers INTERFACE)
 
 option(SANITIZER "Add sanitizer flags with value, e.g. address, undefined, etc."
   OFF)
@@ -21,7 +21,7 @@ if (SANITIZER)
   endif()
 
   set_property(
-    TARGET FindusSanitizers
+    TARGET findusSanitizers
     APPEND PROPERTY
     INTERFACE_COMPILE_OPTIONS
     $<$<COMPILE_LANGUAGE:CXX>:-fno-omit-frame-pointer -fsanitize=${SANITIZER}>
@@ -30,8 +30,17 @@ if (SANITIZER)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=${SANITIZER}")
 endif()
 
+add_library(findus::Sanitizers ALIAS findusSanitizers)
+set_property(TARGET findusSanitizers
+  PROPERTY EXPORT_NAME Sanitizers
+)
+
 target_link_libraries(
-  FindusFlags
+  findusFlags
   INTERFACE
-  FindusSanitizers
+  findus::Sanitizers
+)
+
+set(FINDUS_EXPORT_TARGETS_LIST
+  "${FINDUS_EXPORT_TARGETS_LIST};findusSanitizers"
 )
