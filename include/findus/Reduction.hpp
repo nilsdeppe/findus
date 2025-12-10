@@ -682,7 +682,10 @@ class Handler {
  private:
   alignas(findus::hardware_info::hardware_destructive_interference_size)
       detail::Counter reduction_counter_;
-  [[maybe_unused]] std::byte cacheline_interference_padding_
+#if defined(__GNUC__) and defined(__clang__)
+  [[maybe_unused]]
+#endif
+  std::byte cacheline_interference_padding_
       [2 * findus::hardware_info::hardware_destructive_interference_size];
   alignas(findus::hardware_info::hardware_destructive_interference_size)
       std::vector<DataHandler> per_thread_data_handlers_;

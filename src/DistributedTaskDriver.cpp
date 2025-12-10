@@ -1248,8 +1248,15 @@ void DistributedTaskDriver::clean_incoming_mpi_messages() {
       //
       // Note: This works with C++17 as well.
       MessageHeader temp_message_header{};
+#if defined(__GNUC__) and not defined(__clang__) and (__GNUC__ == 10)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wclass-memaccess"
+#endif
       std::memcpy(&temp_message_header, message.message.get(),
                   sizeof(MessageHeader));
+#if defined(__GNUC__) and not defined(__clang__) and (__GNUC__ == 10)
+#pragma GCC diagnostic pop
+#endif
       MessageHeader* message_header = new (message.message.get()) MessageHeader;
       std::memcpy(message_header, &temp_message_header, sizeof(MessageHeader));
     }
