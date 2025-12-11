@@ -1,0 +1,318 @@
+
+
+name: Tests
+
+
+env:
+  # MPI standards were released:
+  #  | Standard | Release  | MPICH   | OpenMPI       |
+  #  | MPI-3.0  | Sep 2012 | 3.0     | 1.10          |
+  #  | MPI-3.1  | Jun 2015 | 3.2     | 2.0           |
+  #  | MPI-4.0  | Sep 2023 | 4.0     | 5.0 (partial) |
+  #  | MPI-4.1  | Nov 2023 | 4.2     |               |
+  #
+  # MPI-5.0 is under development as of Jan 2026
+  #
+  # We use MPICH versions to cover MPI standards 3.1, 4.0, 4.1
+  MPICH_VERSIONS: "3.4.3 4.1.2 4.2.1"
+  # We use OpenPMI versions to cover MPI standards 3.1 and partial 4.0
+  OPENMPI_VERSIONS: "4.1.6 5.0.3"
+
+  # We make sure to use a fixed absolute path for the ccache directory
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  # Use a separate temp directory to conserve cache space on GitHub
+  CCACHE_TEMPDIR: ${{ github.workspace }}/.ccache-tmp
+  # Control the max cache size. We evict unused entries in a step below to
+  # make sure that each build only uses what it need of this max size.
+  CCACHE_MAXSIZE: "500M"
+  # Control the compression level. The ccache docs recommend at most level
+  # 5 to avoid slowing down compilation.
+  CCACHE_COMPRESS: 1
+  CCACHE_COMPRESSLEVEL: 5
+  # We hash the content of the compiler rather than the location and mtime
+  # to make sure the cache works across the different machines
+  CCACHE_COMPILERCHECK: content
+  # Rewrite absolute paths starting with this base dir to relative paths
+  # before hashing. This is needed to reuse the cache for builds in different
+  # directories.
+  CCACHE_BASEDIR: $GITHUB_WORKSPACE
+
+defaults:
+  run:
+    shell: bash
+
+on:
+  # We run all jobs when pull requests are opened, commits are pushed, or pull
+  # requests are re-opened after being closed.
+  # The jobs triggered by this event run on the base repository of the pull
+  # request, so they have access to its caches.
+  pull_request:
+  # We run those jobs that require no information about a pull request (e.g.
+  # unit tests) also on `push` events. This setup tests merge commits into
+  # `develop` and also builds up caches on `develop` that can be re-used by PRs.
+  # It also runs the jobs on forks if they have GitHub Actions enabled.
+  push:
+    branches-ignore:
+      - gh-pages
+  # We run thorough tests once a weekly to make sure we don't have any
+  # regressions across a wide suite of setups. However, these are quite
+  # slow to run and not worth doing every time a PR is merged or push.
+  schedule:
+    - cron: '0 13 * * 1'  # Monday 8am ET (1pm UTC)
+
+# Cancel all other queued or in-progress runs of this workflow when it is
+# scheduled, so repeated pushes to a branch or a PR don't block CI. Repeated
+# pushes to 'develop' and 'release' are not canceled, so every merge commit is
+# tested.
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/develop'
+    && github.ref != 'refs/heads/release' }}
+
+jobs:
+  unit_tests:
+    name: Unit tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+        compiler:
+          - gcc-10
+          - gcc-11
+          - gcc-12
+          - gcc-13
+          - gcc-14
+          # - gcc-15 # Not easily available on 24.04
+          - clang-14
+          - clang-15
+          - clang-16
+          - clang-17
+          - clang-18
+          - clang-19
+          - clang-20
+          - clang-21
+    steps:
+      - name: Record start time
+        id: start
+        run: |
+          echo "time=$(date +%s)" >> "$GITHUB_OUTPUT"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      # Work around https://github.com/actions/checkout/issues/760
+      - name: Trust checkout
+        run: |
+          git config --global --add safe.directory $GITHUB_WORKSPACE
+      - uses: ./.github/actions/parse-compiler
+        with:
+          compiler: ${{ matrix.compiler }}
+      - name: Install compiler
+        run: |
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+          sudo apt-get update -y
+          if [[ $COMPILER_ID = gcc ]]; then
+            sudo apt-get install -y $CC $CXX
+          elif [[ $COMPILER_ID = clang ]]; then
+            wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+            if [ "$COMPILER_VERSION" = "20" ]; then
+              sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-20 main"
+            elif [ "$COMPILER_VERSION" = "21" ]; then
+              sudo add-apt-repository "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-21 main"
+            fi
+            sudo apt-get update
+            sudo apt-get install -y $CC libc++-${COMPILER_VERSION}-dev libc++abi-${COMPILER_VERSION}-dev
+          fi
+      - name: Install Doxygen, hwloc, and ccache.
+        run: |
+          sudo apt-get install -y doxygen hwloc libhwloc-dev ccache
+
+      # The Ubuntu package for MPICH is broken because of a bug in UCX. Because
+      # of that we compile MPICH ourselves.
+      #
+      # This also allows us to compile MPICH with error checking enabled so we
+      # can catch bugs where we incorrectly call into MPI. We build a debug
+      # and a release version.
+      - name: Restore MPICH cache
+        uses: actions/cache/restore@v4
+        id: cache-mpich
+        with:
+          path: /opt/mpich
+          key: "mpich-all-versions-ofi-minimal-${{ matrix.os }}"
+      - name: Install MPICH
+        if: steps.cache-mpich.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get install -y wget
+          for version in $MPICH_VERSIONS; do
+            echo "=== Building MPICH $version ==="
+            wget https://www.mpich.org/static/downloads/$version/mpich-$version.tar.gz
+            tar xzf mpich-$version.tar.gz
+            cd mpich-$version
+            ./configure --prefix=/opt/mpich/$version-debug \
+                        --with-device=ch4:ofi \
+                        --with-libfabric-provider=tcp,shm \
+                        --with-libfabric=embedded \
+                        --enable-error-checking=all \
+                        --enable-error-messages=all \
+                        --enable-g=all \
+                        --disable-fortran \
+                        --disable-romio \
+                        --disable-maintainer-mode \
+                        --disable-dependency-tracking \
+                        --disable-static
+            make -j$(nproc)
+            make install
+            cd ..
+            rm -rf mpich-$version
+
+            tar xzf mpich-$version.tar.gz
+            cd mpich-$version
+            ./configure --prefix=/opt/mpich/$version \
+                        --with-device=ch4:ofi \
+                        --with-libfabric-provider=tcp,shm \
+                        --with-libfabric=embedded \
+                        --disable-fortran \
+                        --disable-romio \
+                        --disable-maintainer-mode \
+                        --disable-dependency-tracking \
+                        --disable-static
+            make -j$(nproc)
+            make install
+            cd ..
+            rm -rf mpich-$version mpich-$version.tar.gz
+          done
+
+      - name: Save MPICH cache
+        uses: actions/cache/save@v4
+        if: always() && steps.cache-mpich.outputs.cache-hit != 'true' && matrix.compiler == 'gcc-10'
+        with:
+          path: /opt/mpich
+          key: "mpich-all-versions-ofi-minimal-${{ matrix.os }}"
+
+      # We install OpenMPI manually so that we can do debug builds
+      # and choose which versions to use.
+      - name: Restore OpenMPI cache
+        uses: actions/cache/restore@v4
+        id: cache-openmpi
+        with:
+          path: /opt/openmpi
+          key: "openmpi-all-versions-${{ matrix.os }}"
+      - name: Install OpenMPI
+        if: steps.cache-openmpi.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get install -y wget
+          for version in $OPENMPI_VERSIONS; do
+            echo "=== Building OpenMPI $version ==="
+            major_minor=$(echo $version | cut -d. -f1,2)
+            wget https://download.open-mpi.org/release/open-mpi/v${major_minor}/openmpi-${version}.tar.gz
+            tar xzf openmpi-${version}.tar.gz
+            cd openmpi-${version}
+            ./configure --prefix=/opt/openmpi/$version-debug \
+                        --enable-debug \
+                        --enable-mem-debug \
+                        --with-mpi-param-check \
+                        --disable-mpi-fortran \
+                        --disable-io-romio \
+                        --disable-static \
+                        --disable-dependency-tracking
+            make -j$(nproc)
+            make install
+            cd ..
+            rm -rf openmpi-${version}
+
+            tar xzf openmpi-${version}.tar.gz
+            cd openmpi-${version}
+            ./configure --prefix=/opt/openmpi/$version \
+                        --disable-mpi-fortran \
+                        --disable-io-romio \
+                        --disable-static \
+                        --disable-dependency-tracking
+            make -j$(nproc)
+            make install
+            cd ..
+            rm -rf openmpi-${version} openmpi-${version}.tar.gz
+          done
+
+      - name: Save OpenMPI cache
+        uses: actions/cache/save@v4
+        if: always() && steps.cache-openmpi.outputs.cache-hit != 'true' && matrix.compiler == 'gcc-10'
+        with:
+          path: /opt/openmpi
+          key: "openmpi-all-versions-${{ matrix.os }}"
+      # Install the latest Intel MPI library.
+      #
+      # There isn't an install available for Ubuntu 24.04 ARM.
+      - name: Restore Intel MPI cache
+        if: matrix.os != 'ubuntu-24.04-arm'
+        uses: actions/cache/restore@v4
+        id: cache-intelmpi
+        with:
+          path: /opt/intel/oneapi/mpi
+          key: "intelmpi-latest"
+      - name: Install Intel MPI
+        if: matrix.os != 'ubuntu-24.04-arm' && steps.cache-intelmpi.outputs.cache-hit != 'true'
+        run: |
+          wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
+            | gpg --dearmor | sudo tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" \
+            | sudo tee /etc/apt/sources.list.d/oneAPI.list
+          sudo apt-get update
+          sudo apt-get install -y intel-oneapi-mpi intel-oneapi-mpi-devel
+
+      - name: Save Intel MPI cache
+        if: always() && matrix.os != 'ubuntu-24.04-arm' && steps.cache-intelmpi.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /opt/intel/oneapi/mpi
+          key: "intelmpi-latest"
+      # Assign a unique cache key for every run.
+      # - We will save the cache using this unique key, but only on the develop
+      #   branch. This way we regularly update the cache without filling up the
+      #   storage space with caches from other branches.
+      # - To restore the most recent cache we provide a partially-matched
+      #   "restore key".
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        id: restore-ccache
+        env:
+          CACHE_KEY_PREFIX: "ccache-${{ matrix.compiler }}-\
+${{ matrix.build_type }}-${{ matrix.os }}"
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: "${{ env.CACHE_KEY_PREFIX }}-${{ github.run_id }}"
+          restore-keys: |
+            ${{ env.CACHE_KEY_PREFIX }}-
+
+      - name: Run short tests
+        if: github.event_name != 'schedule'
+        env:
+          OS: ${{ matrix.os }}
+        run: >
+          ./ci/RunTests.sh SHORT
+
+      - name: Run extended tests (weekly only)
+        if: github.event_name == 'schedule'
+        env:
+          OS: ${{ matrix.os }}
+        run: >
+          ./ci/RunTests.sh EXTENDED
+
+      # Delete unused cache entries before uploading the cache.
+      #
+      # We keep cache entries for 10 days so that the weekly extended
+      # tests also have access to the cache.
+      - name: Clean up ccache
+        if: github.ref == 'refs/heads/develop'
+        run: |
+          ccache --evict-older-than "10d"
+      - name: Diagnose ccache
+        run: |
+          ccache -s
+      # Save the cache after everything has been built. Also save on failure or
+      # on cancellation (`always()`) because a partial cache is better than no
+      # cache.
+      - name: Save ccache
+        if: always() && github.ref == 'refs/heads/develop'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.restore-ccache.outputs.cache-primary-key }}

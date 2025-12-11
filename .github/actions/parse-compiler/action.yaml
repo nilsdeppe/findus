@@ -1,0 +1,69 @@
+# This file is copied from:
+#  https://github.com/sxs-collaboration/spectre/blob/develop/LICENSE.txt
+#
+# Distributed under the MIT License.
+#
+# ==============================================================================
+# SpECTRE Release License
+# ==============================================================================
+#
+# Copyright 2017 - 2025 Simulating eXtreme Spacetimes Collaboration
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
+name: Parse compiler
+
+description: |
+  Parse the compiler name and version from the input and set the environment
+  variables CC, CXX, FC, COMPILER_ID, and COMPILER_VERSION.
+  For nvcc, it sets CC, CXX, and FC to the host compilers (gcc, g++, gfortran).
+
+inputs:
+  compiler:
+    description: Compiler to parse, e.g. 'gcc-10'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - run: |
+        if [[ ${{ inputs.compiler }} =~ (gcc|clang|nvcc)-([0-9\.\-]+) ]]; then
+          COMPILER_ID=${BASH_REMATCH[1]}
+          COMPILER_VERSION=${BASH_REMATCH[2]}
+          if [[ $COMPILER_ID = gcc ]]; then
+            CC=gcc-${COMPILER_VERSION};
+            CXX=g++-${COMPILER_VERSION};
+            FC=gfortran-${COMPILER_VERSION};
+          elif [[ $COMPILER_ID = clang ]]; then
+            CC=clang-${COMPILER_VERSION};
+            CXX=clang++-${COMPILER_VERSION};
+            FC=gfortran-11;
+          elif [[ $COMPILER_ID = nvcc ]]; then
+            # Set host compilers
+            CC=gcc;
+            CXX=g++;
+            FC=gfortran-11;
+          fi
+        fi
+        echo "CC=$CC" >> $GITHUB_ENV
+        echo "CXX=$CXX" >> $GITHUB_ENV
+        echo "FC=$FC" >> $GITHUB_ENV
+        echo "COMPILER_ID=$COMPILER_ID" >> $GITHUB_ENV
+        echo "COMPILER_VERSION=$COMPILER_VERSION" >> $GITHUB_ENV
+      shell: bash
