@@ -13,8 +13,8 @@
 #include <thread>
 #include <vector>
 
-#include "ConcurrentQueue.hpp"
-#include "Spinlock.hpp"
+#include "findus/external/concurrentqueue/concurrentqueue.hpp"
+#include "findus/Spinlock.hpp"
 #include "findus/Exceptions/Exception.hpp"
 #include "findus/HardwareInfo.hpp"
 #include "findus/MessageRequeue.hpp"
