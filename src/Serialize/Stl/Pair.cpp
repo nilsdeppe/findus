@@ -23,27 +23,27 @@ static_assert(not is_serializable_v<NoSerialize>);
 static_assert(not is_serializable_v<std::pair<int, NoSerialize>>);
 static_assert(not is_serializable_v<std::pair<NoSerialize, int>>);
 static_assert(not is_serializable_v<std::pair<NoSerialize, NoSerialize>>);
-}  // namespace
 
-TEST_CASE("Serialize.Pair") {
+template <class Cast>
+void test() {
   // Fundamental types
   {
     std::pair<int, double> p{42, 3.14};
     static_assert(serialize_as_bytes_v<std::pair<int, double>>);
 
     Serializer sizer{Serializer::Sizing};
-    sizer | p;
+    static_cast<Cast&>(sizer) | p;
     CHECK(sizer.number_of_bytes() == sizeof(std::pair<int, double>));
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | p;
+    static_cast<Cast&>(packer) | p;
 
     std::pair<int, double> p_unpacked{0, 0.0};
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | p_unpacked;
+    static_cast<Cast&>(unpacker) | p_unpacked;
 
     CHECK(p == p_unpacked);
   }
@@ -53,18 +53,18 @@ TEST_CASE("Serialize.Pair") {
     std::pair<const int, double> p{42, 3.14};
 
     Serializer sizer{Serializer::Sizing};
-    sizer | p;
+    static_cast<Cast&>(sizer) | p;
     CHECK(sizer.number_of_bytes() == sizeof(std::pair<const int, double>));
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | p;
+    static_cast<Cast&>(packer) | p;
 
     std::pair<const int, double> p_unpacked{0, 0.0};
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | p_unpacked;
+    static_cast<Cast&>(unpacker) | p_unpacked;
 
     CHECK(p == p_unpacked);
   }
@@ -74,18 +74,18 @@ TEST_CASE("Serialize.Pair") {
     std::pair<int, double> p{};
 
     Serializer sizer{Serializer::Sizing};
-    sizer | p;
+    static_cast<Cast&>(sizer) | p;
     CHECK(sizer.number_of_bytes() == sizeof(std::pair<int, double>));
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | p;
+    static_cast<Cast&>(packer) | p;
 
     std::pair<int, double> p_unpacked{};
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | p_unpacked;
+    static_cast<Cast&>(unpacker) | p_unpacked;
 
     CHECK(p == p_unpacked);
   }
@@ -99,18 +99,18 @@ TEST_CASE("Serialize.Pair") {
     std::pair<EmptyType, EmptyType> p{};
 
     Serializer sizer{Serializer::Sizing};
-    sizer | p;
+    static_cast<Cast&>(sizer) | p;
     CHECK(sizer.number_of_bytes() == 0);
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | p;
+    static_cast<Cast&>(packer) | p;
 
     std::pair<EmptyType, EmptyType> p_unpacked{};
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | p_unpacked;
+    static_cast<Cast&>(unpacker) | p_unpacked;
 
     CHECK(p == p_unpacked);
   }
@@ -131,19 +131,19 @@ TEST_CASE("Serialize.Pair") {
                                           MyBytesType{2, 2.2}};
 
     Serializer sizer{Serializer::Sizing};
-    sizer | p;
+    static_cast<Cast&>(sizer) | p;
     CHECK(sizer.number_of_bytes() == sizeof(MyBytesType) * 2);
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | p;
+    static_cast<Cast&>(packer) | p;
 
     std::pair<MyBytesType, MyBytesType> p_unpacked{MyBytesType{},
                                                    MyBytesType{}};
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | p_unpacked;
+    static_cast<Cast&>(unpacker) | p_unpacked;
 
     CHECK(p == p_unpacked);
   }
@@ -163,18 +163,18 @@ TEST_CASE("Serialize.Pair") {
                                           ComplexType{2, 2.71}};
 
     Serializer sizer{Serializer::Sizing};
-    sizer | p;
+    static_cast<Cast&>(sizer) | p;
     CHECK(sizer.number_of_bytes() > 0);
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | p;
+    static_cast<Cast&>(packer) | p;
 
     std::pair<ComplexType, ComplexType> p_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | p_unpacked;
+    static_cast<Cast&>(unpacker) | p_unpacked;
 
     CHECK(p == p_unpacked);
   }
@@ -186,18 +186,18 @@ TEST_CASE("Serialize.Pair") {
     static_assert(serialize_as_bytes_v<T>);
 
     Serializer sizer{Serializer::Sizing};
-    sizer | p;
+    static_cast<Cast&>(sizer) | p;
     CHECK(sizer.number_of_bytes() == sizeof(T));
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | p;
+    static_cast<Cast&>(packer) | p;
 
     std::pair<std::pair<int, double>, std::pair<double, int>> p_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | p_unpacked;
+    static_cast<Cast&>(unpacker) | p_unpacked;
 
     CHECK(p == p_unpacked);
   }
@@ -213,21 +213,29 @@ TEST_CASE("Serialize.Pair") {
                   std::pair<std::vector<std::pair<int, double>>, int>>);
 
     Serializer sizer{Serializer::Sizing};
-    sizer | p;
+    static_cast<Cast&>(sizer) | p;
     CHECK(sizer.number_of_bytes() > 0);
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | p;
+    static_cast<Cast&>(packer) | p;
 
     std::pair<std::vector<std::pair<int, double>>, int> p_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | p_unpacked;
+    static_cast<Cast&>(unpacker) | p_unpacked;
 
     CHECK(p == p_unpacked);
   }
+}
+}  // namespace
+
+TEST_CASE("Serialize.Pair") {
+  test<Serializer>();
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test<PUP::er>();
+#endif
 }
 }  // namespace findus::serialize
 #endif

@@ -16,16 +16,16 @@ static_assert(is_serializable_v<std::list<int>>);
 static_assert(is_serializable_v<int>);
 static_assert(not is_serializable_v<NoSerialize>);
 static_assert(not is_serializable_v<std::list<NoSerialize>>);
-}  // namespace
 
-TEST_CASE("Serialize.List") {
+template <class Cast>
+void test() {
   // Test with fundamental type
   {
     std::list<int> list{1, 2, 3, 4, 5};
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | list;
+    static_cast<Cast&>(sizer) | list;
     CHECK(sizer.number_of_bytes() ==
           sizeof(size_t) + sizeof(int) * list.size());
 
@@ -33,13 +33,13 @@ TEST_CASE("Serialize.List") {
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | list;
+    static_cast<Cast&>(packer) | list;
 
     // Unpacking
     std::list<int> list_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | list_unpacked;
+    static_cast<Cast&>(unpacker) | list_unpacked;
 
     CHECK(list == list_unpacked);
   }
@@ -63,7 +63,7 @@ TEST_CASE("Serialize.List") {
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | list;
+    static_cast<Cast&>(sizer) | list;
     CHECK(sizer.number_of_bytes() ==
           sizeof(size_t) + sizeof(MyBytesType) * list.size());
 
@@ -71,13 +71,13 @@ TEST_CASE("Serialize.List") {
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | list;
+    static_cast<Cast&>(packer) | list;
 
     // Unpacking
     std::list<MyBytesType> list_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | list_unpacked;
+    static_cast<Cast&>(unpacker) | list_unpacked;
 
     CHECK(list == list_unpacked);
   }
@@ -113,7 +113,7 @@ TEST_CASE("Serialize.List") {
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | list;
+    static_cast<Cast&>(sizer) | list;
     // The exact number_of_bytes is complex to compute, but it should be > 0
     CHECK(sizer.number_of_bytes() ==
           (8 + (4 + 8 + 3 * 4 + 8) + (4 + 8 + 2 * 4 + 8)));
@@ -122,16 +122,24 @@ TEST_CASE("Serialize.List") {
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | list;
+    static_cast<Cast&>(packer) | list;
 
     // Unpacking
     std::list<ComplexType> list_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | list_unpacked;
+    static_cast<Cast&>(unpacker) | list_unpacked;
 
     CHECK(list == list_unpacked);
   }
+}
+}  // namespace
+
+TEST_CASE("Serialize.List") {
+  test<Serializer>();
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test<PUP::er>();
+#endif
 }
 }  // namespace findus::serialize
 #endif

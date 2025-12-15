@@ -54,22 +54,22 @@ struct ComplexType {
 
 struct NoSerialize {};
 
-template <typename Container>
+template <class Cast = findus::serialize::Serializer, class Container>
 void test_serialize_container(Container& original) {
   findus::serialize::Serializer sizer{findus::serialize::Serializer::Sizing};
-  sizer | original;
+  static_cast<Cast&>(sizer) | original;
   CHECK(sizer.number_of_bytes() > 0);
 
   std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
   findus::serialize::Serializer packer{findus::serialize::Serializer::Packing,
                                        buffer.get(), sizer.number_of_bytes()};
-  packer | original;
+  static_cast<Cast&>(packer) | original;
 
   Container unpacked;
   findus::serialize::Serializer unpacker{
       findus::serialize::Serializer::Unpacking, buffer.get(),
       sizer.number_of_bytes()};
-  unpacker | unpacked;
+  static_cast<Cast&>(unpacker) | unpacked;
 
   CHECK(original == unpacked);
 }
@@ -101,14 +101,20 @@ TEST_CASE("Serialize.Set") {
   std::set<MyBytesType> s_my_bytes_type{
       MyBytesType{1, 1.1}, MyBytesType{2, 2.2}, MyBytesType{3, 3.3}};
   static_assert(findus::serialize::is_serializable_v<std::set<MyBytesType>>);
-  test_serialize_container(s_my_bytes_type);
+  test_serialize_container<findus::serialize::Serializer>(s_my_bytes_type);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(s_my_bytes_type);
+#endif
 
   // Test with non-trivial type
   std::set<ComplexType> s_complex;
   static_assert(findus::serialize::is_serializable_v<std::set<ComplexType>>);
   s_complex.emplace(1, 3.14);
   s_complex.emplace(2, 2.71);
-  test_serialize_container(s_complex);
+  test_serialize_container<findus::serialize::Serializer>(s_complex);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(s_complex);
+#endif
 
   static_assert(
       not findus::serialize::is_serializable_v<std::set<NoSerialize>>);
@@ -118,7 +124,10 @@ TEST_CASE("Serialize.Multiset") {
   // Test with fundamental type
   std::multiset<int> ms_int{1, 2, 3, 4, 5, 3, 2};
   static_assert(findus::serialize::is_serializable_v<std::multiset<int>>);
-  test_serialize_container(ms_int);
+  test_serialize_container<findus::serialize::Serializer>(ms_int);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(ms_int);
+#endif
 
   // Test with as_bytes type
   std::multiset<MyBytesType> ms_my_bytes{
@@ -126,7 +135,10 @@ TEST_CASE("Serialize.Multiset") {
       MyBytesType{2, 2.2}};
   static_assert(
       findus::serialize::is_serializable_v<std::multiset<MyBytesType>>);
-  test_serialize_container(ms_my_bytes);
+  test_serialize_container<findus::serialize::Serializer>(ms_my_bytes);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(ms_my_bytes);
+#endif
 
   // Test with non-trivial type
   std::multiset<ComplexType> ms_complex;
@@ -135,7 +147,10 @@ TEST_CASE("Serialize.Multiset") {
   ms_complex.emplace(1, 3.14);
   ms_complex.emplace(2, 2.71);
   ms_complex.emplace(1, 3.14);
-  test_serialize_container(ms_complex);
+  test_serialize_container<findus::serialize::Serializer>(ms_complex);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(ms_complex);
+#endif
 
   static_assert(
       not findus::serialize::is_serializable_v<std::multiset<NoSerialize>>);
@@ -145,14 +160,20 @@ TEST_CASE("Serialize.UnorderedSet") {
   // Test with fundamental type
   std::unordered_set<int> s_int{1, 2, 3, 4, 5};
   static_assert(findus::serialize::is_serializable_v<std::unordered_set<int>>);
-  test_serialize_container(s_int);
+  test_serialize_container<findus::serialize::Serializer>(s_int);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(s_int);
+#endif
 
   // Test with as_bytes type
   std::unordered_set<MyBytesType> s_my_bytes_type{
       MyBytesType{1, 1.1}, MyBytesType{2, 2.2}, MyBytesType{3, 3.3}};
   static_assert(
       findus::serialize::is_serializable_v<std::unordered_set<MyBytesType>>);
-  test_serialize_container(s_my_bytes_type);
+  test_serialize_container<findus::serialize::Serializer>(s_my_bytes_type);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(s_my_bytes_type);
+#endif
 
   // Test with non-trivial type
   std::unordered_set<ComplexType> s_complex;
@@ -160,7 +181,10 @@ TEST_CASE("Serialize.UnorderedSet") {
       findus::serialize::is_serializable_v<std::unordered_set<ComplexType>>);
   s_complex.emplace(1, 3.14);
   s_complex.emplace(2, 2.71);
-  test_serialize_container(s_complex);
+  test_serialize_container<findus::serialize::Serializer>(s_complex);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(s_complex);
+#endif
 
   static_assert(not findus::serialize::is_serializable_v<
                 std::unordered_set<NoSerialize>>);
@@ -171,7 +195,10 @@ TEST_CASE("Serialize.UnorderedMultiset") {
   std::unordered_multiset<int> ms_int{1, 2, 3, 4, 5, 3, 2};
   static_assert(
       findus::serialize::is_serializable_v<std::unordered_multiset<int>>);
-  test_serialize_container(ms_int);
+  test_serialize_container<findus::serialize::Serializer>(ms_int);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(ms_int);
+#endif
 
   // Test with as_bytes type
   std::unordered_multiset<MyBytesType> ms_my_bytes{
@@ -179,7 +206,10 @@ TEST_CASE("Serialize.UnorderedMultiset") {
       MyBytesType{2, 2.2}};
   static_assert(findus::serialize::is_serializable_v<
                 std::unordered_multiset<MyBytesType>>);
-  test_serialize_container(ms_my_bytes);
+  test_serialize_container<findus::serialize::Serializer>(ms_my_bytes);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(ms_my_bytes);
+#endif
 
   // Test with non-trivial type
   std::unordered_multiset<ComplexType> ms_complex;
@@ -188,7 +218,10 @@ TEST_CASE("Serialize.UnorderedMultiset") {
   ms_complex.emplace(1, 3.14);
   ms_complex.emplace(2, 2.71);
   ms_complex.emplace(1, 3.14);
-  test_serialize_container(ms_complex);
+  test_serialize_container<findus::serialize::Serializer>(ms_complex);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(ms_complex);
+#endif
 
   static_assert(not findus::serialize::is_serializable_v<
                 std::unordered_multiset<NoSerialize>>);
@@ -202,7 +235,10 @@ TEST_CASE("Serialize.Map") {
       not findus::serialize::is_serializable_v<std::map<NoSerialize, double>>);
   static_assert(
       not findus::serialize::is_serializable_v<std::map<int, NoSerialize>>);
-  test_serialize_container(m_int);
+  test_serialize_container<findus::serialize::Serializer>(m_int);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(m_int);
+#endif
 
   // Test with as_bytes type
   std::map<int, MyBytesType> m_bytes{{1, MyBytesType{1, 1.1}},
@@ -212,7 +248,10 @@ TEST_CASE("Serialize.Map") {
       findus::serialize::is_serializable_v<std::map<int, MyBytesType>>);
   static_assert(not findus::serialize::is_serializable_v<
                 std::map<NoSerialize, MyBytesType>>);
-  test_serialize_container(m_bytes);
+  test_serialize_container<findus::serialize::Serializer>(m_bytes);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(m_bytes);
+#endif
 
   // Test with non-trivial type
   std::map<int, ComplexType> m_complex;
@@ -224,7 +263,10 @@ TEST_CASE("Serialize.Map") {
                     std::forward_as_tuple(1, 3.14));
   m_complex.emplace(std::piecewise_construct, std::forward_as_tuple(2),
                     std::forward_as_tuple(2, 2.71));
-  test_serialize_container(m_complex);
+  test_serialize_container<findus::serialize::Serializer>(m_complex);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(m_complex);
+#endif
 
   static_assert(not findus::serialize::is_serializable_v<
                 std::map<NoSerialize, NoSerialize>>);
@@ -239,7 +281,10 @@ TEST_CASE("Serialize.Multimap") {
                 std::multimap<NoSerialize, double>>);
   static_assert(not findus::serialize::is_serializable_v<
                 std::multimap<int, NoSerialize>>);
-  test_serialize_container(mm_int);
+  test_serialize_container<findus::serialize::Serializer>(mm_int);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(mm_int);
+#endif
 
   // Test with as_bytes type
   std::multimap<int, MyBytesType> mm_bytes{{1, MyBytesType{1, 1.1}},
@@ -250,7 +295,10 @@ TEST_CASE("Serialize.Multimap") {
       findus::serialize::is_serializable_v<std::multimap<int, MyBytesType>>);
   static_assert(not findus::serialize::is_serializable_v<
                 std::multimap<NoSerialize, MyBytesType>>);
-  test_serialize_container(mm_bytes);
+  test_serialize_container<findus::serialize::Serializer>(mm_bytes);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(mm_bytes);
+#endif
 
   // Test with non-trivial type
   std::multimap<int, ComplexType> mm_complex;
@@ -264,7 +312,10 @@ TEST_CASE("Serialize.Multimap") {
                      std::forward_as_tuple(2, 2.71));
   mm_complex.emplace(std::piecewise_construct, std::forward_as_tuple(1),
                      std::forward_as_tuple(3, 1.23));
-  test_serialize_container(mm_complex);
+  test_serialize_container<findus::serialize::Serializer>(mm_complex);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(mm_complex);
+#endif
 
   static_assert(not findus::serialize::is_serializable_v<
                 std::multimap<NoSerialize, NoSerialize>>);
@@ -279,7 +330,10 @@ TEST_CASE("Serialize.UnorderedMap") {
                 std::unordered_map<NoSerialize, double>>);
   static_assert(not findus::serialize::is_serializable_v<
                 std::unordered_map<int, NoSerialize>>);
-  test_serialize_container(m_int);
+  test_serialize_container<findus::serialize::Serializer>(m_int);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(m_int);
+#endif
 
   // as_bytes type
   std::unordered_map<int, MyBytesType> m_bytes{{1, MyBytesType{1, 1.1}},
@@ -289,7 +343,10 @@ TEST_CASE("Serialize.UnorderedMap") {
                 std::unordered_map<int, MyBytesType>>);
   static_assert(not findus::serialize::is_serializable_v<
                 std::unordered_map<NoSerialize, MyBytesType>>);
-  test_serialize_container(m_bytes);
+  test_serialize_container<findus::serialize::Serializer>(m_bytes);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(m_bytes);
+#endif
 
   // Non-trivial type
   std::unordered_map<int, ComplexType> m_complex;
@@ -301,7 +358,10 @@ TEST_CASE("Serialize.UnorderedMap") {
                     std::forward_as_tuple(1, 3.14));
   m_complex.emplace(std::piecewise_construct, std::forward_as_tuple(2),
                     std::forward_as_tuple(2, 2.71));
-  test_serialize_container(m_complex);
+  test_serialize_container<findus::serialize::Serializer>(m_complex);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(m_complex);
+#endif
 
   static_assert(not findus::serialize::is_serializable_v<
                 std::unordered_map<NoSerialize, NoSerialize>>);
@@ -317,7 +377,10 @@ TEST_CASE("Serialize.UnorderedMultimap") {
                 std::unordered_multimap<NoSerialize, double>>);
   static_assert(not findus::serialize::is_serializable_v<
                 std::unordered_multimap<int, NoSerialize>>);
-  test_serialize_container(mm_int);
+  test_serialize_container<findus::serialize::Serializer>(mm_int);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(mm_int);
+#endif
 
   // as_bytes type
   std::unordered_multimap<int, MyBytesType> mm_bytes{{1, MyBytesType{1, 1.1}},
@@ -328,7 +391,10 @@ TEST_CASE("Serialize.UnorderedMultimap") {
                 std::unordered_multimap<int, MyBytesType>>);
   static_assert(not findus::serialize::is_serializable_v<
                 std::unordered_multimap<NoSerialize, MyBytesType>>);
-  test_serialize_container(mm_bytes);
+  test_serialize_container<findus::serialize::Serializer>(mm_bytes);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(mm_bytes);
+#endif
 
   // Non-trivial type
   std::unordered_multimap<int, ComplexType> mm_complex;
@@ -342,7 +408,10 @@ TEST_CASE("Serialize.UnorderedMultimap") {
                      std::forward_as_tuple(2, 2.71));
   mm_complex.emplace(std::piecewise_construct, std::forward_as_tuple(1),
                      std::forward_as_tuple(3, 1.23));
-  test_serialize_container(mm_complex);
+  test_serialize_container<findus::serialize::Serializer>(mm_complex);
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test_serialize_container<PUP::er>(mm_complex);
+#endif
 
   static_assert(not findus::serialize::is_serializable_v<
                 std::unordered_multimap<NoSerialize, NoSerialize>>);

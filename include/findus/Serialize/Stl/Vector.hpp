@@ -81,3 +81,20 @@ Serializer& operator|(Serializer& serializer, std::vector<bool, A>& vector) {
 // [serializer_bool_definition]
 /// @}
 }  // namespace findus::serialize
+
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+namespace PUP {
+template <class T, class A>
+std::enable_if_t<findus::serialize::is_serializable_v<T>> operator|(
+    er& p, std::vector<T, A>& vector) {
+  findus::serialize::operator|(static_cast<findus::serialize::Serializer&>(p),
+                               vector);
+}
+
+template <class A>
+void operator|(er& p, std::vector<bool, A>& vector) {
+  findus::serialize::operator|(static_cast<findus::serialize::Serializer&>(p),
+                               vector);
+}
+}  // namespace PUP
+#endif

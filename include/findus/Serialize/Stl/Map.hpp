@@ -58,3 +58,23 @@ operator|(Serializer& serializer,
   return detail::associative_map_impl<false>(serializer, multimap);
 }
 }  // namespace findus::serialize
+
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+namespace PUP {
+template <class Key, class T, class Compare, class Allocator>
+std::enable_if_t<findus::serialize::is_serializable_v<Key> and
+                 findus::serialize::is_serializable_v<T>>
+operator|(PUP::er& p, std::map<Key, T, Compare, Allocator>& map) {
+  findus::serialize::operator|(static_cast<findus::serialize::Serializer&>(p),
+                               map);
+}
+
+template <class Key, class T, class Compare, class Allocator>
+std::enable_if_t<findus::serialize::is_serializable_v<Key> and
+                 findus::serialize::is_serializable_v<T>>
+operator|(PUP::er& p, std::multimap<Key, T, Compare, Allocator>& multimap) {
+  findus::serialize::operator|(static_cast<findus::serialize::Serializer&>(p),
+                               multimap);
+}
+}  // namespace PUP
+#endif

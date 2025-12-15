@@ -52,3 +52,14 @@ std::enable_if_t<is_serializable_v<T>, Serializer&> operator|(
   return serializer;
 }
 }  // namespace findus::serialize
+
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+namespace PUP {
+template <class T>
+std::enable_if_t<findus::serialize::is_serializable_v<T>> operator|(
+    er& p, std::complex<T>& complex) {
+  findus::serialize::operator|(static_cast<findus::serialize::Serializer&>(p),
+                               complex);
+}
+}  // namespace PUP
+#endif

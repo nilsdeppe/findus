@@ -19,27 +19,27 @@ static_assert(is_serializable_v<std::complex<int>>);
 static_assert(is_serializable_v<int>);
 static_assert(not is_serializable_v<NoSerialize>);
 static_assert(not is_serializable_v<std::complex<NoSerialize>>);
-}  // namespace
 
-TEST_CASE("Serialize.Complex") {
+template <class Cast>
+void test() {
   // std::complex<double>
   {
     std::complex<double> c{3.14, 2.71};
     static_assert(serialize_as_bytes_v<std::complex<double>>);
 
     Serializer sizer{Serializer::Sizing};
-    sizer | c;
+    static_cast<Cast&>(sizer) | c;
     CHECK(sizer.number_of_bytes() == sizeof(std::complex<double>));
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | c;
+    static_cast<Cast&>(packer) | c;
 
     std::complex<double> c_unpacked{};
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | c_unpacked;
+    static_cast<Cast&>(unpacker) | c_unpacked;
 
     CHECK(c == c_unpacked);
   }
@@ -50,18 +50,18 @@ TEST_CASE("Serialize.Complex") {
     static_assert(serialize_as_bytes_v<std::complex<float>>);
 
     Serializer sizer{Serializer::Sizing};
-    sizer | c;
+    static_cast<Cast&>(sizer) | c;
     CHECK(sizer.number_of_bytes() == sizeof(std::complex<float>));
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | c;
+    static_cast<Cast&>(packer) | c;
 
     std::complex<float> c_unpacked{};
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | c_unpacked;
+    static_cast<Cast&>(unpacker) | c_unpacked;
 
     CHECK(c == c_unpacked);
   }
@@ -81,18 +81,18 @@ TEST_CASE("Serialize.Complex") {
     std::complex<MyDouble> c{MyDouble{3.14}, MyDouble{2.71}};
 
     Serializer sizer{Serializer::Sizing};
-    sizer | c;
+    static_cast<Cast&>(sizer) | c;
     CHECK(sizer.number_of_bytes() > 0);
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | c;
+    static_cast<Cast&>(packer) | c;
 
     std::complex<MyDouble> c_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | c_unpacked;
+    static_cast<Cast&>(unpacker) | c_unpacked;
 
     CHECK(c.real().value == c_unpacked.real().value);
     CHECK(c.imag().value == c_unpacked.imag().value);
@@ -119,22 +119,30 @@ TEST_CASE("Serialize.Complex") {
     std::complex<MyDouble> c{MyDouble{1.11}, MyDouble{2.22}};
 
     Serializer sizer{Serializer::Sizing};
-    sizer | c;
+    static_cast<Cast&>(sizer) | c;
     CHECK(sizer.number_of_bytes() > 0);
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | c;
+    static_cast<Cast&>(packer) | c;
 
     std::complex<MyDouble> c_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | c_unpacked;
+    static_cast<Cast&>(unpacker) | c_unpacked;
 
     CHECK(c.real().value == c_unpacked.real().value);
     CHECK(c.imag().value == c_unpacked.imag().value);
   }
+}
+}  // namespace
+
+TEST_CASE("Serialize.Complex") {
+  test<Serializer>();
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test<PUP::er>();
+#endif
 }
 }  // namespace findus::serialize
 #endif

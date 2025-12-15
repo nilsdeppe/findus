@@ -33,27 +33,27 @@ static_assert(
 static_assert(not is_serializable_v<std::tuple<int, NoSerialize&>>);
 static_assert(not is_serializable_v<std::tuple<int&, NoSerialize>>);
 static_assert(not is_serializable_v<std::tuple<int&, NoSerialize&>>);
-}  // namespace
 
-TEST_CASE("Serialize.Tuple") {
+template <class Cast>
+void test() {
   // Fundamental types
   {
     std::tuple<int, double, char> t{42, 3.14, 'A'};
     static_assert(serialize_as_bytes_v<std::tuple<int, double, char>>);
 
     Serializer sizer{Serializer::Sizing};
-    sizer | t;
+    static_cast<Cast&>(sizer) | t;
     CHECK(sizer.number_of_bytes() == sizeof(std::tuple<int, double, char>));
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | t;
+    static_cast<Cast&>(packer) | t;
 
     std::tuple<int, double, char> t_unpacked{0, 0.0, '\0'};
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | t_unpacked;
+    static_cast<Cast&>(unpacker) | t_unpacked;
 
     CHECK(t == t_unpacked);
   }
@@ -77,19 +77,19 @@ TEST_CASE("Serialize.Tuple") {
         MyBytesType{3, 3.3, 'c'}};
 
     Serializer sizer{Serializer::Sizing};
-    sizer | t;
+    static_cast<Cast&>(sizer) | t;
     CHECK(sizer.number_of_bytes() == sizeof(MyBytesType) * 3);
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | t;
+    static_cast<Cast&>(packer) | t;
 
     std::tuple<MyBytesType, MyBytesType, MyBytesType> t_unpacked{
         MyBytesType{}, MyBytesType{}, MyBytesType{}};
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | t_unpacked;
+    static_cast<Cast&>(unpacker) | t_unpacked;
 
     CHECK(t == t_unpacked);
   }
@@ -111,18 +111,18 @@ TEST_CASE("Serialize.Tuple") {
         ComplexType{3, 1.23, 'z'}};
 
     Serializer sizer{Serializer::Sizing};
-    sizer | t;
+    static_cast<Cast&>(sizer) | t;
     CHECK(sizer.number_of_bytes() > 0);
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | t;
+    static_cast<Cast&>(packer) | t;
 
     std::tuple<ComplexType, ComplexType, ComplexType> t_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | t_unpacked;
+    static_cast<Cast&>(unpacker) | t_unpacked;
 
     CHECK(t == t_unpacked);
   }
@@ -136,20 +136,20 @@ TEST_CASE("Serialize.Tuple") {
         std::tuple{'c', 7, 8.9}};
 
     Serializer sizer{Serializer::Sizing};
-    sizer | t;
+    static_cast<Cast&>(sizer) | t;
     CHECK(sizer.number_of_bytes() == sizeof(T));
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | t;
+    static_cast<Cast&>(packer) | t;
 
     std::tuple<std::tuple<int, double, char>, std::tuple<double, int, char>,
                std::tuple<char, int, double>>
         t_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | t_unpacked;
+    static_cast<Cast&>(unpacker) | t_unpacked;
 
     CHECK(t == t_unpacked);
   }
@@ -160,18 +160,18 @@ TEST_CASE("Serialize.Tuple") {
         {1, 1.1, 'a'}, {2, 2.2, 'b'}, {3, 3.3, 'c'}};
 
     Serializer sizer{Serializer::Sizing};
-    sizer | vec;
+    static_cast<Cast&>(sizer) | vec;
     CHECK(sizer.number_of_bytes() > 0);
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | vec;
+    static_cast<Cast&>(packer) | vec;
 
     std::vector<std::tuple<int, double, char>> vec_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | vec_unpacked;
+    static_cast<Cast&>(unpacker) | vec_unpacked;
 
     CHECK(vec == vec_unpacked);
   }
@@ -187,22 +187,30 @@ TEST_CASE("Serialize.Tuple") {
         vec, a, b, c};
 
     Serializer sizer{Serializer::Sizing};
-    sizer | t;
+    static_cast<Cast&>(sizer) | t;
     CHECK(sizer.number_of_bytes() > 0);
 
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | t;
+    static_cast<Cast&>(packer) | t;
 
     std::tuple<std::vector<std::tuple<int, double, char>>, int, double, char>
         t_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | t_unpacked;
+    static_cast<Cast&>(unpacker) | t_unpacked;
 
     CHECK(t == t_unpacked);
   }
+}
+}  // namespace
+
+TEST_CASE("Serialize.Tuple") {
+  test<Serializer>();
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test<PUP::er>();
+#endif
 }
 }  // namespace findus::serialize
 #endif

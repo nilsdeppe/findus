@@ -54,3 +54,21 @@ std::enable_if_t<is_serializable_v<Key>, Serializer&> operator|(
   return detail::associative_set_impl<false>(serializer, multiset);
 }
 }  // namespace findus::serialize
+
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+namespace PUP {
+template <class Key, class Compare, class Allocator>
+std::enable_if_t<findus::serialize::is_serializable_v<Key>> operator|(
+    PUP::er& p, std::set<Key, Compare, Allocator>& set) {
+  findus::serialize::operator|(static_cast<findus::serialize::Serializer&>(p),
+                               set);
+}
+
+template <class Key, class Compare, class Allocator>
+std::enable_if_t<findus::serialize::is_serializable_v<Key>> operator|(
+    PUP::er& p, std::multiset<Key, Compare, Allocator>& multiset) {
+  findus::serialize::operator|(static_cast<findus::serialize::Serializer&>(p),
+                               multiset);
+}
+}  // namespace PUP
+#endif

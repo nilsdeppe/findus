@@ -39,3 +39,13 @@ Serializer& operator|(Serializer& serializer,
   return serializer(View{const_cast<CharT*>(string.data()), size});
 }
 }  // namespace findus::serialize
+
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+namespace PUP {
+template <class CharT, class Traits, class Allocator>
+void operator|(er& p, std::basic_string<CharT, Traits, Allocator>& string) {
+  findus::serialize::operator|(static_cast<findus::serialize::Serializer&>(p),
+                               string);
+}
+}  // namespace PUP
+#endif

@@ -16,16 +16,16 @@ static_assert(is_serializable_v<std::vector<int>>);
 static_assert(is_serializable_v<int>);
 static_assert(not is_serializable_v<NoSerialize>);
 static_assert(not is_serializable_v<std::vector<NoSerialize>>);
-}  // namespace
 
-TEST_CASE("Serialize.Vector") {
+template <class Cast>
+void test() {
   // Test with fundamental type
   {
     std::vector<int> vec{1, 2, 3, 4, 5};
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | vec;
+    static_cast<Cast&>(sizer) | vec;
     CHECK(sizer.number_of_bytes() ==
           sizeof(size_t) * 2 + sizeof(int) * vec.size());
 
@@ -33,13 +33,13 @@ TEST_CASE("Serialize.Vector") {
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | vec;
+    static_cast<Cast&>(packer) | vec;
 
     // Unpacking
     std::vector<int> vec_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | vec_unpacked;
+    static_cast<Cast&>(unpacker) | vec_unpacked;
 
     CHECK(vec == vec_unpacked);
   }
@@ -52,7 +52,7 @@ TEST_CASE("Serialize.Vector") {
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | vec;
+    static_cast<Cast&>(sizer) | vec;
     CHECK(sizer.number_of_bytes() ==
           sizeof(size_t) * 2 + sizeof(int) * vec.size());
 
@@ -60,13 +60,13 @@ TEST_CASE("Serialize.Vector") {
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | vec;
+    static_cast<Cast&>(packer) | vec;
 
     // Unpacking
     std::vector<int> vec_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | vec_unpacked;
+    static_cast<Cast&>(unpacker) | vec_unpacked;
 
     CHECK(vec_unpacked.capacity() == 20);
     CHECK(vec == vec_unpacked);
@@ -92,7 +92,7 @@ TEST_CASE("Serialize.Vector") {
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | vec;
+    static_cast<Cast&>(sizer) | vec;
     CHECK(sizer.number_of_bytes() ==
           sizeof(size_t) * 2 + sizeof(MyBytesType) * vec.size());
 
@@ -100,13 +100,13 @@ TEST_CASE("Serialize.Vector") {
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | vec;
+    static_cast<Cast&>(packer) | vec;
 
     // Unpacking
     std::vector<MyBytesType> vec_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | vec_unpacked;
+    static_cast<Cast&>(unpacker) | vec_unpacked;
 
     CHECK(vec == vec_unpacked);
   }
@@ -143,7 +143,7 @@ TEST_CASE("Serialize.Vector") {
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | vec;
+    static_cast<Cast&>(sizer) | vec;
     // The exact number_of_bytes is complex to compute, but it should be > 0
     CHECK(sizer.number_of_bytes() ==
           (2 * 8 + (4 + 2 * 8 + 3 * 4 + 8) + (4 + 2 * 8 + 2 * 4 + 8)));
@@ -152,13 +152,13 @@ TEST_CASE("Serialize.Vector") {
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | vec;
+    static_cast<Cast&>(packer) | vec;
 
     // Unpacking
     std::vector<ComplexType> vec_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | vec_unpacked;
+    static_cast<Cast&>(unpacker) | vec_unpacked;
 
     CHECK(vec == vec_unpacked);
   }
@@ -169,7 +169,7 @@ TEST_CASE("Serialize.Vector") {
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | vec;
+    static_cast<Cast&>(sizer) | vec;
     // Each bool is serialized individually, plus capacity and size
     CHECK(sizer.number_of_bytes() ==
           sizeof(size_t) * 2 + sizeof(bool) * vec.size());
@@ -178,17 +178,25 @@ TEST_CASE("Serialize.Vector") {
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | vec;
+    static_cast<Cast&>(packer) | vec;
 
     // Unpacking
     std::vector<bool> vec_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | vec_unpacked;
+    static_cast<Cast&>(unpacker) | vec_unpacked;
 
     CHECK(vec_unpacked.capacity() == vec.capacity());
     CHECK(vec == vec_unpacked);
   }
+}
+}  // namespace
+
+TEST_CASE("Serialize.Vector") {
+  test<Serializer>();
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test<PUP::er>();
+#endif
 }
 }  // namespace findus::serialize
 #endif

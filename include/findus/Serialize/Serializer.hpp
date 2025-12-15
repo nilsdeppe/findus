@@ -710,10 +710,27 @@ operator|(Serializer& serializer, T& t) {
 }  // namespace findus
 
 #ifdef FINDUS_MIMIC_CHARM_PUPER
+/*!
+ * \brief Namespace for interoperability with Charm++'s Pack and UnPack (PUP)
+ * serialization framework.
+ */
 namespace PUP {
+/*!
+ * \brief Overload for enum and fundamental types.
+ */
 template <class T>
-void operator|(er& p, T& t) {
+std::enable_if_t<std::is_fundamental_v<T> or std::is_enum_v<T>> operator|(
+    er& p, T& t) {
   static_cast<findus::serialize::Serializer&>(p) | t;
+}
+
+/*!
+ * \brief Operator for classes that have `T.pup(PUP::er)` call.
+ */
+template <class T>
+std::enable_if_t<findus::serialize::has_pup_member_v<T>> operator|(er& p,
+                                                                   T& t) {
+  t.pup(p);
 }
 }  // namespace PUP
 #endif

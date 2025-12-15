@@ -84,26 +84,27 @@ class Derived
   int data = -1;
 };
 
+template <class Cast>
 void test_abstract() {
   std::shared_ptr<BaseLeft> my_derived_left{new Derived(17)};
   std::shared_ptr<BaseRight> my_derived_right{new Derived(13)};
   Serializer sizer{Serializer::Sizing};
-  sizer | my_derived_left;
-  sizer | my_derived_right;
+  static_cast<Cast&>(sizer) | my_derived_left;
+  static_cast<Cast&>(sizer) | my_derived_right;
   CHECK(sizer.number_of_bytes() >= 12);
 
   std::shared_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
   Serializer packer{Serializer::Packing, buffer.get(), sizer.number_of_bytes()};
-  packer | my_derived_left;
-  packer | my_derived_right;
+  static_cast<Cast&>(packer) | my_derived_left;
+  static_cast<Cast&>(packer) | my_derived_right;
 
   // Unpacking
   Serializer unpacker{Serializer::Unpacking, buffer.get(),
                       sizer.number_of_bytes()};
   std::shared_ptr<BaseLeft> my_derived_left_unpacked{};
   std::shared_ptr<BaseRight> my_derived_right_unpacked{};
-  unpacker | my_derived_left_unpacked;
-  unpacker | my_derived_right_unpacked;
+  static_cast<Cast&>(unpacker) | my_derived_left_unpacked;
+  static_cast<Cast&>(unpacker) | my_derived_right_unpacked;
 
   Derived* my_derived_left_unpacked_ptr =
       dynamic_cast<Derived*>(my_derived_left_unpacked.get());
@@ -119,36 +120,45 @@ void test_abstract() {
   CHECK(my_derived_right_unpacked->right_data == 3 * 13);
 }
 
+template <class Cast>
 void test_concrete() {
   std::shared_ptr<std::vector<double>> shared_vec{
       new std::vector<double>{1.1, 2.3, 3.2, 4.5, 7.6}};
   std::shared_ptr<double> shared_null = nullptr;
   Serializer sizer{Serializer::Sizing};
-  sizer | shared_vec;
-  sizer | shared_null;
+  static_cast<Cast&>(sizer) | shared_vec;
+  static_cast<Cast&>(sizer) | shared_null;
   CHECK(sizer.number_of_bytes() >= 5 * sizeof(double) + 2 * sizeof(size_t));
 
   std::shared_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
   Serializer packer{Serializer::Packing, buffer.get(), sizer.number_of_bytes()};
-  packer | shared_vec;
-  packer | shared_null;
+  static_cast<Cast&>(packer) | shared_vec;
+  static_cast<Cast&>(packer) | shared_null;
 
   Serializer unpacker{Serializer::Unpacking, buffer.get(),
                       sizer.number_of_bytes()};
   std::shared_ptr<std::vector<double>> shared_vec_unpacked{};
   std::shared_ptr<double> shared_null_unpacked{new double(3.5)};
   CHECK(*shared_null_unpacked == 3.5);
-  unpacker | shared_vec_unpacked;
-  unpacker | shared_null_unpacked;
+  static_cast<Cast&>(unpacker) | shared_vec_unpacked;
+  static_cast<Cast&>(unpacker) | shared_null_unpacked;
   REQUIRE(shared_vec_unpacked != nullptr);
   CHECK(*shared_vec_unpacked == *shared_vec);
   CHECK(shared_null_unpacked == nullptr);
 }
+
+template <class Cast>
+void test() {
+  test_abstract<Cast>();
+  test_concrete<Cast>();
+}
 }  // namespace
 
 TEST_CASE("Serialize.SharedPtr") {
-  test_abstract();
-  test_concrete();
+  test<Serializer>();
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test<PUP::er>();
+#endif
 }
 }  // namespace findus::serialize
 #endif

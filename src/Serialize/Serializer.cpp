@@ -303,7 +303,7 @@ struct PuperType {
   int value = 0;
   void pup(PUP::er& s) { s | value; }
   // [serializer_puper_example]
-  bool operator==(const PupType& other) const { return value == other.value; }
+  bool operator==(const PuperType& other) const { return value == other.value; }
 };
 #endif
 
@@ -479,7 +479,7 @@ void test_operator_pipe() {
 #ifdef FINDUS_MIMIC_CHARM_PUPER
   // Type with pup member
   {
-    PupType obj;
+    PuperType obj;
     obj.value = 123;
 
     // Sizing
@@ -487,20 +487,36 @@ void test_operator_pipe() {
     sizer | obj;
     CHECK(sizer.number_of_bytes() == sizeof(int));
 
+    Serializer sizer2{Serializer::Sizing};
+    static_cast<PUP::er&>(sizer2) | obj;
+    CHECK(sizer.number_of_bytes() == sizer2.number_of_bytes());
+
     // Packing
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
     packer | obj;
 
+    std::unique_ptr<std::byte[]> buffer2{
+        new std::byte[sizer2.number_of_bytes()]};
+    Serializer packer2{Serializer::Packing, buffer2.get(),
+                       sizer2.number_of_bytes()};
+    static_cast<PUP::er&>(packer2) | obj;
+
     // Unpacking
-    PupType obj_unpacked;
+    PuperType obj_unpacked;
     obj_unpacked.value = 0;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
     unpacker | obj_unpacked;
-
     CHECK(obj == obj_unpacked);
+
+    PuperType obj_unpacked2;
+    obj_unpacked2.value = 0;
+    Serializer unpacker2{Serializer::Unpacking, buffer2.get(),
+                         sizer2.number_of_bytes()};
+    static_cast<PUP::er&>(unpacker2) | obj_unpacked2;
+    CHECK(obj == obj_unpacked2);
   }
 #endif
 }

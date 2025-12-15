@@ -60,3 +60,23 @@ operator|(Serializer& serializer, std::pair<const T, U>& pair) {
 }
 /// @}
 }  // namespace findus::serialize
+
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+namespace PUP {
+template <class T, class U>
+std::enable_if_t<findus::serialize::is_serializable_v<T> and
+                 findus::serialize::is_serializable_v<U>>
+operator|(PUP::er& p, std::pair<T, U>& pair) {
+  findus::serialize::operator|(static_cast<findus::serialize::Serializer&>(p),
+                               pair);
+}
+
+template <class T, class U>
+std::enable_if_t<findus::serialize::is_serializable_v<T> and
+                 findus::serialize::is_serializable_v<U>>
+operator|(PUP::er& p, std::pair<const T, U>& pair) {
+  findus::serialize::operator|(static_cast<findus::serialize::Serializer&>(p),
+                               pair);
+}
+}  // namespace PUP
+#endif

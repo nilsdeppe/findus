@@ -23,29 +23,29 @@ static_assert(is_serializable_v<std::forward_list<int>>);
 static_assert(is_serializable_v<int>);
 static_assert(not is_serializable_v<NoSerialize>);
 static_assert(not is_serializable_v<std::forward_list<NoSerialize>>);
-}  // namespace
 
-TEST_CASE("Serialize.ForwardList") {
+template <class Cast>
+void test() {
   // Test with fundamental type
   {
     std::forward_list<int> dq{1, 2, 3, 4, 5};
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | dq;
+    static_cast<Cast&>(sizer) | dq;
     CHECK(sizer.number_of_bytes() == 28);
 
     // Packing
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | dq;
+    static_cast<Cast&>(packer) | dq;
 
     // Unpacking
     std::forward_list<int> dq_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | dq_unpacked;
+    static_cast<Cast&>(unpacker) | dq_unpacked;
 
     CHECK(dq == dq_unpacked);
   }
@@ -66,20 +66,20 @@ TEST_CASE("Serialize.ForwardList") {
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | dq;
+    static_cast<Cast&>(sizer) | dq;
     CHECK(sizer.number_of_bytes() == 56);
 
     // Packing
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | dq;
+    static_cast<Cast&>(packer) | dq;
 
     // Unpacking
     std::forward_list<MyBytesType> dq_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | dq_unpacked;
+    static_cast<Cast&>(unpacker) | dq_unpacked;
 
     CHECK(dq == dq_unpacked);
   }
@@ -102,109 +102,119 @@ TEST_CASE("Serialize.ForwardList") {
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | dq;
+    static_cast<Cast&>(sizer) | dq;
     CHECK(sizer.number_of_bytes() > 0);
 
     // Packing
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | dq;
+    static_cast<Cast&>(packer) | dq;
 
     // Unpacking
     std::forward_list<ComplexType> dq_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | dq_unpacked;
+    static_cast<Cast&>(unpacker) | dq_unpacked;
 
     CHECK(dq == dq_unpacked);
   }
 
-  // // Test with
-  // std::forward_list<std::vector<std::forward_list<SimpleStruct>>>
-  // {
-  //   struct SimpleStruct {
-  //     int value = 0;
-  //     void pup(Serializer& s) { s | value; }
-  //     bool operator==(const SimpleStruct& other) const {
-  //       return value == other.value;
-  //     }
-  //   };
+  // Test w/ std::forward_list<std::vector<std::forward_list<SimpleStruct>>>
+  {
+    struct SimpleStruct {
+      int value = 0;
+      void pup(Serializer& s) { s | value; }
+      bool operator==(const SimpleStruct& other) const {
+        return value == other.value;
+      }
+    };
 
-  //   std::forward_list<std::vector<std::forward_list<SimpleStruct>>> dq(3);
-  //   for (size_t i = 0; i < dq.size(); ++i) {
-  //     dq[i].resize(2);
-  //     for (size_t j = 0; j < dq[i].size(); ++j) {
-  //       dq[i][j].resize(3);
-  //       for (size_t k = 0; k < dq[i][j].size(); ++k) {
-  //         dq[i][j][k].value = static_cast<int>(i * 100 + j * 10 + k);
-  //       }
-  //     }
-  //   }
+    std::forward_list<std::vector<std::forward_list<SimpleStruct>>> dq(3);
+    size_t i = 0;
+    for (auto it = dq.begin(); it != dq.end(); ++it) {
+      it->resize(2);
+      for (size_t j = 0; j < it->size(); ++j) {
+        (*it)[j].resize(3);
+        size_t k = 0;
+        for (auto nested_it = (*it)[j].begin(); nested_it != (*it)[j].end();
+             ++nested_it) {
+          nested_it->value = static_cast<int>(i * 100 + j * 10 + k);
+        }
+      }
+      ++i;
+    }
 
-  //   // Sizing
-  //   Serializer sizer{Serializer::Sizing};
-  //   sizer | dq;
-  //   CHECK(sizer.number_of_bytes() > 0);
+    // Sizing
+    Serializer sizer{Serializer::Sizing};
+    static_cast<Cast&>(sizer) | dq;
+    CHECK(sizer.number_of_bytes() > 0);
 
-  //   // Packing
-  //   std::unique_ptr<std::byte[]> buffer{new
-  //   std::byte[sizer.number_of_bytes()]}; Serializer
-  //   packer{Serializer::Packing, buffer.get(),
-  //                     sizer.number_of_bytes()};
-  //   packer | dq;
+    // Packing
+    std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
+    Serializer packer{Serializer::Packing, buffer.get(),
+                      sizer.number_of_bytes()};
+    static_cast<Cast&>(packer) | dq;
 
-  //   // Unpacking
-  //   std::forward_list<std::vector<std::forward_list<SimpleStruct>>>
-  //   dq_unpacked; Serializer unpacker{Serializer::Unpacking, buffer.get(),
-  //                       sizer.number_of_bytes()};
-  //   unpacker | dq_unpacked;
+    // Unpacking
+    std::forward_list<std::vector<std::forward_list<SimpleStruct>>> dq_unpacked;
+    Serializer unpacker{Serializer::Unpacking, buffer.get(),
+                        sizer.number_of_bytes()};
+    static_cast<Cast&>(unpacker) | dq_unpacked;
 
-  //   CHECK(dq == dq_unpacked);
-  // }
+    CHECK(dq == dq_unpacked);
+  }
 
-  // // Test with std::forward_list<std::array<std::forward_list<SimpleStruct>,
-  // 3>>
-  // {
-  //   struct SimpleStruct {
-  //     int value = 0;
-  //     void pup(Serializer& s) { s | value; }
-  //     bool operator==(const SimpleStruct& other) const {
-  //       return value == other.value;
-  //     }
-  //   };
+  // Test w/ std::forward_list<std::array<std::forward_list<SimpleStruct>,3>>
+  {
+    struct SimpleStruct {
+      int value = 0;
+      void pup(Serializer& s) { s | value; }
+      bool operator==(const SimpleStruct& other) const {
+        return value == other.value;
+      }
+    };
 
-  //   std::forward_list<std::array<std::forward_list<SimpleStruct>, 3>> dq(2);
-  //   for (size_t i = 0; i < dq.size(); ++i) {
-  //     for (size_t j = 0; j < dq[i].size(); ++j) {
-  //       dq[i][j].resize(2 + i + j);
-  //       for (size_t k = 0; k < dq[i][j].size(); ++k) {
-  //         dq[i][j][k].value = static_cast<int>(i * 100 + j * 10 + k);
-  //       }
-  //     }
-  //   }
+    std::forward_list<std::array<std::forward_list<SimpleStruct>, 3>> dq(2);
+    size_t i = 0;
+    for (auto it = dq.begin(); it != dq.end(); ++it) {
+      for (size_t j = 0; j < it->size(); ++j) {
+        size_t k = 0;
+        for (auto nested_it = (*it)[j].begin(); nested_it != (*it)[j].end();
+             ++nested_it) {
+          nested_it->value = static_cast<int>(i * 100 + j * 10 + k);
+        }
+      }
+    }
 
-  //   // Sizing
-  //   Serializer sizer{Serializer::Sizing};
-  //   sizer | dq;
-  //   CHECK(sizer.number_of_bytes() > 0);
+    // Sizing
+    Serializer sizer{Serializer::Sizing};
+    static_cast<Cast&>(sizer) | dq;
+    CHECK(sizer.number_of_bytes() > 0);
 
-  //   // Packing
-  //   std::unique_ptr<std::byte[]> buffer{new
-  //   std::byte[sizer.number_of_bytes()]}; Serializer
-  //   packer{Serializer::Packing, buffer.get(),
-  //                     sizer.number_of_bytes()};
-  //   packer | dq;
+    // Packing
+    std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
+    Serializer packer{Serializer::Packing, buffer.get(),
+                      sizer.number_of_bytes()};
+    static_cast<Cast&>(packer) | dq;
 
-  //   // Unpacking
-  //   std::forward_list<std::array<std::forward_list<SimpleStruct>, 3>>
-  //       dq_unpacked;
-  //   Serializer unpacker{Serializer::Unpacking, buffer.get(),
-  //                       sizer.number_of_bytes()};
-  //   unpacker | dq_unpacked;
+    // Unpacking
+    std::forward_list<std::array<std::forward_list<SimpleStruct>, 3>>
+        dq_unpacked;
+    Serializer unpacker{Serializer::Unpacking, buffer.get(),
+                        sizer.number_of_bytes()};
+    static_cast<Cast&>(unpacker) | dq_unpacked;
 
-  //   CHECK(dq == dq_unpacked);
-  // }
+    CHECK(dq == dq_unpacked);
+  }
+}
+}  // namespace
+
+TEST_CASE("Serialize.ForwardList") {
+  test<Serializer>();
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test<PUP::er>();
+#endif
 }
 }  // namespace findus::serialize
 #endif

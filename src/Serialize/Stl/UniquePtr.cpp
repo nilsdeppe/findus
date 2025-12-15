@@ -84,26 +84,27 @@ class Derived
   int data = -1;
 };
 
+template <class Cast>
 void test_abstract() {
   std::unique_ptr<BaseLeft> my_derived_left{new Derived(17)};
   std::unique_ptr<BaseRight> my_derived_right{new Derived(13)};
   Serializer sizer{Serializer::Sizing};
-  sizer | my_derived_left;
-  sizer | my_derived_right;
+  static_cast<Cast&>(sizer) | my_derived_left;
+  static_cast<Cast&>(sizer) | my_derived_right;
   CHECK(sizer.number_of_bytes() >= 12);
 
   std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
   Serializer packer{Serializer::Packing, buffer.get(), sizer.number_of_bytes()};
-  packer | my_derived_left;
-  packer | my_derived_right;
+  static_cast<Cast&>(packer) | my_derived_left;
+  static_cast<Cast&>(packer) | my_derived_right;
 
   // Unpacking
   Serializer unpacker{Serializer::Unpacking, buffer.get(),
                       sizer.number_of_bytes()};
   std::unique_ptr<BaseLeft> my_derived_left_unpacked{};
   std::unique_ptr<BaseRight> my_derived_right_unpacked{};
-  unpacker | my_derived_left_unpacked;
-  unpacker | my_derived_right_unpacked;
+  static_cast<Cast&>(unpacker) | my_derived_left_unpacked;
+  static_cast<Cast&>(unpacker) | my_derived_right_unpacked;
 
   Derived* my_derived_left_unpacked_ptr =
       dynamic_cast<Derived*>(my_derived_left_unpacked.get());
@@ -119,36 +120,45 @@ void test_abstract() {
   CHECK(my_derived_right_unpacked->right_data == 3 * 13);
 }
 
+template <class Cast>
 void test_concrete() {
   std::unique_ptr<std::vector<double>> unique_vec{
       new std::vector<double>{1.1, 2.3, 3.2, 4.5, 7.6}};
   std::unique_ptr<double> unique_null = nullptr;
   Serializer sizer{Serializer::Sizing};
-  sizer | unique_vec;
-  sizer | unique_null;
+  static_cast<Cast&>(sizer) | unique_vec;
+  static_cast<Cast&>(sizer) | unique_null;
   CHECK(sizer.number_of_bytes() >= 5 * sizeof(double) + 2 * sizeof(size_t));
 
   std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
   Serializer packer{Serializer::Packing, buffer.get(), sizer.number_of_bytes()};
-  packer | unique_vec;
-  packer | unique_null;
+  static_cast<Cast&>(packer) | unique_vec;
+  static_cast<Cast&>(packer) | unique_null;
 
   Serializer unpacker{Serializer::Unpacking, buffer.get(),
                       sizer.number_of_bytes()};
   std::unique_ptr<std::vector<double>> unique_vec_unpacked{};
   std::unique_ptr<double> unique_null_unpacked{new double(3.5)};
   CHECK(*unique_null_unpacked == 3.5);
-  unpacker | unique_vec_unpacked;
-  unpacker | unique_null_unpacked;
+  static_cast<Cast&>(unpacker) | unique_vec_unpacked;
+  static_cast<Cast&>(unpacker) | unique_null_unpacked;
   REQUIRE(unique_vec_unpacked != nullptr);
   CHECK(*unique_vec_unpacked == *unique_vec);
   CHECK(unique_null_unpacked == nullptr);
 }
+
+template <class Cast>
+void test() {
+  test_abstract<Cast>();
+  test_concrete<Cast>();
+}
 }  // namespace
 
 TEST_CASE("Serialize.UniquePtr") {
-  test_abstract();
-  test_concrete();
+  test<Serializer>();
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test<PUP::er>();
+#endif
 }
 }  // namespace findus::serialize
 #endif

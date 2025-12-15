@@ -22,6 +22,7 @@ static_assert(is_serializable_v<int>);
 static_assert(not is_serializable_v<NoSerialize>);
 static_assert(not is_serializable_v<std::array<NoSerialize, 3>>);
 
+template <class Cast>
 void test_array_of_vector_of_array() {
   struct SimpleStruct {
     int value = 0;
@@ -48,19 +49,19 @@ void test_array_of_vector_of_array() {
 
   // Sizing
   Serializer sizer{Serializer::Sizing};
-  sizer | arr;
+  static_cast<Cast&>(sizer) | arr;
   CHECK(sizer.number_of_bytes() > 0);
 
   // Packing
   std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
   Serializer packer{Serializer::Packing, buffer.get(), sizer.number_of_bytes()};
-  packer | arr;
+  static_cast<Cast&>(packer) | arr;
 
   // Unpacking
   std::array<std::vector<std::array<SimpleStruct, 3>>, 5> arr_unpacked;
   Serializer unpacker{Serializer::Unpacking, buffer.get(),
                       sizer.number_of_bytes()};
-  unpacker | arr_unpacked;
+  static_cast<Cast&>(unpacker) | arr_unpacked;
 
   // Check equality of contents and vector capacities
   for (size_t i = 0; i < arr.size(); ++i) {
@@ -68,29 +69,29 @@ void test_array_of_vector_of_array() {
     CHECK(arr_unpacked[i].capacity() == 10 + i);
   }
 }
-}  // namespace
 
-TEST_CASE("Serialize.Array") {
+template <class Cast>
+void test() {
   // Test with fundamental type
   {
     std::array<int, 5> arr{1, 2, 3, 4, 5};
     static_assert(serialize_as_bytes_v<std::array<int, 5>>);
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | arr;
+    static_cast<Cast&>(sizer) | arr;
     CHECK(sizer.number_of_bytes() == sizeof(int) * arr.size());
 
     // Packing
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | arr;
+    static_cast<Cast&>(packer) | arr;
 
     // Unpacking
     std::array<int, 5> arr_unpacked{};
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | arr_unpacked;
+    static_cast<Cast&>(unpacker) | arr_unpacked;
 
     CHECK(arr == arr_unpacked);
   }
@@ -114,20 +115,20 @@ TEST_CASE("Serialize.Array") {
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | arr;
+    static_cast<Cast&>(sizer) | arr;
     CHECK(sizer.number_of_bytes() == sizeof(MyBytesType) * arr.size());
 
     // Packing
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | arr;
+    static_cast<Cast&>(packer) | arr;
 
     // Unpacking
     std::array<MyBytesType, 3> arr_unpacked{};
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | arr_unpacked;
+    static_cast<Cast&>(unpacker) | arr_unpacked;
 
     CHECK(arr == arr_unpacked);
   }
@@ -151,25 +152,33 @@ TEST_CASE("Serialize.Array") {
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | arr;
+    static_cast<Cast&>(sizer) | arr;
     CHECK(sizer.number_of_bytes() > 0);
 
     // Packing
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | arr;
+    static_cast<Cast&>(packer) | arr;
 
     // Unpacking
     std::array<ComplexType, 2> arr_unpacked{};
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | arr_unpacked;
+    static_cast<Cast&>(unpacker) | arr_unpacked;
 
     CHECK(arr == arr_unpacked);
   }
 
-  test_array_of_vector_of_array();
+  test_array_of_vector_of_array<Cast>();
+}
+}  // namespace
+
+TEST_CASE("Serialize.Array") {
+  test<Serializer>();
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test<PUP::er>();
+#endif
 }
 }  // namespace findus::serialize
 #endif

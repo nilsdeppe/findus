@@ -23,29 +23,29 @@ static_assert(is_serializable_v<std::deque<int>>);
 static_assert(is_serializable_v<int>);
 static_assert(not is_serializable_v<NoSerialize>);
 static_assert(not is_serializable_v<std::deque<NoSerialize>>);
-}  // namespace
 
-TEST_CASE("Serialize.Deque") {
+template <class Cast>
+void test() {
   // Test with fundamental type
   {
     std::deque<int> dq{1, 2, 3, 4, 5};
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | dq;
+    static_cast<Cast&>(sizer) | dq;
     CHECK(sizer.number_of_bytes() > 0);
 
     // Packing
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | dq;
+    static_cast<Cast&>(packer) | dq;
 
     // Unpacking
     std::deque<int> dq_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | dq_unpacked;
+    static_cast<Cast&>(unpacker) | dq_unpacked;
 
     CHECK(dq == dq_unpacked);
   }
@@ -70,20 +70,20 @@ TEST_CASE("Serialize.Deque") {
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | dq;
+    static_cast<Cast&>(sizer) | dq;
     CHECK(sizer.number_of_bytes() > 0);
 
     // Packing
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | dq;
+    static_cast<Cast&>(packer) | dq;
 
     // Unpacking
     std::deque<MyBytesType> dq_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | dq_unpacked;
+    static_cast<Cast&>(unpacker) | dq_unpacked;
 
     CHECK(dq == dq_unpacked);
   }
@@ -110,20 +110,20 @@ TEST_CASE("Serialize.Deque") {
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | dq;
+    static_cast<Cast&>(sizer) | dq;
     CHECK(sizer.number_of_bytes() > 0);
 
     // Packing
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | dq;
+    static_cast<Cast&>(packer) | dq;
 
     // Unpacking
     std::deque<ComplexType> dq_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | dq_unpacked;
+    static_cast<Cast&>(unpacker) | dq_unpacked;
 
     CHECK(dq == dq_unpacked);
   }
@@ -151,20 +151,20 @@ TEST_CASE("Serialize.Deque") {
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | dq;
+    static_cast<Cast&>(sizer) | dq;
     CHECK(sizer.number_of_bytes() > 0);
 
     // Packing
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | dq;
+    static_cast<Cast&>(packer) | dq;
 
     // Unpacking
     std::deque<std::vector<std::deque<SimpleStruct>>> dq_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | dq_unpacked;
+    static_cast<Cast&>(unpacker) | dq_unpacked;
 
     CHECK(dq == dq_unpacked);
   }
@@ -191,23 +191,31 @@ TEST_CASE("Serialize.Deque") {
 
     // Sizing
     Serializer sizer{Serializer::Sizing};
-    sizer | dq;
+    static_cast<Cast&>(sizer) | dq;
     CHECK(sizer.number_of_bytes() > 0);
 
     // Packing
     std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
     Serializer packer{Serializer::Packing, buffer.get(),
                       sizer.number_of_bytes()};
-    packer | dq;
+    static_cast<Cast&>(packer) | dq;
 
     // Unpacking
     std::deque<std::array<std::deque<SimpleStruct>, 3>> dq_unpacked;
     Serializer unpacker{Serializer::Unpacking, buffer.get(),
                         sizer.number_of_bytes()};
-    unpacker | dq_unpacked;
+    static_cast<Cast&>(unpacker) | dq_unpacked;
 
     CHECK(dq == dq_unpacked);
   }
+}
+}  // namespace
+
+TEST_CASE("Serialize.Deque") {
+  test<Serializer>();
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+  test<PUP::er>();
+#endif
 }
 }  // namespace findus::serialize
 #endif
