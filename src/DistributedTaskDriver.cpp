@@ -48,8 +48,8 @@
 #include "findus/Reduction.hpp"
 
 namespace findus {
-DistributedTaskDriver::DistributedTaskDriver(bool finalize_mpi,
-                                             bool mpi_supports_multithreading)
+DistributedTaskDriver::DistributedTaskDriver(
+    const bool finalize_mpi, const bool mpi_supports_multithreading)
     : finalize_mpi_(finalize_mpi),
       mpi_supports_multithreading_(mpi_supports_multithreading) {
   int mpi_is_initialized = false;
@@ -72,16 +72,16 @@ DistributedTaskDriver::DistributedTaskDriver(bool finalize_mpi,
   if (MPI_Get_version(&mpi_version_, &mpi_subversion_) != MPI_SUCCESS) {
     throw MpiException("Failed to get the MPI version and subversion.");
   } else if (my_node_id_ == 0) {
-    std::cout << "rts: Using MPI version " << mpi_version_ << '.'
+    std::cout << "findus: Using MPI version " << mpi_version_ << '.'
               << mpi_subversion_ << ".\n";
   }
 
   if (my_node_id_ == 0) {
     if (mpi_supports_multithreading_) {
-      std::cout << "rts: No communication thread required. All threads can "
+      std::cout << "findus: No communication thread required. All threads can "
                    "manage MPI.\n";
     } else {
-      std::cout << "rts: Communication thread required. Main thread will "
+      std::cout << "findus: Communication thread required. Main thread will "
                    "manage MPI.\n";
     }
   }
