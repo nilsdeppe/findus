@@ -163,7 +163,7 @@ inline ThreadPool<MessageType, ProcessLocalDataType>::ThreadPool(
                     std::to_string(cpu_info.number_of_cores) +
                     ") than the offset (" + std::to_string(thread_pin_offset_) +
                     ") and number of threads (" +
-                    std::to_string(number_of_threads) + " can accommodate."};
+                    std::to_string(number_of_threads) + ") can accommodate."};
   }
   producer_tokens_.reserve(number_of_threads + 1);
   consumer_tokens_.reserve(number_of_threads + 1);
