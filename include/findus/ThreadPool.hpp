@@ -36,7 +36,8 @@ template <class MessageType, class ProcessLocalDataType>
 class ThreadPool {
  public:
   ThreadPool() = default;
-  ThreadPool(uint32_t number_of_threads, uint32_t thread_pin_offset,
+  ThreadPool(uint32_t number_of_threads,
+             std::optional<uint32_t> thread_pin_offset,
              ProcessLocalDataType process_local_data_for_execution);
 
   /// \brief Pin the thread with ID `thread_id` to a core, then call
@@ -128,7 +129,7 @@ class ThreadPool {
   // - The big question is what should the queue of tasks hold? std::function
   //   is one (expensive) option.
   ProcessLocalDataType process_local_data_for_execution_;
-  uint32_t thread_pin_offset_ = 0;
+  std::optional<uint32_t> thread_pin_offset_ = 0;
   bool threads_are_active_{false};
   std::vector<std::thread> threads_{};
   alignas(hardware_destructive_interference_size)
@@ -145,7 +146,8 @@ class ThreadPool {
 
 template <class MessageType, class ProcessLocalDataType>
 inline ThreadPool<MessageType, ProcessLocalDataType>::ThreadPool(
-    const uint32_t number_of_threads, const uint32_t thread_pin_offset,
+    const uint32_t number_of_threads,
+    const std::optional<uint32_t> thread_pin_offset,
     ProcessLocalDataType process_local_data_for_execution)
     : process_local_data_for_execution_(
           std::move(process_local_data_for_execution)),
@@ -157,13 +159,14 @@ inline ThreadPool<MessageType, ProcessLocalDataType>::ThreadPool(
       local_qd_{},
       logging_queue_{} {
   if (const auto cpu_info = hardware_info::cpu_info();
+      thread_pin_offset_.has_value() and
       static_cast<std::uint32_t>(cpu_info.number_of_cores) <
-      thread_pin_offset_ + number_of_threads) {
-    throw Exception{"There are fewer cores (" +
-                    std::to_string(cpu_info.number_of_cores) +
-                    ") than the offset (" + std::to_string(thread_pin_offset_) +
-                    ") and number of threads (" +
-                    std::to_string(number_of_threads) + ") can accommodate."};
+          thread_pin_offset_.value() + number_of_threads) {
+    throw Exception{
+        "There are fewer cores (" + std::to_string(cpu_info.number_of_cores) +
+        ") than the offset (" + std::to_string(thread_pin_offset_.value()) +
+        ") and number of threads (" + std::to_string(number_of_threads) +
+        ") can accommodate."};
   }
   producer_tokens_.reserve(number_of_threads + 1);
   consumer_tokens_.reserve(number_of_threads + 1);
@@ -189,7 +192,10 @@ template <class MessageType, class ProcessLocalDataType>
 inline void ThreadPool<MessageType, ProcessLocalDataType>::pin_and_thread_loop(
     const uint32_t thread_id,
     const std::optional<uint32_t> thread_to_print_from) {
-  hardware_info::bind_current_thread_to_core(thread_pin_offset_ + thread_id);
+  if (thread_pin_offset_.has_value()) {
+    hardware_info::bind_current_thread_to_core(thread_pin_offset_.value() +
+                                               thread_id);
+  }
   return thread_loop(thread_id, thread_to_print_from);
 }
 
