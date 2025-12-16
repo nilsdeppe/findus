@@ -13,6 +13,7 @@
 #include <thread>
 #include <vector>
 
+#include "findus/BindTo.hpp"
 #include "findus/external/concurrentqueue/concurrentqueue.hpp"
 #include "findus/Spinlock.hpp"
 #include "findus/Exceptions/Exception.hpp"
@@ -36,7 +37,7 @@ template <class MessageType, class ProcessLocalDataType>
 class ThreadPool {
  public:
   ThreadPool() = default;
-  ThreadPool(uint32_t number_of_threads,
+  ThreadPool(uint32_t number_of_threads, BindTo bind_to,
              std::optional<uint32_t> thread_pin_offset,
              ProcessLocalDataType process_local_data_for_execution);
 
@@ -129,6 +130,7 @@ class ThreadPool {
   // - The big question is what should the queue of tasks hold? std::function
   //   is one (expensive) option.
   ProcessLocalDataType process_local_data_for_execution_;
+  BindTo bind_to_{};
   std::optional<uint32_t> thread_pin_offset_ = 0;
   bool threads_are_active_{false};
   std::vector<std::thread> threads_{};
@@ -146,11 +148,12 @@ class ThreadPool {
 
 template <class MessageType, class ProcessLocalDataType>
 inline ThreadPool<MessageType, ProcessLocalDataType>::ThreadPool(
-    const uint32_t number_of_threads,
+    const uint32_t number_of_threads, const BindTo bind_to,
     const std::optional<uint32_t> thread_pin_offset,
     ProcessLocalDataType process_local_data_for_execution)
     : process_local_data_for_execution_(
           std::move(process_local_data_for_execution)),
+      bind_to_(bind_to),
       thread_pin_offset_(thread_pin_offset),
       threads_(number_of_threads),
       stop_threads_{false},
@@ -158,12 +161,24 @@ inline ThreadPool<MessageType, ProcessLocalDataType>::ThreadPool(
       task_queue_(1024, number_of_threads + 1, 0),
       local_qd_{},
       logging_queue_{} {
+  if (bind_to_ == BindTo::Uninitialized) {
+    throw Exception{
+        "The value of bind_to must be None, Core, or HardwareThread."};
+  }
+  if ((bind_to_ == BindTo::Core or bind_to_ == BindTo::HardwareThread) and
+      not thread_pin_offset_.has_value()) {
+    throw Exception{
+        "You must set the thread_pin_offset constructor argument when "
+        "specifying binding to either a core or a hardware thread."};
+  }
   if (const auto cpu_info = hardware_info::cpu_info();
       thread_pin_offset_.has_value() and
-      static_cast<std::uint32_t>(cpu_info.number_of_cores) <
+      (bind_to_ == BindTo::Core
+           ? static_cast<std::uint32_t>(cpu_info.number_of_cores)
+           : static_cast<std::uint32_t>(cpu_info.number_of_processing_units)) <
           thread_pin_offset_.value() + number_of_threads) {
     throw Exception{
-        "There are fewer cores (" + std::to_string(cpu_info.number_of_cores) +
+        "There are fewer resources (" + std::to_string(cpu_info.number_of_cores) +
         ") than the offset (" + std::to_string(thread_pin_offset_.value()) +
         ") and number of threads (" + std::to_string(number_of_threads) +
         ") can accommodate."};
