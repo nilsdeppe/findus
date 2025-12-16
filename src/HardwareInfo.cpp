@@ -292,6 +292,10 @@ void print_hardware_info(const MPI_Comm comm) {
 
   GatheredHardwareInfo local_hardware_info;
   local_hardware_info.cpu_info = hardware_info::cpu_info();
+  // We don't differentiate by the current core.
+  local_hardware_info.cpu_info.last_cpu_id = 0;
+  local_hardware_info.cpu_info.bound_cpu_id = 0;
+
   local_hardware_info.cache_info[0] = hardware_info::cache_info(1);
   local_hardware_info.cache_info[1] = hardware_info::cache_info(2);
   local_hardware_info.cache_info[2] = hardware_info::cache_info(3);
