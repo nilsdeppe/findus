@@ -74,6 +74,13 @@ struct CpuInfo {
   /// \brief The number of processing units/hyper threads/simultaneous
   /// multithreading threads on the physical node.
   int number_of_processing_units;
+  /// \brief The core ID that the calling thread was on when queried.
+  int last_cpu_id;
+  /// \brief The core ID that the calling thread was bound to.
+  ///
+  /// This will likely have a value of `0` on all processes if not bound. The
+  /// value is defined by the hwloc implementation.
+  int bound_cpu_id;
 };
 
 /*!

@@ -92,11 +92,31 @@ CpuInfo cpu_info_impl() {
     throw Exception("Error calling hwloc_topology_load: " +
                     std::to_string(hwloc_result));
   }
+  hwloc_bitmap_t cpuset = hwloc_bitmap_alloc();
+  if (hwloc_get_last_cpu_location(topology, cpuset, HWLOC_CPUBIND_THREAD) < 0) {
+    hwloc_bitmap_free(cpuset);
+    hwloc_topology_destroy(topology);
+    throw Exception("Error calling hwloc_get_last_cpu_location: " +
+                    std::to_string(errno));
+  }
+  const int last_cpu_id = hwloc_bitmap_first(cpuset);
+
+  if (hwloc_get_cpubind(topology, cpuset, HWLOC_CPUBIND_THREAD) < 0) {
+    hwloc_bitmap_free(cpuset);
+    hwloc_topology_destroy(topology);
+    throw Exception("Error calling hwloc_get_cpubind: " +
+                    std::to_string(errno));
+  }
+  const int bound_cpu_id = hwloc_bitmap_first(cpuset);
+  hwloc_bitmap_free(cpuset);
+
   const CpuInfo info{
       hwloc_get_nbobjs_by_type(topology, hwloc_obj_type_t::HWLOC_OBJ_PACKAGE),
       hwloc_get_nbobjs_by_type(topology, hwloc_obj_type_t::HWLOC_OBJ_NUMANODE),
       hwloc_get_nbobjs_by_type(topology, hwloc_obj_type_t::HWLOC_OBJ_CORE),
-      hwloc_get_nbobjs_by_type(topology, hwloc_obj_type_t::HWLOC_OBJ_PU)};
+      hwloc_get_nbobjs_by_type(topology, hwloc_obj_type_t::HWLOC_OBJ_PU),
+      last_cpu_id,
+      bound_cpu_id};
   if (info.number_of_processors < 1) {
     hwloc_topology_destroy(topology);
     throw Exception{"Error calling hwloc, got fewer than 1 processors: " +
@@ -128,7 +148,9 @@ bool operator==(const CpuInfo& lhs, const CpuInfo& rhs) {
   return lhs.number_of_processors == rhs.number_of_processors and
          lhs.number_of_numa_nodes == rhs.number_of_numa_nodes and
          lhs.number_of_cores == rhs.number_of_cores and
-         lhs.number_of_processing_units == rhs.number_of_processing_units;
+         lhs.number_of_processing_units == rhs.number_of_processing_units and
+         lhs.last_cpu_id == rhs.last_cpu_id and
+         lhs.bound_cpu_id == rhs.bound_cpu_id;
 }
 
 bool operator!=(const CpuInfo& lhs, const CpuInfo& rhs) {
@@ -394,12 +416,14 @@ TEST_CASE("HardwareInfo") {
   CHECK(a_cache_info != d_cache_info);
   CHECK(a_cache_info != e_cache_info);
 
-  const CpuInfo a_cpu_info{2, 1, 8, 16};
-  const CpuInfo b_cpu_info{2, 1, 8, 16};
-  const CpuInfo c_cpu_info{4, 1, 8, 16};
-  const CpuInfo d_cpu_info{2, 2, 8, 16};
-  const CpuInfo e_cpu_info{2, 1, 4, 16};
-  const CpuInfo f_cpu_info{2, 1, 8, 8};
+  const CpuInfo a_cpu_info{2, 1, 8, 16, 1, 3};
+  const CpuInfo b_cpu_info{2, 1, 8, 16, 1, 3};
+  const CpuInfo c_cpu_info{4, 1, 8, 16, 1, 3};
+  const CpuInfo d_cpu_info{2, 2, 8, 16, 1, 3};
+  const CpuInfo e_cpu_info{2, 1, 4, 16, 1, 3};
+  const CpuInfo f_cpu_info{2, 1, 8, 8, 1, 3};
+  const CpuInfo g_cpu_info{2, 1, 8, 16, 2, 3};
+  const CpuInfo h_cpu_info{2, 1, 8, 16, 1, 4};
 
   CHECK(a_cpu_info == b_cpu_info);
   CHECK_FALSE(a_cpu_info != b_cpu_info);
@@ -408,6 +432,8 @@ TEST_CASE("HardwareInfo") {
   CHECK(a_cpu_info != d_cpu_info);
   CHECK(a_cpu_info != e_cpu_info);
   CHECK(a_cpu_info != f_cpu_info);
+  CHECK(a_cpu_info != g_cpu_info);
+  CHECK(a_cpu_info != h_cpu_info);
 
   CHECK(process_ids_to_ranges({}) == "");
   CHECK(process_ids_to_ranges({5}) == "5");
