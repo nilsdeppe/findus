@@ -8,6 +8,7 @@ add_library(
   ${LIBRARY}
   ActionState.cpp
   Atomic128.cpp
+  BindTo.cpp
   Detail/ActiveObject.cpp
   Detail/DistributedObjectBase.cpp
   Detail/DistributedObjectIndex.cpp
