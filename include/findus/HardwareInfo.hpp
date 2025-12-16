@@ -10,6 +10,8 @@
 #include <mpi.h>
 #include <new>  // for hardware_destructive_interference_size
 
+#include "findus/BindTo.hpp"
+
 namespace findus::hardware_info {
 /// \brief Minimum offset between two objects to avoid false sharing.
 ///
@@ -105,13 +107,16 @@ bool operator!=(const CpuInfo& lhs, const CpuInfo& rhs);
 CpuInfo cpu_info();
 
 /*!
- * \brief Binds/pins the current thread to the specified core. This is sometimes
- * called "affinity".
+ * \brief Binds/pins the current thread to the specified core or hardware
+ * thread. This is sometimes called "affinity".
  *
- * If the core ID is larger than the number of cores on the node an exception is
- * throw.
+ * If the ID is larger than the number of cores/hardware threads on the node an
+ * exception is throw.
+ *
+ * \note `BindTo::None` will not do any binding and will not undo an existing
+ * binding.
  */
-void bind_current_thread_to_core(size_t core_id);
+void bind_current_thread_to(BindTo bind_to, size_t id);
 
 /*!
  * \brief Prints hardware information for all processes in `comm`.

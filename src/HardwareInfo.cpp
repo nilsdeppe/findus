@@ -15,6 +15,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "findus/BindTo.hpp"
 #include "findus/Exceptions/Exception.hpp"
 #include "findus/Exceptions/Mpi.hpp"
 
@@ -162,7 +163,15 @@ CpuInfo cpu_info() {
   return info;
 }
 
-void bind_current_thread_to_core(const size_t core_id) {
+void bind_current_thread_to(const BindTo bind_to, const size_t id) {
+  if (bind_to == BindTo::Uninitialized) {
+    throw Exception{"Cannot bind to 'Uninitialized'."};
+  }
+
+  if (bind_to == BindTo::None) {
+    return;
+  }
+
   // Bind/pin the thread to a CPU core.
   //
   // Modified from:
@@ -179,27 +188,29 @@ void bind_current_thread_to_core(const size_t core_id) {
     throw Exception("Error calling hwloc_topology_load: " +
                     std::to_string(hwloc_result));
   }
-  const int number_of_cores =
-      hwloc_get_nbobjs_by_type(topology, hwloc_obj_type_t::HWLOC_OBJ_CORE);
+  const auto binder = bind_to == BindTo::Core ? hwloc_obj_type_t::HWLOC_OBJ_CORE
+                                              : hwloc_obj_type_t::HWLOC_OBJ_PU;
 
-  if (number_of_cores < 0) {
+  const int number_of_binders = hwloc_get_nbobjs_by_type(topology, binder);
+
+  if (number_of_binders < 0) {
     hwloc_topology_destroy(topology);
     throw Exception{"hwloc gave a negative number of cores, " +
-                    std::to_string(number_of_cores)};
+                    std::to_string(number_of_binders)};
   }
 
-  if (core_id >= static_cast<size_t>(number_of_cores)) {
+  if (id >= static_cast<size_t>(number_of_binders)) {
     hwloc_topology_destroy(topology);
-    throw Exception{"Cannot bind to core " + std::to_string(core_id) +
-                    " because we only have " + std::to_string(number_of_cores) +
-                    " cores."};
+    throw Exception{
+        "Cannot bind to " + std::to_string(id) + " because we only have " +
+        std::to_string(number_of_binders) +
+        (bind_to == BindTo::Core ? " cores." : " hardware threads.")};
   }
 
-  const hwloc_obj_t core_to_pin = hwloc_get_obj_by_type(
-      topology, hwloc_obj_type_t::HWLOC_OBJ_CORE, core_id);
+  const hwloc_obj_t entity_to_pin = hwloc_get_obj_by_type(topology, binder, id);
 
-  if (const auto hwloc_result = hwloc_set_cpubind(topology, core_to_pin->cpuset,
-                                                  HWLOC_CPUBIND_THREAD);
+  if (const auto hwloc_result = hwloc_set_cpubind(
+          topology, entity_to_pin->cpuset, HWLOC_CPUBIND_THREAD);
       hwloc_result < 0) {
     hwloc_topology_destroy(topology);
     throw Exception("Error calling hwloc_set_cpubind: " +
@@ -393,18 +404,29 @@ TEST_CASE("HardwareInfo") {
   // Unlikely to have more than 2048 PUs per node. Increase if necessary.
   CHECK(cpu_info().number_of_processing_units < 2049);
 
-  bind_current_thread_to_core(1);
+  bind_current_thread_to(BindTo::Core, 1);
+  bind_current_thread_to(BindTo::HardwareThread, 1);
 
   // Unlikely to have 1 million cores. Increase if necessary.
   const size_t core_bind_id = 1000000;
-  CHECK_THROWS(bind_current_thread_to_core(core_bind_id));
+  CHECK_THROWS(bind_current_thread_to(BindTo::Core, core_bind_id));
   try {
-    bind_current_thread_to_core(core_bind_id);
+    bind_current_thread_to(BindTo::Core, core_bind_id);
   } catch (const Exception& e) {
     CHECK(std::string{e.what()} ==
-          "Cannot bind to core " + std::to_string(core_bind_id) +
+          "Cannot bind to " + std::to_string(core_bind_id) +
               " because we only have " +
               std::to_string(cpu_info().number_of_cores) + " cores.");
+  }
+  CHECK_THROWS(bind_current_thread_to(BindTo::HardwareThread, core_bind_id));
+  try {
+    bind_current_thread_to(BindTo::HardwareThread, core_bind_id);
+  } catch (const Exception& e) {
+    CHECK(std::string{e.what()} ==
+          "Cannot bind to " + std::to_string(core_bind_id) +
+              " because we only have " +
+              std::to_string(cpu_info().number_of_processing_units) +
+              " hardware threads.");
   }
 
   const CacheInfo a_cache_info{1, 32768, 64};

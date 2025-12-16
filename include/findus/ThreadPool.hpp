@@ -193,8 +193,8 @@ inline void ThreadPool<MessageType, ProcessLocalDataType>::pin_and_thread_loop(
     const uint32_t thread_id,
     const std::optional<uint32_t> thread_to_print_from) {
   if (thread_pin_offset_.has_value()) {
-    hardware_info::bind_current_thread_to_core(thread_pin_offset_.value() +
-                                               thread_id);
+    hardware_info::bind_current_thread_to(
+        BindTo::Core, thread_pin_offset_.value() + thread_id);
   }
   return thread_loop(thread_id, thread_to_print_from);
 }
