@@ -29,6 +29,7 @@ add_library(
   MessageRequeue.cpp
   MessageTags.cpp
   MessageType.cpp
+  Options.cpp
   ParentAndChildren.cpp
   QuiescenceDetection.cpp
   Reduction.cpp
