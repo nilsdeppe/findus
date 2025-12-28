@@ -40,6 +40,7 @@
 #include "findus/MessageHeader.hpp"
 #include "findus/MessageRequeue.hpp"
 #include "findus/MessageType.hpp"
+#include "findus/Options.hpp"
 #include "findus/ParentAndChildren.hpp"
 #include "findus/QuiescenceDetection.hpp"
 #include "findus/Reduction.hpp"
@@ -641,12 +642,12 @@ class DistributedTaskDriver {
  private:
   // The DistributedTaskDriver can only be created using the
   // create_distributed_task_driver() function.
-  DistributedTaskDriver(BindTo bind_to, int task_threads_per_process,
-                        bool finalize_mpi, bool mpi_supports_multithreading);
+  DistributedTaskDriver(const Options& options, bool finalize_mpi,
+                        bool mpi_supports_multithreading);
 
   /// \cond
-  friend DistributedTaskDriver& create_distributed_task_driver(
-      int* argc, char** argv[], bool initialize_mpi);
+  friend DistributedTaskDriver& create_distributed_task_driver_impl(
+      int mpi_threading_support, bool initialize_mpi, const Options& options);
 
   template <class ParallelComponent>
   friend ParallelComponent* local_parallel_component(
@@ -1961,8 +1962,20 @@ ParallelComponent* local_parallel_component(
   return dynamic_cast<ParallelComponent*>(object_it->second.object.get());
 }
 
-/// \brief Create the DistributedTaskDriver::the_driver object that can be
-/// used to globally access the task driver.
+/*!
+ * \brief Create the DistributedTaskDriver::the_driver object that can be
+ * used to globally access the task driver.
+ *
+ * This overload initializes MPI.
+ */
 DistributedTaskDriver& create_distributed_task_driver(int* argc, char** argv[],
-                                                      bool initialize_mpi);
+                                                      const Options& options);
+
+/*!
+ * \brief Create the DistributedTaskDriver::the_driver object that can be
+ * used to globally access the task driver.
+ *
+ * This overload does NOT initialize MPI.
+ */
+DistributedTaskDriver& create_distributed_task_driver(const Options& options);
 }  // namespace findus

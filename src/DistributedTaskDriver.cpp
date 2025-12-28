@@ -45,13 +45,14 @@
 #include "findus/MessageHeader.hpp"
 #include "findus/MessageRequeue.hpp"
 #include "findus/MessageTags.hpp"
+#include "findus/Options.hpp"
 #include "findus/ParentAndChildren.hpp"
 #include "findus/Reduction.hpp"
 
 namespace findus {
 DistributedTaskDriver::DistributedTaskDriver(
-    const BindTo bind_to, const int task_threads_per_process,
-    const bool finalize_mpi, const bool mpi_supports_multithreading)
+    const Options& options, const bool finalize_mpi,
+    const bool mpi_supports_multithreading)
     : finalize_mpi_(finalize_mpi),
       mpi_supports_multithreading_(mpi_supports_multithreading) {
   int mpi_is_initialized = false;
@@ -95,11 +96,11 @@ DistributedTaskDriver::DistributedTaskDriver(
 
   hardware_info::print_hardware_info(findus_comm_);
 
-  if (task_threads_per_process < 0) {
+  if (options.task_threads_per_process < 0) {
     throw Exception{
         "The number of task threads per process must be non-negative."};
   }
-  number_of_threads_ = task_threads_per_process;
+  number_of_threads_ = options.task_threads_per_process;
 
   // Broadcast number of threads requested.
   if (MPI_Bcast(&number_of_threads_, 1, MPI_INT, 0, findus_comm_) !=
@@ -108,8 +109,9 @@ DistributedTaskDriver::DistributedTaskDriver(
   }
 
   thread_pool_ = std::make_unique<ThreadPool_t>(
-      static_cast<uint32_t>(number_of_threads_), bind_to,
-      (bind_to == BindTo::Core or bind_to == BindTo::HardwareThread)
+      static_cast<uint32_t>(number_of_threads_), options.bind_to,
+      (options.bind_to == BindTo::Core or
+       options.bind_to == BindTo::HardwareThread)
           ? std::optional<std::uint32_t>{hardware_info::cpu_info().bound_cpu_id}
           : std::nullopt,
       this);
@@ -1542,37 +1544,51 @@ DistributedTaskDriver* get_task_driver_ptr() {
 }
 }  // namespace detail
 
-DistributedTaskDriver& create_distributed_task_driver(
-    int* argc, char** argv[], const bool initialize_mpi) {
+namespace {
+void check_driver_pointer() {
   if (task_driver != nullptr) {
     throw Exception(
         "Already initialized the task driver. You should only initialize the "
         "driver once.");
   }
-  int mpi_threading_support = MPI_THREAD_SINGLE;
-  if (initialize_mpi) {
-    if (argc == nullptr or argv == nullptr) {
-      throw Exception{
-          "Either argc or argv is nullptr. We cannot initialize MPI with them "
-          "being nullptrs."};
-    }
-    if (MPI_Init_thread(argc, argv, MPI_THREAD_MULTIPLE,
-                        &mpi_threading_support) != MPI_SUCCESS) {
-      throw MpiException("Failed to initialize MPI");
-    }
-  }
+}
+}  // namespace
 
-  const BindTo bind_to = BindTo::Core;
-  const int task_threads_per_process = 3;
+DistributedTaskDriver& create_distributed_task_driver_impl(
+    const int mpi_threading_support, const bool initialize_mpi,
+    const Options& options) {
   // If we initialize MPI then we also finalize it on destruction.
   const_cast<std::unique_ptr<DistributedTaskDriver>&>(task_driver) =
       std::unique_ptr<DistributedTaskDriver>(new DistributedTaskDriver(
-          bind_to, task_threads_per_process, initialize_mpi,
+          options, initialize_mpi,
           mpi_threading_support == MPI_THREAD_MULTIPLE));
   task_driver->attach_debugger();
   detail::print_process_pids(task_driver->current_node_id());
   task_driver->barrier();
   return *task_driver.get();
+}
+
+DistributedTaskDriver& create_distributed_task_driver(int* argc, char** argv[],
+                                                      const Options& options) {
+  check_driver_pointer();
+  int mpi_threading_support = MPI_THREAD_SINGLE;
+  if (argc == nullptr or argv == nullptr) {
+    throw Exception{
+        "Either argc or argv is nullptr. We cannot initialize MPI with them "
+        "being nullptrs."};
+  }
+  if (MPI_Init_thread(argc, argv, MPI_THREAD_MULTIPLE,
+                      &mpi_threading_support) != MPI_SUCCESS) {
+    throw MpiException("Failed to initialize MPI.");
+  }
+
+  return create_distributed_task_driver_impl(mpi_threading_support, true,
+                                             options);
+}
+
+DistributedTaskDriver& create_distributed_task_driver(const Options& options) {
+  check_driver_pointer();
+  return create_distributed_task_driver_impl(MPI_THREAD_SINGLE, false, options);
 }
 }  // namespace findus
 
@@ -2568,14 +2584,14 @@ void test_invoke(DistributedTaskDriver& driver) {
 
 MPI_TEST_CASE("DistributedTaskDriver.2Processes", 2) {
   findus::DistributedTaskDriver& driver =
-      findus::create_distributed_task_driver(nullptr, nullptr, false);
+      findus::create_distributed_task_driver({BindTo::None, 3, false});
   testing::test_bulk_enequeue_iterator_exceptions();
   testing::test_invoke(driver);
 }
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertErrorRegular0", 2) {
   findus::DistributedTaskDriver& driver =
-      findus::create_distributed_task_driver(nullptr, nullptr, false);
+      findus::create_distributed_task_driver({BindTo::None, 3, false});
   if (driver.current_node_id() == 0) {
     driver.insert_parallel_component<testing::RegularComponent>();
     CHECK_THROWS_WITH_AS(
@@ -2594,7 +2610,7 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertErrorRegular0", 2) {
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertErrorRegular1", 2) {
   findus::DistributedTaskDriver& driver =
-      findus::create_distributed_task_driver(nullptr, nullptr, false);
+      findus::create_distributed_task_driver({BindTo::None, 3, false});
   if (driver.current_node_id() != 0) {
     driver.insert_parallel_component<testing::RegularComponent>();
     driver.insert_barrier();
@@ -2613,7 +2629,7 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertErrorRegular1", 2) {
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertErrorCollection0", 2) {
   findus::DistributedTaskDriver& driver =
-      findus::create_distributed_task_driver(nullptr, nullptr, false);
+      findus::create_distributed_task_driver({BindTo::None, 3, false});
   if (driver.current_node_id() == 0) {
     driver.insert_parallel_component_collection<testing::CollectionComponent>(
         42ul, 0);
@@ -2632,7 +2648,7 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertErrorCollection0", 2) {
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertErrorCollection1", 2) {
   findus::DistributedTaskDriver& driver =
-      findus::create_distributed_task_driver(nullptr, nullptr, false);
+      findus::create_distributed_task_driver({BindTo::None, 3, false});
   if (driver.current_node_id() != 0) {
     driver.insert_parallel_component_collection<testing::CollectionComponent>(
         42ul, 0);
@@ -2657,7 +2673,7 @@ struct RegularComponentLong : public findus::detail::DistributedObjectBase {
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertErrorRegularName", 2) {
   findus::DistributedTaskDriver& driver =
-      findus::create_distributed_task_driver(nullptr, nullptr, false);
+      findus::create_distributed_task_driver({BindTo::None, 3, false});
   if (driver.current_node_id() == 0) {
     driver.insert_parallel_component<testing::RegularComponent>();
   } else {
@@ -2705,7 +2721,7 @@ struct CollectionComponentLong
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionName0", 2) {
   findus::DistributedTaskDriver& driver =
-      findus::create_distributed_task_driver(nullptr, nullptr, false);
+      findus::create_distributed_task_driver({BindTo::None, 3, false});
   if (driver.current_node_id() == 0) {
     driver.insert_parallel_component_collection<testing::CollectionComponent>(
         42ul, 0);
@@ -2727,7 +2743,7 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionName0", 2) {
 
 MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionName1", 2) {
   findus::DistributedTaskDriver& driver =
-      findus::create_distributed_task_driver(nullptr, nullptr, false);
+      findus::create_distributed_task_driver({BindTo::None, 3, false});
   if (driver.current_node_id() == 1) {
     driver.insert_parallel_component_collection<testing::CollectionComponent>(
         42ul, 1);
@@ -2750,7 +2766,7 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionName1", 2) {
 MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionNumElements0", 2) {
   // Test: Collection number of elements differs
   findus::DistributedTaskDriver& driver =
-      findus::create_distributed_task_driver(nullptr, nullptr, false);
+      findus::create_distributed_task_driver({BindTo::None, 3, false});
   if (driver.current_node_id() == 0) {
     driver.insert_parallel_component_collection<testing::CollectionComponent>(
         42ul, 0);
@@ -2775,7 +2791,7 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionNumElements0", 2) {
 MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionNumElements1", 2) {
   // Test: Collection number of elements differs
   findus::DistributedTaskDriver& driver =
-      findus::create_distributed_task_driver(nullptr, nullptr, false);
+      findus::create_distributed_task_driver({BindTo::None, 3, false});
   if (driver.current_node_id() == 1) {
     driver.insert_parallel_component_collection<testing::CollectionComponent>(
         42ul, 1);
@@ -2800,7 +2816,7 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionNumElements1", 2) {
 MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionElementId0", 2) {
   // Test: Collection element ID differs
   findus::DistributedTaskDriver& driver =
-      findus::create_distributed_task_driver(nullptr, nullptr, false);
+      findus::create_distributed_task_driver({BindTo::None, 3, false});
   if (driver.current_node_id() == 0) {
     driver.insert_parallel_component_collection<testing::CollectionComponent>(
         43ul, 0);
@@ -2827,7 +2843,7 @@ MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionElementId0", 2) {
 MPI_TEST_CASE("DistributedTaskDriver.InsertError_CollectionElementPid0", 2) {
   // Test: Collection element process ID differs
   findus::DistributedTaskDriver& driver =
-      findus::create_distributed_task_driver(nullptr, nullptr, false);
+      findus::create_distributed_task_driver({BindTo::None, 3, false});
   // Both insert the same indices, but on different processes
   driver.insert_parallel_component_collection<testing::CollectionComponent>(
       42ul, 0);
@@ -3584,7 +3600,7 @@ MPI_TEST_CASE("DistributedTaskDriver.Reduction1", 2) {
   // This test checks core reduction capabilities with only 2 processes to
   // provide an easy to debug environment.
   findus::DistributedTaskDriver& driver =
-      findus::create_distributed_task_driver(nullptr, nullptr, false);
+      findus::create_distributed_task_driver({BindTo::None, 3, false});
   if (driver.current_node_id() == 0) {
     test_generate_subsets();
     test_keys_of();
@@ -3745,7 +3761,7 @@ MPI_TEST_CASE("DistributedTaskDriver.ExhaustiveReductions8Processes", 8) {
   // expensive, but also extremely rigorous.
   const size_t delay_amount_us = 10;
   findus::DistributedTaskDriver& driver =
-      findus::create_distributed_task_driver(nullptr, nullptr, false);
+      findus::create_distributed_task_driver({BindTo::None, 3, false});
 
   driver.barrier();
   driver.insert_parallel_component<ReductionComponent1<false>>();
