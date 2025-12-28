@@ -368,18 +368,10 @@ void print_hardware_info(const MPI_Comm comm) {
 
 namespace findus::hardware_info {
 TEST_CASE("HardwareInfo") {
-  CHECK_THROWS_AS(cache_info(4), Exception);
-  try {
-    cache_info(4);
-  } catch (const Exception& e) {
-    CHECK(std::string{e.what()} == "Cache level must be 1, 2, or 3, got 4");
-  }
-  CHECK_THROWS_AS(cache_info(0), Exception);
-  try {
-    cache_info(0);
-  } catch (const Exception& e) {
-    CHECK(std::string{e.what()} == "Cache level must be 1, 2, or 3, got 0");
-  }
+  CHECK_THROWS_WITH_AS(cache_info(4), "Cache level must be 1, 2, or 3, got 4",
+                       Exception);
+  CHECK_THROWS_WITH_AS(cache_info(0), "Cache level must be 1, 2, or 3, got 0",
+                       Exception);
   for (size_t i = 1; i < 4; ++i) {
     const CacheInfo ci = cache_info(i);
     CHECK(ci.level == i);
@@ -404,29 +396,34 @@ TEST_CASE("HardwareInfo") {
   // Unlikely to have more than 2048 PUs per node. Increase if necessary.
   CHECK(cpu_info().number_of_processing_units < 2049);
 
-  bind_current_thread_to(BindTo::Core, 1);
-  bind_current_thread_to(BindTo::HardwareThread, 1);
+  bind_current_thread_to(BindTo::Core, 0);
+  if (cpu_info().number_of_cores > 1) {
+    bind_current_thread_to(BindTo::Core, 1);
+  }
+  bind_current_thread_to(BindTo::HardwareThread, 0);
+  if (cpu_info().number_of_processing_units > 1) {
+    bind_current_thread_to(BindTo::HardwareThread, 1);
+  }
 
   // Unlikely to have 1 million cores. Increase if necessary.
   const size_t core_bind_id = 1000000;
-  CHECK_THROWS(bind_current_thread_to(BindTo::Core, core_bind_id));
-  try {
-    bind_current_thread_to(BindTo::Core, core_bind_id);
-  } catch (const Exception& e) {
-    CHECK(std::string{e.what()} ==
-          "Cannot bind to " + std::to_string(core_bind_id) +
-              " because we only have " +
-              std::to_string(cpu_info().number_of_cores) + " cores.");
+  {
+    const std::string expected{
+        "Cannot bind to " + std::to_string(core_bind_id) +
+        " because we only have " + std::to_string(cpu_info().number_of_cores) +
+        " cores."};
+    CHECK_THROWS_WITH_AS(bind_current_thread_to(BindTo::Core, core_bind_id),
+                         expected.c_str(), Exception);
   }
-  CHECK_THROWS(bind_current_thread_to(BindTo::HardwareThread, core_bind_id));
-  try {
-    bind_current_thread_to(BindTo::HardwareThread, core_bind_id);
-  } catch (const Exception& e) {
-    CHECK(std::string{e.what()} ==
-          "Cannot bind to " + std::to_string(core_bind_id) +
-              " because we only have " +
-              std::to_string(cpu_info().number_of_processing_units) +
-              " hardware threads.");
+  {
+    const std::string expected{
+        "Cannot bind to " + std::to_string(core_bind_id) +
+        " because we only have " +
+        std::to_string(cpu_info().number_of_processing_units) +
+        " hardware threads."};
+    CHECK_THROWS_WITH_AS(
+        bind_current_thread_to(BindTo::HardwareThread, core_bind_id),
+        expected.c_str(), Exception);
   }
 
   const CacheInfo a_cache_info{1, 32768, 64};
