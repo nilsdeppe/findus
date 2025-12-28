@@ -266,7 +266,16 @@ TEST_CASE("MessageHeader") {
         // bytes, requires no padding, and if it did, we account for that by
         // memcpy of the object into the byte stream.
         MessageHeader temp{};
+        // This warning is incorrect. MessageHeader is standard_layout and
+        // trivially_copyable.
+#if defined(__GNUC__) && !defined(__clang__) && (__GNUC__ == 10)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wclass-memaccess"
+#endif
         std::memcpy(&temp, buffer.get(), sizeof(MessageHeader));
+#if defined(__GNUC__) && !defined(__clang__) && (__GNUC__ == 10)
+#  pragma GCC diagnostic pop
+#endif
         MessageHeader* message_header_int2 = new (buffer.get()) MessageHeader;
         std::memcpy(message_header_int2, &temp, sizeof(MessageHeader));
         test_impl(*message_header_int2, message_type, collection_index,
