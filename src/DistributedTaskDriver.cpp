@@ -259,6 +259,17 @@ void DistributedTaskDriver::run_to_quiescence(const int max_to_receive,
     initiate_sends(max_to_send);
     clean_incoming_mpi_messages();
     clean_outgoing_mpi_messages();
+
+    // We cannot be quiescent while we have queued messages.
+    //
+    // Note: order is important here because the first two checks are serial
+    // and so very cheap, while the third is on an MPMC queue, and thus more
+    // expensive.
+    if (not incoming_mpi_messages_.empty() or
+        not outgoing_mpi_messages_.empty() or
+        not outgoing_messages_.empty_approx()) {
+      continue;
+    }
     // We check local QD first. If we have local QD, then we increment the
     // local QD counter. If the local QD counter reaches
     // local_qd_counts_for_global_qd, then we do a global QD check. This is so
