@@ -1538,6 +1538,17 @@ class ConcurrentQueue {
     return size;
   }
 
+  // Returns `true` if the list is approximately empty.
+  bool empty_approx() const {
+    for (auto ptr = producerListTail.load(std::memory_order_acquire);
+         ptr != nullptr; ptr = ptr->next_prod()) {
+      if (ptr->size_approx() != 0) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   // Returns true if the underlying atomic variables used by
   // the queue are lock-free (they should be on most platforms).
   // Thread-safe.
