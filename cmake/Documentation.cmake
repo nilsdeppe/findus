@@ -2,6 +2,10 @@
 # Distributed under the MIT License.
 # See LICENSE.txt for details.
 
+if(POLICY CMP0135)
+  cmake_policy(SET CMP0135 NEW)
+endif()
+
 find_package(Doxygen QUIET)
 if (DOXYGEN_FOUND)
   include(FetchContent)
