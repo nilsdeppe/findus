@@ -112,67 +112,70 @@ if (PROJECT_IS_TOP_LEVEL AND BUILD_TESTING AND TARGET doctest::doctest)
   # Discover the Test and add them to CTest so we don't have to.
   doctest_discover_tests(Test)
 
+  set(MPIRUN_TEST_ARGS "" CACHE STRING
+    "Extra arguments to pass to mpirun at launch.")
+
   # Add a separate testing for the MPI tests.
   # This is because initializing MPI adds about 0.6 seconds to the test runtime.
   add_test(
     NAME HardwareInfoParallel.2Processes
     COMMAND
-    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    ${MPIEXEC_EXECUTABLE} ${MPIRUN_TEST_ARGS} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test> --test-case=HardwareInfoParallel --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.2Processes
     COMMAND
-    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    ${MPIEXEC_EXECUTABLE} ${MPIRUN_TEST_ARGS} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.2Processes
     --findus-mpi-test
   )
   add_test(
     NAME MpiErrorMessage
     COMMAND
-    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1
+    ${MPIEXEC_EXECUTABLE} ${MPIRUN_TEST_ARGS} ${MPIEXEC_NUMPROC_FLAG} 1
     $<TARGET_FILE:Test> --test-case=MpiErrorMessage --findus-mpi-test --no-skip
   )
 
   add_test(
     NAME DistributedTaskDriver.InsertErrorRegular0
     COMMAND
-    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    ${MPIEXEC_EXECUTABLE} ${MPIRUN_TEST_ARGS} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.InsertErrorRegular0
     --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.InsertErrorRegular1
     COMMAND
-    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    ${MPIEXEC_EXECUTABLE} ${MPIRUN_TEST_ARGS} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.InsertErrorRegular1
     --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.InsertErrorCollection0
     COMMAND
-    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    ${MPIEXEC_EXECUTABLE} ${MPIRUN_TEST_ARGS} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.InsertErrorCollection0
     --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.InsertErrorCollection1
     COMMAND
-    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    ${MPIEXEC_EXECUTABLE} ${MPIRUN_TEST_ARGS} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.InsertErrorCollection1
     --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.InsertErrorRegularName
     COMMAND
-    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    ${MPIEXEC_EXECUTABLE} ${MPIRUN_TEST_ARGS} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test> --test-case=DistributedTaskDriver.InsertErrorRegularName
     --findus-mpi-test
   )
   add_test(
     NAME DistributedTaskDriver.InsertError_CollectionName0
     COMMAND
-    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    ${MPIEXEC_EXECUTABLE} ${MPIRUN_TEST_ARGS} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test>
     --test-case=DistributedTaskDriver.InsertError_CollectionName0
     --findus-mpi-test
@@ -180,7 +183,7 @@ if (PROJECT_IS_TOP_LEVEL AND BUILD_TESTING AND TARGET doctest::doctest)
   add_test(
     NAME DistributedTaskDriver.InsertError_CollectionName1
     COMMAND
-    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    ${MPIEXEC_EXECUTABLE} ${MPIRUN_TEST_ARGS} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test>
     --test-case=DistributedTaskDriver.InsertError_CollectionName1
     --findus-mpi-test
@@ -188,7 +191,7 @@ if (PROJECT_IS_TOP_LEVEL AND BUILD_TESTING AND TARGET doctest::doctest)
   add_test(
     NAME DistributedTaskDriver.InsertError_CollectionNumElements0
     COMMAND
-    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    ${MPIEXEC_EXECUTABLE} ${MPIRUN_TEST_ARGS} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test>
     --test-case=DistributedTaskDriver.InsertError_CollectionNumElements0
     --findus-mpi-test
@@ -196,7 +199,7 @@ if (PROJECT_IS_TOP_LEVEL AND BUILD_TESTING AND TARGET doctest::doctest)
   add_test(
     NAME DistributedTaskDriver.InsertError_CollectionNumElements1
     COMMAND
-    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    ${MPIEXEC_EXECUTABLE} ${MPIRUN_TEST_ARGS} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test>
     --test-case=DistributedTaskDriver.InsertError_CollectionNumElements1
     --findus-mpi-test
@@ -204,7 +207,7 @@ if (PROJECT_IS_TOP_LEVEL AND BUILD_TESTING AND TARGET doctest::doctest)
   add_test(
     NAME DistributedTaskDriver.InsertError_CollectionElementId0
     COMMAND
-    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    ${MPIEXEC_EXECUTABLE} ${MPIRUN_TEST_ARGS} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test>
     --test-case=DistributedTaskDriver.InsertError_CollectionElementId0
     --findus-mpi-test
@@ -212,7 +215,7 @@ if (PROJECT_IS_TOP_LEVEL AND BUILD_TESTING AND TARGET doctest::doctest)
   add_test(
     NAME DistributedTaskDriver.InsertError_CollectionElementPid0
     COMMAND
-    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    ${MPIEXEC_EXECUTABLE} ${MPIRUN_TEST_ARGS} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test>
     --test-case=DistributedTaskDriver.InsertError_CollectionElementPid0
     --findus-mpi-test
@@ -220,7 +223,7 @@ if (PROJECT_IS_TOP_LEVEL AND BUILD_TESTING AND TARGET doctest::doctest)
   add_test(
     NAME DistributedTaskDriver.Reduction1
     COMMAND
-    ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+    ${MPIEXEC_EXECUTABLE} ${MPIRUN_TEST_ARGS} ${MPIEXEC_NUMPROC_FLAG} 2
     $<TARGET_FILE:Test>
     --test-case=DistributedTaskDriver.Reduction1
     --findus-mpi-test
