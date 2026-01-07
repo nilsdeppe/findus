@@ -490,6 +490,9 @@ void Global::up_traversal(MPI_Comm& comm) {
 }
 
 void Global::receive_up_messages_from(MPI_Comm& comm, const int recv_process) {
+  if (recv_process < 0) {
+    return;
+  }
   int flag{0};
   do {
     if (const auto mpi_result =
