@@ -62,6 +62,7 @@ if (PROJECT_IS_TOP_LEVEL)
   endif()
 endif()
 include(Sanitizers)
+include(SetupCcache)
 
 if (NOT TARGET MPI::MPI_CXX)
   find_package(MPI REQUIRED COMPONENTS CXX)
