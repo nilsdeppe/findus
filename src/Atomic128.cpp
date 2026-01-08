@@ -77,11 +77,11 @@ enum class Check { Uninitialized, LoadStore, CasWeak, CasStrong, Exchange };
  *   pat: pattern to write (A or B)
  *   order: memory order
  */
-template <int NumberOfIterations, class T>
-void store_thread(T& atomic, const Pattern& pat,
-                  const std::memory_order order) {
+template <class T>
+void store_thread(T& atomic, const Pattern& pat, const std::memory_order order,
+                  const int number_of_iterations) {
   static_assert(std::is_same_v<std::remove_cv_t<T>, Atomic128<Pattern>>);
-  for (int i = 0; i < NumberOfIterations; ++i) {
+  for (int i = 0; i < number_of_iterations; ++i) {
     atomic.store(pat, order);
   }
 }
@@ -94,12 +94,13 @@ void store_thread(T& atomic, const Pattern& pat,
  *   error: atomic flag set to true on error
  *   order: memory order
  */
-template <int NumberOfIterations, class T>
+template <class T>
 void load_thread(T& atomic, std::atomic<bool>& error,
-                 const std::memory_order order) {
+                 const std::memory_order order,
+                 const int number_of_iterations) {
   static_assert(std::is_same_v<std::remove_cv_t<T>, Atomic128<Pattern>>);
   Pattern observed;
-  for (int i = 0; i < NumberOfIterations * 2; ++i) {
+  for (int i = 0; i < number_of_iterations * 2; ++i) {
     observed = atomic.load(order);
     if (not observed.is_valid()) {
       error = true;
@@ -108,12 +109,13 @@ void load_thread(T& atomic, std::atomic<bool>& error,
   }
 }
 
-template <int NumberOfIterations, class T>
+template <class T>
 void exchange_thread(T& atomic, std::atomic<bool>& error, const Pattern& pat,
-                     const std::memory_order order) {
+                     const std::memory_order order,
+                     const int number_of_iterations) {
   static_assert(std::is_same_v<std::remove_cv_t<T>, Atomic128<Pattern>>);
   Pattern observed;
-  for (int i = 0; i < NumberOfIterations * 2; ++i) {
+  for (int i = 0; i < number_of_iterations * 2; ++i) {
     observed = atomic.exchange(pat, order);
     if (not observed.is_valid()) {
       error = true;
@@ -134,12 +136,13 @@ void exchange_thread(T& atomic, std::atomic<bool>& error, const Pattern& pat,
  *   success: success memory order
  *   failure: failure memory order
  */
-template <bool Strong, int NumberOfIterations, class T>
+template <bool Strong, class T>
 void cas_thread(T& atomic, const Pattern& from, const Pattern& to,
                 const std::memory_order success,
-                const std::memory_order failure) {
+                const std::memory_order failure,
+                const int number_of_iterations) {
   static_assert(std::is_same_v<std::remove_cv_t<T>, Atomic128<Pattern>>);
-  for (int i = 0; i < NumberOfIterations; ++i) {
+  for (int i = 0; i < number_of_iterations; ++i) {
     Pattern expected = from;
     // Loop until CAS succeeds
     if constexpr (Strong) {
@@ -151,11 +154,11 @@ void cas_thread(T& atomic, const Pattern& from, const Pattern& to,
     }
   }
 }
-template <bool Strong, int NumberOfIterations, class T>
+template <bool Strong, class T>
 void cas_thread(T& atomic, const Pattern& from, const Pattern& to,
-                const std::memory_order order) {
+                const std::memory_order order, const int number_of_iterations) {
   static_assert(std::is_same_v<std::remove_cv_t<T>, Atomic128<Pattern>>);
-  for (int i = 0; i < NumberOfIterations; ++i) {
+  for (int i = 0; i < number_of_iterations; ++i) {
     Pattern expected = from;
     // Loop until CAS succeeds
     if constexpr (Strong) {
@@ -173,9 +176,10 @@ void cas_thread(T& atomic, const Pattern& from, const Pattern& to,
  * Launches writer and reader threads with varied memory orders and checks for
  * torn reads.
  */
-template <Check check, bool VolatileAtomic, int NumberOfIterations>
+template <Check check, bool VolatileAtomic>
 void test_load_store(const int number_of_loads, const int number_of_stores,
-                     const bool cas_single_arg = false) {
+                     const bool cas_single_arg,
+                     const int number_of_iterations) {
   CAPTURE(VolatileAtomic);
   CAPTURE(number_of_loads);
   CAPTURE(number_of_stores);
@@ -246,11 +250,12 @@ void test_load_store(const int number_of_loads, const int number_of_stores,
     for (size_t i = 0; i < static_cast<size_t>(number_of_stores); ++i) {
       if constexpr (check == Check::LoadStore) {
         const size_t index = i % patterns.size();
-        threads.emplace_back([&atomic, &patterns, &conf, &sync, index]() {
-          sync();
-          store_thread<NumberOfIterations>(atomic, patterns[index],
-                                           conf.store_order);
-        });
+        threads.emplace_back(
+            [&atomic, &patterns, &conf, &sync, index, number_of_iterations]() {
+              sync();
+              store_thread(atomic, patterns[index], conf.store_order,
+                           number_of_iterations);
+            });
       } else if constexpr (check == Check::CasStrong or
                            check == Check::CasWeak) {
         const size_t index_to = i % patterns.size();
@@ -258,35 +263,37 @@ void test_load_store(const int number_of_loads, const int number_of_stores,
             (i == 0 ? static_cast<size_t>(number_of_stores) : (i - 1)) %
             patterns.size();
         threads.emplace_back([&atomic, &patterns, &conf, &sync, index_to,
-                              index_from, cas_single_arg]() {
+                              index_from, cas_single_arg,
+                              number_of_iterations]() {
           sync();
           if (cas_single_arg) {
-            cas_thread<check == Check::CasStrong, NumberOfIterations>(
+            cas_thread<check == Check::CasStrong>(
                 atomic, patterns[index_from], patterns[index_to],
-                conf.store_order);
+                conf.store_order, number_of_iterations);
           } else {
-            cas_thread<check == Check::CasStrong, NumberOfIterations>(
+            cas_thread<check == Check::CasStrong>(
                 atomic, patterns[index_from], patterns[index_to],
-                conf.store_order, conf.load_order);
+                conf.store_order, conf.load_order, number_of_iterations);
           }
         });
       } else if constexpr (check == Check::Exchange) {
         const size_t index = i % patterns.size();
-        threads.emplace_back(
-            [&atomic, &patterns, &conf, &sync, &error, index]() {
-              sync();
-              exchange_thread<NumberOfIterations>(
-                  atomic, error, patterns[index], conf.store_order);
-            });
+        threads.emplace_back([&atomic, &patterns, &conf, &sync, &error, index,
+                              number_of_iterations]() {
+          sync();
+          exchange_thread(atomic, error, patterns[index], conf.store_order,
+                          number_of_iterations);
+        });
       } else {
         REQUIRE(check != Check::Uninitialized);
       }
     }
     for (int i = 0; i < number_of_loads; ++i) {
-      threads.emplace_back([&atomic, &error, &conf, &sync]() {
-        sync();
-        load_thread<NumberOfIterations>(atomic, error, conf.load_order);
-      });
+      threads.emplace_back(
+          [&atomic, &error, &conf, &sync, number_of_iterations]() {
+            sync();
+            load_thread(atomic, error, conf.load_order, number_of_iterations);
+          });
     }
 
     for (auto& t : threads) {
@@ -350,31 +357,39 @@ TEST_CASE("Atomic128") {
   }
 
   std::cout << "Starting LoadStore\n" << std::flush;
-  test_load_store<Check::LoadStore, false, number_of_iterations>(
-      number_of_load_threads, number_of_store_threads);
-  test_load_store<Check::LoadStore, true, number_of_iterations>(
-      number_of_load_threads, number_of_store_threads);
+  test_load_store<Check::LoadStore, false>(number_of_load_threads,
+                                           number_of_store_threads, false,
+                                           number_of_iterations);
+  test_load_store<Check::LoadStore, true>(number_of_load_threads,
+                                          number_of_store_threads, false,
+                                          number_of_iterations);
 
   std::cout << "Starting Exchange\n" << std::flush;
-  test_load_store<Check::Exchange, false, number_of_iterations>(
-      number_of_load_threads, number_of_store_threads);
-  test_load_store<Check::Exchange, true, number_of_iterations>(
-      number_of_load_threads, number_of_store_threads);
+  test_load_store<Check::Exchange, false>(number_of_load_threads,
+                                          number_of_store_threads, false,
+                                          number_of_iterations);
+  test_load_store<Check::Exchange, true>(number_of_load_threads,
+                                         number_of_store_threads, false,
+                                         number_of_iterations);
 
   for (const bool cas_single_arg : {false, true}) {
     std::cout << "Starting CasStrong, single arg: " << cas_single_arg << "\n"
               << std::flush;
-    test_load_store<Check::CasStrong, false, number_of_iterations>(
-        number_of_load_threads, number_of_store_threads, cas_single_arg);
-    test_load_store<Check::CasStrong, true, number_of_iterations>(
-        number_of_load_threads, number_of_store_threads, cas_single_arg);
+    test_load_store<Check::CasStrong, false>(
+        number_of_load_threads, number_of_store_threads, cas_single_arg,
+        number_of_iterations);
+    test_load_store<Check::CasStrong, true>(
+        number_of_load_threads, number_of_store_threads, cas_single_arg,
+        number_of_iterations);
 
     std::cout << "Starting CasWeak, single arg: " << cas_single_arg << "\n"
               << std::flush;
-    test_load_store<Check::CasWeak, false, number_of_iterations>(
-        number_of_load_threads, number_of_store_threads, cas_single_arg);
-    test_load_store<Check::CasWeak, true, number_of_iterations>(
-        number_of_load_threads, number_of_store_threads, cas_single_arg);
+    test_load_store<Check::CasWeak, false>(
+        number_of_load_threads, number_of_store_threads, cas_single_arg,
+        number_of_iterations);
+    test_load_store<Check::CasWeak, true>(number_of_load_threads,
+                                          number_of_store_threads,
+                                          cas_single_arg, number_of_iterations);
   }
 }
 }  // namespace findus
