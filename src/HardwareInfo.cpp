@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <iostream>
 #include <mpi.h>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
