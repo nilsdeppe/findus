@@ -335,7 +335,8 @@ int get_env_variable_with_default(const char* env_name, const int default_value)
 
 TEST_CASE("Atomic128") {
   const hardware_info::CpuInfo cpu_info = hardware_info::cpu_info();
-  constexpr int number_of_iterations = 500'000;
+  const int number_of_iterations = get_env_variable_with_default(
+      "FINDUS_ATOMIC128_NUMBER_OF_ITERATIONS", 500'000);
   const int number_of_load_threads = get_env_variable_with_default(
       "FINDUS_ATOMIC128_LOAD_THREADS", cpu_info.number_of_processing_units / 2);
   const int number_of_store_threads =
