@@ -18,7 +18,10 @@
 #include <thread>
 #include <vector>
 
+#include "findus/HardwareInfo.hpp"
+
 namespace findus {
+namespace {
 /*!
  * Pattern: 128-bit payload with utility functions.
  * Up to 8 bit patterns are used for atomic stress test.
@@ -295,10 +298,42 @@ void test_load_store(const int number_of_loads, const int number_of_stores,
   }
 }
 
+int get_env_variable_with_default(const char* env_name, const int default_value) {
+  const char* env_value = std::getenv(env_name);
+
+  if (env_value == nullptr) {
+    return default_value;
+  }
+
+  const std::string str_value(env_value);
+
+  if (str_value.empty()) {
+    return default_value;
+  }
+
+  try {
+    size_t pos;
+    const int value = std::stoi(str_value, &pos);
+
+    if (pos != str_value.length()) {
+      return default_value;
+    }
+
+    return value;
+  } catch (...) {
+    return default_value;
+  }
+}
+}  // namespace
+
 TEST_CASE("Atomic128") {
+  const hardware_info::CpuInfo cpu_info = hardware_info::cpu_info();
   constexpr int number_of_iterations = 500'000;
-  const int number_of_load_threads = 32;
-  const int number_of_store_threads = 32;
+  const int number_of_load_threads = get_env_variable_with_default(
+      "FINDUS_ATOMIC128_LOAD_THREADS", cpu_info.number_of_processing_units / 2);
+  const int number_of_store_threads =
+      get_env_variable_with_default("FINDUS_ATOMIC128_STORE_THREADS",
+                                    cpu_info.number_of_processing_units / 2);
 
   {
     using Ut = std::underlying_type_t<std::memory_order>;
