@@ -27,7 +27,11 @@ class Spinlock {
         //
         // If no hyperthreading is being used, this will actually slow down the
         // code.
+#if defined(__x86_64__) || defined(__i386__)
         __builtin_ia32_pause();
+#elif defined(__aarch64__) || defined(__arm__)
+        __asm__ __volatile__("yield" ::: "memory");
+#endif
       }
     }
   }
