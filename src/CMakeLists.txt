@@ -10,6 +10,7 @@ add_library(
   Atomic128.cpp
   BindTo.cpp
   Detail/ActiveObject.cpp
+  Detail/DetectArm.cpp
   Detail/DistributedObjectBase.cpp
   Detail/DistributedObjectIndex.cpp
   Detail/IndexConversion.cpp
