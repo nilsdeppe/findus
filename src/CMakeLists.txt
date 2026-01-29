@@ -69,10 +69,9 @@ target_link_libraries(
   ${LIBRARY}
   PUBLIC
   MPI::MPI_CXX
-  findus::CacheLineSize
   findus::Flags
   PRIVATE
-  $<BUILD_INTERFACE:findus::WarningFlags>
+  $<BUILD_INTERFACE:findus::InternalFlags>
   hwloc::hwloc
 )
 

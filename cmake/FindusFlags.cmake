@@ -60,6 +60,12 @@ set_property(TARGET findusFlags
   PROPERTY EXPORT_NAME Flags
 )
 
+add_library(findusInternalFlags INTERFACE)
+add_library(findus::InternalFlags ALIAS findusInternalFlags)
+set_property(TARGET findusInternalFlags
+  PROPERTY EXPORT_NAME InternalFlags
+)
+
 option(FINDUS_DEBUG_SYMBOLS "Add -g to CMAKE_CXX_FLAGS if ON, -g0 if OFF." ON)
 
 if(NOT ${FINDUS_DEBUG_SYMBOLS})
@@ -69,10 +75,10 @@ endif()
 # Always build with -g so we can view backtraces, etc. when production code
 # fails. This can be overridden by passing `-D DEBUG_SYMBOLS=OFF` to CMake
 if(${FINDUS_DEBUG_SYMBOLS})
-  set_property(TARGET findusFlags
+  set_property(TARGET findusInternalFlags
     APPEND PROPERTY INTERFACE_COMPILE_OPTIONS -g)
 else()
-  set_property(TARGET findusFlags
+  set_property(TARGET findusInternalFlags
     APPEND PROPERTY INTERFACE_COMPILE_OPTIONS -g0)
 endif(${FINDUS_DEBUG_SYMBOLS})
 
@@ -155,14 +161,21 @@ if (FINDUS_ENABLE_INSTALL)
 endif()
 
 target_link_libraries(
-  findusFlags
+  findusInternalFlags
   INTERFACE
   findus::EnableProfiling
   findus::KeepFramePointer
+  findus::WarningFlags
+)
+
+target_link_libraries(
+  findusFlags
+  INTERFACE
   findus::CacheLineSize
 )
 
 set(FINDUS_EXPORT_TARGETS_LIST
-  "${FINDUS_EXPORT_TARGETS_LIST};findusFlags;findusWarningFlags;\
-findusCacheLineSize;findusEnableProfiling;findusKeepFramePointer"
+  "${FINDUS_EXPORT_TARGETS_LIST};findusFlags;findusInternalFlags;\
+findusWarningFlags;findusCacheLineSize;findusEnableProfiling;\
+findusKeepFramePointer"
 )
