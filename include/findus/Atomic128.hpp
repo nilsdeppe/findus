@@ -10,7 +10,9 @@
 #include <memory>
 #include <type_traits>
 
+#include "Detail/BitCast.hpp"
 #include "findus/Detail/BitCast.hpp"
+#include "findus/Detail/DetectArm.hpp"
 
 namespace findus {
 namespace detail {
@@ -400,7 +402,292 @@ class Atomic128 {
       }
     }
 #elif defined(__aarch64__) || defined(_M_ARM64)
-#error "Unsupported architecture."
+
+    if constexpr (Store) {
+      if (memory_order == std::memory_order_seq_cst) {
+#if defined(FINDUS_ARM_LSE128)
+        std::uint64_t old_low, old_high;
+        __asm__ __volatile__(
+            "swppal %[old_low], %[old_high], %[new_low], %[new_high], "
+            "[%[ptr]]\n\t"
+            : [old_low] "=&r"(old_low), [old_high] "=&r"(old_high)
+            : [ptr] "r"(&destination), [new_low] "r"(source.low_bits),
+              [new_high] "r"(source.high_bits)
+            : "memory");
+#elif defined(FINDUS_ARM_LSE2) and defined(FINDUS_ARM_RCPC3)
+        __asm__ __volatile__(
+            "stilp  %[low], %[high], [%[ptr]]\n\t"
+            "dmb    ish\n\t"
+            :
+            : [ptr] "r"(&destination), [low] "r"(source.low_bits),
+              [high] "r"(source.high_bits)
+            : "memory");
+#elif defined(FINDUS_ARM_LSE2)
+        __asm__ __volatile__(
+            "dmb    ish\n\t"
+            "stp    %[low], %[high], [%[ptr]]\n\t"
+            "dmb    ish\n\t"
+            :
+            : [ptr] "r"(&destination), [low] "r"(source.low_bits),
+              [high] "r"(source.high_bits)
+            : "memory");
+#elif defined(FINDUS_ARM_LSE) and (not defined(__APPLE__))
+        std::uint64_t old_low, old_high, tmp_low, tmp_high;
+        __asm__ __volatile__(
+            "ldp    x2, x3, [%[ptr]]\n\t"
+            "1:\n\t"
+            "mov    %[tmp_low], x2\n\t"
+            "mov    %[tmp_high], x3\n\t"
+            "mov    x4, %[new_low]\n\t"
+            "mov    x5, %[new_high]\n\t"
+            "caspal x2, x3, x4, x5, [%[ptr]]\n\t"
+            "cmp    %[tmp_high], x3\n\t"
+            "ccmp   %[tmp_low], x2, #0, eq\n\t"
+            "b.ne   1b\n\t"
+            "mov    %[old_low], x2\n\t"
+            "mov    %[old_high], x3\n\t"
+            : [old_low] "=&r"(old_low), [old_high] "=&r"(old_high),
+              [tmp_low] "=&r"(tmp_low), [tmp_high] "=&r"(tmp_high)
+            : [ptr] "r"(&destination), [new_low] "r"(source.low_bits),
+              [new_high] "r"(source.high_bits)
+            : "memory", "cc", "x2", "x3", "x4", "x5");
+#else
+        std::uint64_t tmp;
+        __asm__ __volatile__(
+            "1:\n\t"
+            "ldaxp  xzr, %[tmp], [%[ptr]]\n\t"
+            "stlxp  %w[tmp], %[low], %[high], [%[ptr]]\n\t"
+            "cbnz   %w[tmp], 1b\n\t"
+            : [tmp] "=&r"(tmp)
+            : [ptr] "r"(&destination), [low] "r"(source.low_bits),
+              [high] "r"(source.high_bits)
+            : "memory");
+#endif
+      } else if (memory_order == std::memory_order_release) {
+#if defined(FINDUS_ARM_LSE128)
+        std::uint64_t old_low, old_high;
+
+        __asm__ __volatile__(
+            "swppl  %[old_low], %[old_high], %[new_low], %[new_high], "
+            "[%[ptr]]\n\t"
+            : [old_low] "=&r"(old_low), [old_high] "=&r"(old_high)
+            : [ptr] "r"(&destination), [new_low] "r"(source.low_bits),
+              [new_high] "r"(source.high_bits)
+            : "memory");
+#elif defined(FINDUS_ARM_RCPC3)
+        __asm__ __volatile__(
+            "stilp  %[low], %[high], [%[ptr]]\n\t"
+            :
+            : [ptr] "r"(&destination), [low] "r"(source.low_bits),
+              [high] "r"(source.high_bits)
+            : "memory");
+#elif defined(FINDUS_ARM_LSE2)
+        __asm__ __volatile__(
+            "dmb    ish\n\t"
+            "stp    %[low], %[high], [%[ptr]]\n\t"
+            :
+            : [ptr] "r"(&destination), [low] "r"(source.low_bits),
+              [high] "r"(source.high_bits)
+            : "memory");
+#elif defined(FINDUS_ARM_LSE) and (not defined(__APPLE__))
+        std::uint64_t old_low, old_high, tmp_low, tmp_high;
+
+        __asm__ __volatile__(
+            "ldp    x2, x3, [%[ptr]]\n\t"
+            "1:\n\t"
+            "mov    %[tmp_low], x2\n\t"
+            "mov    %[tmp_high], x3\n\t"
+            "mov    x4, %[new_low]\n\t"
+            "mov    x5, %[new_high]\n\t"
+            "caspl x2, x3, x4, x5, [%[ptr]]\n\t"
+            "cmp    %[tmp_high], x3\n\t"
+            "ccmp   %[tmp_low], x2, #0, eq\n\t"
+            "b.ne   1b\n\t"
+            "mov    %[old_low], x2\n\t"
+            "mov    %[old_high], x3\n\t"
+            : [old_low] "=&r"(old_low), [old_high] "=&r"(old_high),
+              [tmp_low] "=&r"(tmp_low), [tmp_high] "=&r"(tmp_high)
+            : [ptr] "r"(&destination), [new_low] "r"(source.low_bits),
+              [new_high] "r"(source.high_bits)
+            : "memory", "cc", "x2", "x3", "x4", "x5");
+#else
+        std::uint64_t tmp;
+
+        __asm__ __volatile__(
+            "1:\n\t"
+            "ldxp   xzr, %[tmp], [%[ptr]]\n\t"
+            "stlxp  %w[tmp], %[low], %[high], [%[ptr]]\n\t"
+            "cbnz   %w[tmp], 1b\n\t"
+            : [tmp] "=&r"(tmp)
+            : [ptr] "r"(&destination), [low] "r"(source.low_bits),
+              [high] "r"(source.high_bits)
+            : "memory");
+#endif
+      } else {
+        // memory_order_relaxed
+#if defined(FINDUS_ARM_RCPC3) or defined(FINDUS_ARM_LSE2)
+        __asm__ __volatile__(
+            "stp  %[low], %[high], [%[ptr]]\n\t"
+            :
+            : [ptr] "r"(&destination), [low] "r"(source.low_bits),
+              [high] "r"(source.high_bits));
+#elif defined(FINDUS_ARM_LSE) and (not defined(__APPLE__))
+        std::uint64_t old_low, old_high, tmp_low, tmp_high;
+
+        __asm__ __volatile__(
+            "ldp    x2, x3, [%[ptr]]\n\t"
+            "1:\n\t"
+            "mov    %[tmp_low], x2\n\t"
+            "mov    %[tmp_high], x3\n\t"
+            "mov    x4, %[new_low]\n\t"
+            "mov    x5, %[new_high]\n\t"
+            "caspl x2, x3, x4, x5, [%[ptr]]\n\t"
+            "cmp    %[tmp_high], x3\n\t"
+            "ccmp   %[tmp_low], x2, #0, eq\n\t"
+            "b.ne   1b\n\t"
+            "mov    %[old_low], x2\n\t"
+            "mov    %[old_high], x3\n\t"
+            : [old_low] "=&r"(old_low), [old_high] "=&r"(old_high),
+              [tmp_low] "=&r"(tmp_low), [tmp_high] "=&r"(tmp_high)
+            : [ptr] "r"(&destination), [new_low] "r"(source.low_bits),
+              [new_high] "r"(source.high_bits)
+            : "cc", "x2", "x3", "x4", "x5");
+#else
+        std::uint64_t tmp;
+
+        __asm__ __volatile__(
+            "1:\n\t"
+            "ldxp   xzr, %[tmp], [%[ptr]]\n\t"
+            "stlxp  %w[tmp], %[low], %[high], [%[ptr]]\n\t"
+            "cbnz   %w[tmp], 1b\n\t"
+            : [tmp] "=&r"(tmp)
+            : [ptr] "r"(&destination), [low] "r"(source.low_bits),
+              [high] "r"(source.high_bits)
+            : "memory");
+#endif
+      }
+    } else { // if constexpr (Store), i.e. we are doing a load.
+      if (memory_order == std::memory_order_seq_cst) {
+#if defined(FINDUS_ARM_RCPC3)
+        __asm__ __volatile__(
+            "ldar   %[low], [%[ptr]]\n\t"
+            "ldiapp %[low], %[high], [%[ptr]]\n\t"
+            : [low] "=&r"(destination.low_bits), [high] "=r"(
+                                                     destination.high_bits)
+            : [ptr] "r"(&source)
+            : "memory");
+#elif defined(FINDUS_ARM_LSE128) or defined(FINDUS_ARM_LSE2)
+        __asm__ __volatile__(
+            "ldar   %[low], [%[ptr]]\n\t"
+            "ldp    %[low], %[high], [%[ptr]]\n\t"
+            "dmb    ishld\n\t"
+            : [low] "=&r"(destination.low_bits), [high] "=r"(
+                                                     destination.high_bits)
+            : [ptr] "r"(&source)
+            : "memory");
+#elif defined(FINDUS_ARM_LSE) and (not defined(__APPLE__))
+        // on Apple hardware, caspal is slower than ldxp/stxp.
+        destination.low_bits = 0;
+        destination.high_bits = 0;
+        __asm__ __volatile__(
+            "mov    x2, xzr\n\t"
+            "mov    x3, xzr\n\t"
+            "caspal x2, x3, x2, x3, [%[ptr]]\n\t"
+            "mov    %[low], x2\n\t"
+            "mov    %[high], x3\n\t"
+            : [low] "=r"(destination.low_bits), [high] "=r"(
+                                                    destination.high_bits)
+            : [ptr] "r"(&source)
+            : "memory", "x2", "x3");
+#else
+        std::uint64_t tmp;
+        __asm__ __volatile__(
+            "1:\n\t"
+            "ldaxp  %[low], %[high], [%[ptr]]\n\t"
+            "stlxp  %w[tmp], %[low], %[high], [%[ptr]]\n\t"
+            "cbnz   %w[tmp], 1b\n\t"
+            : [low] "=&r"(destination.low_bits),
+              [high] "=&r"(destination.high_bits), [tmp] "=&r"(tmp)
+            : [ptr] "r"(&source)
+            : "memory");
+#endif
+      } else if (memory_order == std::memory_order_acquire) {
+#if defined(FINDUS_ARM_RCPC3)
+        __asm__ __volatile__(
+            "ldiapp %[low], %[high], [%[ptr]]\n\t"
+            : [low] "=&r"(destination.low_bits), [high] "=r"(
+                                                     destination.high_bits)
+            : [ptr] "r"(&source)
+            : "memory");
+#elif defined(FINDUS_ARM_LSE128) or defined(FINDUS_ARM_LSE2)
+        __asm__ __volatile__(
+            "ldp    %[low], %[high], [%[ptr]]\n\t"
+            "dmb    ishld\n\t"
+            : [low] "=&r"(destination.low_bits), [high] "=r"(
+                                                     destination.high_bits)
+            : [ptr] "r"(&source)
+            : "memory");
+#elif defined(FINDUS_ARM_LSE) and (not defined(__APPLE__))
+        // on Apple hardware, caspal is slower than ldxp/stxp.
+        destination.low_bits = 0;
+        destination.high_bits = 0;
+        __asm__ __volatile__(
+            "mov    x2, xzr\n\t"
+            "mov    x3, xzr\n\t"
+            "caspa  x2, x3, x2, x3, [%[ptr]]\n\t"
+            "mov    %[low], x2\n\t"
+            "mov    %[high], x3\n\t"
+            : [low] "=r"(destination.low_bits), [high] "=r"(
+                                                    destination.high_bits)
+            : [ptr] "r"(&source)
+            : "memory", "x2", "x3");
+#else
+        std::uint64_t tmp;
+        __asm__ __volatile__(
+            "1:\n\t"
+            "ldaxp  %[low], %[high], [%[ptr]]\n\t"
+            "stxp  %w[tmp], %[low], %[high], [%[ptr]]\n\t"
+            "cbnz   %w[tmp], 1b\n\t"
+            : [low] "=&r"(destination.low_bits),
+              [high] "=&r"(destination.high_bits), [tmp] "=&r"(tmp)
+            : [ptr] "r"(&source)
+            : "memory");
+#endif
+      } else {
+        // std::memory_order_relaxed
+#if defined(FINDUS_ARM_RCPC3) or defined(FINDUS_ARM_LSE128) or                 \
+    defined(FINDUS_ARM_LSE2)
+        __asm__ __volatile__(
+            "ldp    %[low], %[high], [%[ptr]]\n\t"
+            : [low] "=&r"(destination.low_bits), [high] "=r"(
+                                                     destination.high_bits)
+            : [ptr] "r"(&source));
+#elif defined(FINDUS_ARM_LSE) and (not defined(__APPLE__))
+        destination.low_bits = 0;
+        destination.high_bits = 0;
+        __asm__ __volatile__(
+            "mov    x2, xzr\n\t"
+            "mov    x3, xzr\n\t"
+            "casp  x2, x3, x2, x3, [%[ptr]]\n\t"
+            "mov    %[low], x2\n\t"
+            "mov    %[high], x3\n\t"
+            : [low] "=r"(destination.low_bits), [high] "=r"(
+                                                    destination.high_bits)
+            : [ptr] "r"(&source)
+            : "memory", "x2", "x3");
+#else
+        std::uint32_t tmp;
+        __asm__ __volatile__(
+            "1:\n\t"
+            "ldxp  %[low], %[high], [%[ptr]]\n\t"
+            "stxp  %w[tmp], %[low], %[high], [%[ptr]]\n\t"
+            "cbnz   %w[tmp], 1b\n\t"
+            : [low] "=&r"(destination.low_bits),
+              [high] "=&r"(destination.high_bits), [tmp] "=&r"(tmp)
+            : [ptr] "r"(&source));
+#endif
+      }
+    }
 #elif defined(__PPC64__) || defined(__ppc64__) || defined(_ARCH_PPC64)
 #error "Unsupported architecture."
 #else
@@ -484,7 +771,214 @@ class Atomic128 {
                 sizeof(T));
     return was_successful;
 #elif defined(__aarch64__) || defined(_M_ARM64)
-#error "Unsupported architecture."
+    bool was_successful;
+    InternalData internal_expected =
+        findus::detail::bit_cast<InternalData>(expected);
+    InternalData exp = internal_expected;
+    const InternalData internal_desired =
+        findus::detail::bit_cast<InternalData>(desired);
+#if defined(FINDUS_ARM_LSE)
+    if ((success == std::memory_order_seq_cst or
+         success == std::memory_order_acq_rel) or
+        failure == std::memory_order_seq_cst or
+        (success == std::memory_order_release and
+         failure == std::memory_order_acquire)) {
+      __asm__ __volatile__(
+          "mov    x2, %[old_low]\n\t"
+          "mov    x3, %[old_high]\n\t"
+          "mov    x4, %[new_low]\n\t"
+          "mov    x5, %[new_high]\n\t"
+          "caspal x2, x3, x4, x5, [%[ptr]]\n\t"
+          "mov    %[old_low], x2\n\t"
+          "mov    %[old_high], x3\n\t"
+          "cmp    %[old_low], %[exp_low]\n\t"
+          "ccmp   %[old_high], %[exp_high], #0, eq\n\t"
+          "cset   %w[was_successful], eq\n\t"
+          : [old_low] "+&r"(internal_expected.low_bits),
+            [old_high] "+&r"(internal_expected.high_bits),
+            [was_successful] "=r"(was_successful)
+          : [ptr] "r"(&destination), [new_low] "r"(internal_desired.low_bits),
+            [new_high] "r"(internal_desired.high_bits),
+            [exp_low] "r"(exp.low_bits), [exp_high] "r"(exp.high_bits)
+          : "memory", "cc", "x2", "x3", "x4", "x5");
+    } else if (success == std::memory_order_acquire or
+               failure == std::memory_order_acquire) {
+      __asm__ __volatile__(
+          "mov    x2, %[old_low]\n\t"
+          "mov    x3, %[old_high]\n\t"
+          "mov    x4, %[new_low]\n\t"
+          "mov    x5, %[new_high]\n\t"
+          "caspa x2, x3, x4, x5, [%[ptr]]\n\t"
+          "mov    %[old_low], x2\n\t"
+          "mov    %[old_high], x3\n\t"
+          "cmp    %[old_low], %[exp_low]\n\t"
+          "ccmp   %[old_high], %[exp_high], #0, eq\n\t"
+          "cset   %w[was_successful], eq\n\t"
+          : [old_low] "+&r"(internal_expected.low_bits),
+            [old_high] "+&r"(internal_expected.high_bits),
+            [was_successful] "=r"(was_successful)
+          : [ptr] "r"(&destination), [new_low] "r"(internal_desired.low_bits),
+            [new_high] "r"(internal_desired.high_bits),
+            [exp_low] "r"(exp.low_bits), [exp_high] "r"(exp.high_bits)
+          : "memory", "cc", "x2", "x3", "x4", "x5");
+    } else if (success == std::memory_order_release) {
+      __asm__ __volatile__(
+          "mov    x2, %[old_low]\n\t"
+          "mov    x3, %[old_high]\n\t"
+          "mov    x4, %[new_low]\n\t"
+          "mov    x5, %[new_high]\n\t"
+          "caspl x2, x3, x4, x5, [%[ptr]]\n\t"
+          "mov    %[old_low], x2\n\t"
+          "mov    %[old_high], x3\n\t"
+          "cmp    %[old_low], %[exp_low]\n\t"
+          "ccmp   %[old_high], %[exp_high], #0, eq\n\t"
+          "cset   %w[was_successful], eq\n\t"
+          : [old_low] "+&r"(internal_expected.low_bits),
+            [old_high] "+&r"(internal_expected.high_bits),
+            [was_successful] "=r"(was_successful)
+          : [ptr] "r"(&destination), [new_low] "r"(internal_desired.low_bits),
+            [new_high] "r"(internal_desired.high_bits),
+            [exp_low] "r"(exp.low_bits), [exp_high] "r"(exp.high_bits)
+          : "memory", "cc", "x2", "x3", "x4", "x5");
+    } else {
+      __asm__ __volatile__(
+          "mov    x2, %[old_low]\n\t"
+          "mov    x3, %[old_high]\n\t"
+          "mov    x4, %[new_low]\n\t"
+          "mov    x5, %[new_high]\n\t"
+          "casp x2, x3, x4, x5, [%[ptr]]\n\t"
+          "mov    %[old_low], x2\n\t"
+          "mov    %[old_high], x3\n\t"
+          "cmp    %[old_low], %[exp_low]\n\t"
+          "ccmp   %[old_high], %[exp_high], #0, eq\n\t"
+          "cset   %w[was_successful], eq\n\t"
+          : [old_low] "+&r"(internal_expected.low_bits),
+            [old_high] "+&r"(internal_expected.high_bits),
+            [was_successful] "=r"(was_successful)
+          : [ptr] "r"(&destination), [new_low] "r"(internal_desired.low_bits),
+            [new_high] "r"(internal_desired.high_bits),
+            [exp_low] "r"(exp.low_bits), [exp_high] "r"(exp.high_bits)
+          : "cc", "x2", "x3", "x4", "x5");
+    }
+#else
+    std::uint32_t tmp;
+    if ((success == std::memory_order_seq_cst or
+         success == std::memory_order_acq_rel) or
+        failure == std::memory_order_seq_cst or
+        (success == std::memory_order_release and
+         failure == std::memory_order_acquire)) {
+      __asm__ __volatile__(
+          "1:\n\t"
+          "ldaxp  %[old_low], %[old_high], [%[ptr]]\n\t"
+          "cmp    %[old_low], %[exp_low]\n\t"
+          "cset   %w[tmp], ne\n\t"
+          "cmp    %[old_high], %[exp_high]\n\t"
+          "cinc   %w[tmp], %w[tmp], ne\n\t"
+          "cbz    %w[tmp], 2f\n\t"
+          "stlxp  %w[tmp], %[old_low], %[old_high], [%[ptr]]\n\t"
+          "cbnz   %w[tmp], 1b\n\t"
+          "b      3f\n\t"
+          "2:\n\t"
+          "stlxp  %w[tmp], %[new_low], %[new_high], [%[ptr]]\n\t"
+          "cbnz   %w[tmp], 1b\n\t"
+          "3:\n\t"
+          "cmp    %[old_low], %[exp_low]\n\t"
+          "ccmp   %[old_high], %[exp_high], #0, eq\n\t"
+          "cset   %w[was_successful], eq\n\t"
+          : [old_low] "+&r"(internal_expected.low_bits),
+            [old_high] "+&r"(internal_expected.high_bits), [tmp] "=&r"(tmp),
+            [was_successful] "=r"(was_successful)
+          : [ptr] "r"(&destination), [exp_low] "r"(exp.low_bits),
+            [exp_high] "r"(exp.high_bits),
+            [new_low] "r"(internal_desired.low_bits),
+            [new_high] "r"(internal_desired.high_bits)
+          : "memory", "cc");
+    } else if (success == std::memory_order_acquire or
+               failure == std::memory_order_acquire) {
+      __asm__ __volatile__(
+          "1:\n\t"
+          "ldaxp  %[old_low], %[old_high], [%[ptr]]\n\t"
+          "cmp    %[old_low], %[exp_low]\n\t"
+          "cset   %w[tmp], ne\n\t"
+          "cmp    %[old_high], %[exp_high]\n\t"
+          "cinc   %w[tmp], %w[tmp], ne\n\t"
+          "cbz    %w[tmp], 2f\n\t"
+          "stxp  %w[tmp], %[old_low], %[old_high], [%[ptr]]\n\t"
+          "cbnz   %w[tmp], 1b\n\t"
+          "b      3f\n\t"
+          "2:\n\t"
+          "stlxp  %w[tmp], %[new_low], %[new_high], [%[ptr]]\n\t"
+          "cbnz   %w[tmp], 1b\n\t"
+          "3:\n\t"
+          "cmp    %[old_low], %[exp_low]\n\t"
+          "ccmp   %[old_high], %[exp_high], #0, eq\n\t"
+          "cset   %w[was_successful], eq\n\t"
+          : [old_low] "+&r"(internal_expected.low_bits),
+            [old_high] "+&r"(internal_expected.high_bits), [tmp] "=&r"(tmp),
+            [was_successful] "=r"(was_successful)
+          : [ptr] "r"(&destination), [exp_low] "r"(exp.low_bits),
+            [exp_high] "r"(exp.high_bits),
+            [new_low] "r"(internal_desired.low_bits),
+            [new_high] "r"(internal_desired.high_bits)
+          : "memory", "cc");
+    } else if (success == std::memory_order_release) {
+      __asm__ __volatile__(
+          "1:\n\t"
+          "ldxp  %[old_low], %[old_high], [%[ptr]]\n\t"
+          "cmp    %[old_low], %[exp_low]\n\t"
+          "cset   %w[tmp], ne\n\t"
+          "cmp    %[old_high], %[exp_high]\n\t"
+          "cinc   %w[tmp], %w[tmp], ne\n\t"
+          "cbz    %w[tmp], 2f\n\t"
+          "stlxp  %w[tmp], %[old_low], %[old_high], [%[ptr]]\n\t"
+          "cbnz   %w[tmp], 1b\n\t"
+          "b      3f\n\t"
+          "2:\n\t"
+          "stlxp  %w[tmp], %[new_low], %[new_high], [%[ptr]]\n\t"
+          "cbnz   %w[tmp], 1b\n\t"
+          "3:\n\t"
+          "cmp    %[old_low], %[exp_low]\n\t"
+          "ccmp   %[old_high], %[exp_high], #0, eq\n\t"
+          "cset   %w[was_successful], eq\n\t"
+          : [old_low] "+&r"(internal_expected.low_bits),
+            [old_high] "+&r"(internal_expected.high_bits), [tmp] "=&r"(tmp),
+            [was_successful] "=r"(was_successful)
+          : [ptr] "r"(&destination), [exp_low] "r"(exp.low_bits),
+            [exp_high] "r"(exp.high_bits),
+            [new_low] "r"(internal_desired.low_bits),
+            [new_high] "r"(internal_desired.high_bits)
+          : "memory", "cc");
+    } else {
+      __asm__ __volatile__(
+          "1:\n\t"
+          "ldxp  %[old_low], %[old_high], [%[ptr]]\n\t"
+          "cmp    %[old_low], %[exp_low]\n\t"
+          "cset   %w[tmp], ne\n\t"
+          "cmp    %[old_high], %[exp_high]\n\t"
+          "cinc   %w[tmp], %w[tmp], ne\n\t"
+          "cbz    %w[tmp], 2f\n\t"
+          "stlxp  %w[tmp], %[old_low], %[old_high], [%[ptr]]\n\t"
+          "cbnz   %w[tmp], 1b\n\t"
+          "b      3f\n\t"
+          "2:\n\t"
+          "stxp  %w[tmp], %[new_low], %[new_high], [%[ptr]]\n\t"
+          "cbnz   %w[tmp], 1b\n\t"
+          "3:\n\t"
+          "cmp    %[old_low], %[exp_low]\n\t"
+          "ccmp   %[old_high], %[exp_high], #0, eq\n\t"
+          "cset   %w[was_successful], eq\n\t"
+          : [old_low] "+&r"(internal_expected.low_bits),
+            [old_high] "+&r"(internal_expected.high_bits), [tmp] "=&r"(tmp),
+            [was_successful] "=r"(was_successful)
+          : [ptr] "r"(&destination), [exp_low] "r"(exp.low_bits),
+            [exp_high] "r"(exp.high_bits),
+            [new_low] "r"(internal_desired.low_bits),
+            [new_high] "r"(internal_desired.high_bits)
+          : "memory", "cc");
+    }
+#endif
+    expected = detail::bit_cast<T>(internal_expected);
+    return was_successful;
 #elif defined(__PPC64__) || defined(__ppc64__) || defined(_ARCH_PPC64)
 #error "Unsupported architecture."
 #else
@@ -497,7 +991,7 @@ class Atomic128 {
                          const std::memory_order order) noexcept {
     static_assert(std::is_same_v<std::remove_cv_t<Destination>, InternalData>);
     InternalData result_data{};
-#if defined(__clang__) || defined(__GNUC__) || defined(__GNUG__)
+#if defined(__x86_64__) || defined(_M_X64)
     // This assembly block:
     //   - Executes `lock cmpxchg16b [dest_data]`, which atomically
     //     compares RDX:RAX with [dest_data]. If they match, [dest_data]
@@ -538,7 +1032,180 @@ class Atomic128 {
                            : "memory", "cc");
     }
 #elif defined(__aarch64__) || defined(_M_ARM64)
-#error "Unsupported architecture."
+    if (order == std::memory_order_seq_cst or
+        order == std::memory_order_acq_rel) {
+#if defined(FINDUS_ARM_LSE128)
+      result_data = desired;
+      __asm__ __volatile__(
+          "swppal %[low], %[high], [%[ptr]]\n\t"
+          : [low] "+r"(result_data.low_bits), [high] "+r"(result_data.high_bits)
+          : [ptr] "r"(&destination)
+          : "memory");
+#elif defined(FINDUS_ARM_LSE) and (not defined(__APPLE__))
+      std::uint64_t tmp_low, tmp_high;
+
+      __asm__ __volatile__(
+          "ldp    x2, x3, [%[ptr]]\n\t"
+          "mov    x4, %[new_low]\n\t"
+          "mov    x5, %[new_high]\n\t"
+          "1:\n\t"
+          "mov    %[tmp_low], x2\n\t"
+          "mov    %[tmp_high], x3\n\t"
+          "caspal x2, x3, x4, x5, [%[ptr]]\n\t"
+          "cmp    %[tmp_high], x3\n\t"
+          "ccmp   %[tmp_low], x2, #0, eq\n\t"
+          "b.ne   1b\n\t"
+          "mov    %[old_low], x2\n\t"
+          "mov    %[old_high], x3\n\t"
+          : [old_low] "=&r"(result_data.low_bits),
+            [old_high] "=&r"(result_data.high_bits), [tmp_low] "=&r"(tmp_low),
+            [tmp_high] "=&r"(tmp_high)
+          : [ptr] "r"(&destination), [new_low] "r"(desired.low_bits),
+            [new_high] "r"(desired.high_bits)
+          : "memory", "cc", "x2", "x3", "x4", "x5");
+#else
+      std::uint32_t tmp;
+      __asm__ __volatile__(
+          "1:\n\t"
+          "ldaxp  %[old_low], %[old_high], [%[ptr]]\n\t"
+          "stlxp  %w[tmp], %[new_low], %[new_high], [%[ptr]]\n\t"
+          "cbnz   %w[tmp], 1b\n\t"
+          : [old_low] "=&r"(result_data.low_bits),
+            [old_high] "=&r"(result_data.high_bits), [tmp] "=&r"(tmp)
+          : [ptr] "r"(&destination), [new_low] "r"(desired.low_bits),
+            [new_high] "r"(desired.high_bits)
+          : "memory");
+#endif
+    } else if (order == std::memory_order_acquire) {
+#if defined(FINDUS_ARM_LSE128)
+      result_data = desired;
+      __asm__ __volatile__(
+          "swppa %[low], %[high], [%[ptr]]\n\t"
+          : [low] "+r"(result_data.low_bits), [high] "+r"(result_data.high_bits)
+          : [ptr] "r"(&destination)
+          : "memory");
+#elif defined(FINDUS_ARM_LSE) and (not defined(__APPLE__))
+      std::uint64_t tmp_low, tmp_high;
+
+      __asm__ __volatile__(
+          "ldp    x2, x3, [%[ptr]]\n\t"
+          "mov    x4, %[new_low]\n\t"
+          "mov    x5, %[new_high]\n\t"
+          "1:\n\t"
+          "mov    %[tmp_low], x2\n\t"
+          "mov    %[tmp_high], x3\n\t"
+          "caspa x2, x3, x4, x5, [%[ptr]]\n\t"
+          "cmp    %[tmp_high], x3\n\t"
+          "ccmp   %[tmp_low], x2, #0, eq\n\t"
+          "b.ne   1b\n\t"
+          "mov    %[old_low], x2\n\t"
+          "mov    %[old_high], x3\n\t"
+          : [old_low] "=&r"(result_data.low_bits),
+            [old_high] "=&r"(result_data.high_bits), [tmp_low] "=&r"(tmp_low),
+            [tmp_high] "=&r"(tmp_high)
+          : [ptr] "r"(&destination), [new_low] "r"(desired.low_bits),
+            [new_high] "r"(desired.high_bits)
+          : "memory", "cc", "x2", "x3", "x4", "x5");
+#else
+      std::uint32_t tmp;
+      __asm__ __volatile__(
+          "1:\n\t"
+          "ldaxp  %[old_low], %[old_high], [%[ptr]]\n\t"
+          "stxp  %w[tmp], %[new_low], %[new_high], [%[ptr]]\n\t"
+          "cbnz   %w[tmp], 1b\n\t"
+          : [old_low] "=&r"(result_data.low_bits),
+            [old_high] "=&r"(result_data.high_bits), [tmp] "=&r"(tmp)
+          : [ptr] "r"(&destination), [new_low] "r"(desired.low_bits),
+            [new_high] "r"(desired.high_bits)
+          : "memory");
+#endif
+    }
+    if (order == std::memory_order_release) {
+#if defined(FINDUS_ARM_LSE128)
+      result_data = desired;
+      __asm__ __volatile__(
+          "swppl %[low], %[high], [%[ptr]]\n\t"
+          : [low] "+r"(result_data.low_bits), [high] "+r"(result_data.high_bits)
+          : [ptr] "r"(&destination)
+          : "memory");
+#elif defined(FINDUS_ARM_LSE) and (not defined(__APPLE__))
+      std::uint64_t tmp_low, tmp_high;
+
+      __asm__ __volatile__(
+          "ldp    x2, x3, [%[ptr]]\n\t"
+          "mov    x4, %[new_low]\n\t"
+          "mov    x5, %[new_high]\n\t"
+          "1:\n\t"
+          "mov    %[tmp_low], x2\n\t"
+          "mov    %[tmp_high], x3\n\t"
+          "caspl x2, x3, x4, x5, [%[ptr]]\n\t"
+          "cmp    %[tmp_high], x3\n\t"
+          "ccmp   %[tmp_low], x2, #0, eq\n\t"
+          "b.ne   1b\n\t"
+          "mov    %[old_low], x2\n\t"
+          "mov    %[old_high], x3\n\t"
+          : [old_low] "=&r"(result_data.low_bits),
+            [old_high] "=&r"(result_data.high_bits), [tmp_low] "=&r"(tmp_low),
+            [tmp_high] "=&r"(tmp_high)
+          : [ptr] "r"(&destination), [new_low] "r"(desired.low_bits),
+            [new_high] "r"(desired.high_bits)
+          : "memory", "cc", "x2", "x3", "x4", "x5");
+#else
+      std::uint32_t tmp;
+      __asm__ __volatile__(
+          "1:\n\t"
+          "ldxp  %[old_low], %[old_high], [%[ptr]]\n\t"
+          "stlxp  %w[tmp], %[new_low], %[new_high], [%[ptr]]\n\t"
+          "cbnz   %w[tmp], 1b\n\t"
+          : [old_low] "=&r"(result_data.low_bits),
+            [old_high] "=&r"(result_data.high_bits), [tmp] "=&r"(tmp)
+          : [ptr] "r"(&destination), [new_low] "r"(desired.low_bits),
+            [new_high] "r"(desired.high_bits)
+          : "memory");
+#endif
+    }
+    if (order == std::memory_order_relaxed) {
+#if defined(FINDUS_ARM_LSE128)
+      result_data = desired;
+      __asm__ __volatile__(
+          "swpp %[low], %[high], [%[ptr]]\n\t"
+          : [low] "+r"(result_data.low_bits), [high] "+r"(result_data.high_bits)
+          : [ptr] "r"(&destination));
+#elif defined(FINDUS_ARM_LSE) and (not defined(__APPLE__))
+      std::uint64_t tmp_low, tmp_high;
+
+      __asm__ __volatile__(
+          "ldp    x2, x3, [%[ptr]]\n\t"
+          "mov    x4, %[new_low]\n\t"
+          "mov    x5, %[new_high]\n\t"
+          "1:\n\t"
+          "mov    %[tmp_low], x2\n\t"
+          "mov    %[tmp_high], x3\n\t"
+          "casp x2, x3, x4, x5, [%[ptr]]\n\t"
+          "cmp    %[tmp_high], x3\n\t"
+          "ccmp   %[tmp_low], x2, #0, eq\n\t"
+          "b.ne   1b\n\t"
+          "mov    %[old_low], x2\n\t"
+          "mov    %[old_high], x3\n\t"
+          : [old_low] "=&r"(result_data.low_bits),
+            [old_high] "=&r"(result_data.high_bits), [tmp_low] "=&r"(tmp_low),
+            [tmp_high] "=&r"(tmp_high)
+          : [ptr] "r"(&destination), [new_low] "r"(desired.low_bits),
+            [new_high] "r"(desired.high_bits)
+          : "cc", "x2", "x3", "x4", "x5");
+#else
+      std::uint32_t tmp;
+      __asm__ __volatile__(
+          "1:\n\t"
+          "ldxp  %[old_low], %[old_high], [%[ptr]]\n\t"
+          "stxp  %w[tmp], %[new_low], %[new_high], [%[ptr]]\n\t"
+          "cbnz   %w[tmp], 1b\n\t"
+          : [old_low] "=&r"(result_data.low_bits),
+            [old_high] "=&r"(result_data.high_bits), [tmp] "=&r"(tmp)
+          : [ptr] "r"(&destination), [new_low] "r"(desired.low_bits),
+            [new_high] "r"(desired.high_bits));
+#endif
+    }
 #elif defined(__PPC64__) || defined(__ppc64__) || defined(_ARCH_PPC64)
 #error "Unsupported architecture."
 #else

@@ -4,8 +4,6 @@
 
 #include "findus/Atomic128.hpp"
 
-#include <type_traits>
-
 #if defined(FINDUS_ENABLE_TESTING)
 
 #include <array>
@@ -16,6 +14,7 @@
 #include <ios>
 #include <iostream>
 #include <thread>
+#include <type_traits>
 #include <vector>
 
 #include "findus/HardwareInfo.hpp"
@@ -331,6 +330,94 @@ int get_env_variable_with_default(const char* env_name, const int default_value)
     return default_value;
   }
 }
+
+struct alignas(16) Data16 {
+  std::uint64_t a, b;
+};
+
+bool operator==(const Data16 &lhs, const Data16 &rhs) {
+  return lhs.a == rhs.a and lhs.b == rhs.b;
+}
+
+std::ostream &operator<<(std::ostream &os, const Data16 &t) {
+  return os << '{' << t.a << ',' << t.b << '}';
+}
+
+void test_correct_values() {
+  std::cout << "Testing correct value behavior.\n" << std::flush;
+  Atomic128<Data16> t{{2, 7}};
+  for (const auto order : {std::memory_order_relaxed, std::memory_order_seq_cst,
+                           std::memory_order_acquire}) {
+    INFO("load");
+    CAPTURE(order);
+    REQUIRE(t.load(order) == Data16{2, 7});
+  }
+
+  std::uint64_t a = 13, b = 115;
+  for (const auto order : {std::memory_order_relaxed, std::memory_order_seq_cst,
+                           std::memory_order_acquire}) {
+    INFO("store");
+    CAPTURE(order);
+    CAPTURE(a);
+    CAPTURE(b);
+    t.store(Data16{a, b}, order);
+    REQUIRE(t.load(order) == Data16{a, b});
+    ++a;
+    ++b;
+  }
+
+  for (const auto order : {std::memory_order_relaxed, std::memory_order_seq_cst,
+                           std::memory_order_acquire, std::memory_order_release,
+                           std::memory_order_acq_rel}) {
+    INFO("exchange");
+    CAPTURE(order);
+    CAPTURE(a);
+    CAPTURE(b);
+    REQUIRE(t.exchange(Data16{a, b}, order) == Data16{a - 1, b - 1});
+    ++a;
+    ++b;
+  }
+
+  for (const auto success_order :
+       {std::memory_order_relaxed, std::memory_order_seq_cst,
+        std::memory_order_acquire, std::memory_order_release,
+        std::memory_order_acq_rel}) {
+    INFO("CAS");
+    CAPTURE(success_order);
+    for (const auto failure_order :
+         {std::memory_order_relaxed, std::memory_order_seq_cst,
+          std::memory_order_acquire}) {
+      CAPTURE(failure_order);
+      CAPTURE(a);
+      CAPTURE(b);
+      const Data16 incorrect_previous{a - 2, b - 2};
+      const Data16 previous{a - 1, b - 1};
+      const Data16 desired{a, b};
+
+      Data16 expected = incorrect_previous;
+      CHECK_FALSE(t.compare_exchange_strong(expected, desired, success_order,
+                                            failure_order));
+      REQUIRE(expected == previous);
+
+      expected = incorrect_previous;
+      CHECK_FALSE(t.compare_exchange_weak(expected, desired, success_order,
+                                          failure_order));
+      REQUIRE(expected == previous);
+
+      CHECK(t.compare_exchange_strong(expected, desired, success_order,
+                                      failure_order));
+      REQUIRE(expected == previous);
+
+      t.store(previous, std::memory_order_release);
+
+      CHECK(t.compare_exchange_weak(expected, desired, success_order,
+                                    failure_order));
+      REQUIRE(expected == previous);
+      ++a;
+      ++b;
+    }
+  }
+}
 }  // namespace
 
 TEST_CASE("Atomic128") {
@@ -356,7 +443,9 @@ TEST_CASE("Atomic128") {
               << static_cast<Ut>(std::memory_order_seq_cst) << "\n";
     std::cout << "\n" << std::flush;
   }
+  test_correct_values();
 
+  std::cout << "Testing that no tearing happens.\n" << std::flush;
   std::cout << "Starting LoadStore\n" << std::flush;
   test_load_store<Check::LoadStore, false>(number_of_load_threads,
                                            number_of_store_threads, false,
