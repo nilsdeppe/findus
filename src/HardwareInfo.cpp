@@ -53,7 +53,9 @@ std::array<CacheInfo, 3> cache_info() {
       default:
         throw Exception("Unknown cache level " + std::to_string(i));
     };
-    if (hwloc_obj_type_is_cache(cache->type)) {
+    if (cache == NULL) {
+      info[i - 1] = {i, 0, 0};
+    } else if (hwloc_obj_type_is_cache(cache->type)) {
       info[i - 1] = {i, cache->attr->cache.size, cache->attr->cache.linesize};
     }
   }
@@ -374,12 +376,13 @@ TEST_CASE("HardwareInfo") {
   CHECK_THROWS_WITH_AS(cache_info(0), "Cache level must be 1, 2, or 3, got 0",
                        Exception);
   for (size_t i = 1; i < 4; ++i) {
+    CAPTURE(i);
     const CacheInfo ci = cache_info(i);
     CHECK(ci.level == i);
-    CHECK(ci.size > 0);
+    CHECK(ci.size >= 0);
     // Cache size is likely under 1GB on all systems. Increase in necessary.
     CHECK(ci.size < 1024 * 1024 * 1024);
-    CHECK(ci.linesize > 0);
+    CHECK(ci.linesize >= 0);
     // Cache size is likely under 1kB on all systems. Increase in necessary.
     CHECK(ci.linesize < 1024);
   }
