@@ -76,6 +76,32 @@ target_link_libraries(
   hwloc::hwloc
 )
 
+# We specify the march=native flag here so that users can specify a different
+# flag when they compile their packages.
+set(FINDUS_OVERRIDE_ARCH "" CACHE STRING
+  "Overrides -march=native flag when compiling findus.")
+
+if(NOT "${FINDUS_OVERRIDE_ARCH}" STREQUAL "")
+  target_compile_options(findus
+    PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-march=${FINDUS_OVERRIDE_ARCH}>
+  )
+else()
+  include(CheckCXXCompilerFlag)
+
+  check_cxx_compiler_flag("-march=native" COMPILER_SUPPORTS_MARCH_NATIVE)
+
+  if(COMPILER_SUPPORTS_MARCH_NATIVE)
+    target_compile_options(findus
+      PRIVATE
+      $<$<COMPILE_LANGUAGE:CXX>:-march=native>
+    )
+  else()
+    message(STATUS "Cannot compile with -march=native with this hardware and \
+compiler. This is a known issue for clang-14 and older with ARM64.")
+  endif()
+endif()
+
 if (PROJECT_IS_TOP_LEVEL AND BUILD_TESTING AND TARGET doctest::doctest)
   target_sources(findus
     PRIVATE
