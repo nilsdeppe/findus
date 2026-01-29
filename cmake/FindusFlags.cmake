@@ -71,6 +71,9 @@ endif()
 if(${FINDUS_DEBUG_SYMBOLS})
   set_property(TARGET findusFlags
     APPEND PROPERTY INTERFACE_COMPILE_OPTIONS -g)
+else()
+  set_property(TARGET findusFlags
+    APPEND PROPERTY INTERFACE_COMPILE_OPTIONS -g0)
 endif(${FINDUS_DEBUG_SYMBOLS})
 
 option(ENABLE_PROFILING "Enables various options to make profiling easier" OFF)
