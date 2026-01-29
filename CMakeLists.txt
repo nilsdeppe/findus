@@ -64,6 +64,7 @@ endif()
 include(Sanitizers)
 include(SetupCcache)
 include(SetupLibcxx)
+include(PrintArch)
 
 if (NOT TARGET MPI::MPI_CXX)
   find_package(MPI REQUIRED COMPONENTS CXX)
