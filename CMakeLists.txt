@@ -148,18 +148,4 @@ if (FINDUS_ENABLE_INSTALL)
   )
 endif()
 
-if (PROJECT_IS_TOP_LEVEL)
-  add_executable(
-    Main
-    Main.cpp
-  )
-
-  target_link_libraries(
-    Main
-    PUBLIC
-    MPI::MPI_CXX
-    findus
-  )
-endif()
-
 list(POP_BACK CMAKE_MODULE_PATH)

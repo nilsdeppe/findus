@@ -58,6 +58,32 @@ build_and_test() {
             ctest --verbose --output-on-failure -R "Atomic128"
         fi
     fi
+
+    # Test that we can import findus into another CMake project.
+    mkdir build_import && cd build_import
+    findus_DIR=../Install cmake -S ../../ci/TestImport -B ./ \
+                          -D FINDUS_USE_LIBCXX=${USE_LIBCXX}
+    if [[ ! -f compile_commands.json ]]; then
+        echo "Error: compile_commands.json not found"
+        exit 1
+    fi
+    if ! grep -q "DFINDUS_CACHE_LINE_SIZE" compile_commands.json; then
+        echo "Error: compile_commands.json missing DFINDUS_CACHE_LINE_SIZE."
+        cat compile_commands.json
+        exit 1
+    fi
+    if [[ "${FINDUS_MIMIC_CHARM_PUPER}" == "ON" ]]; then
+        if ! grep -q "DFINDUS_MIMIC_CHARM_PUPER" compile_commands.json; then
+            echo "Error: compile_commands.json missing DFINDUS_MIMIC_CHARM_PUPER"
+            cat compile_commands.json
+            exit 1
+        fi
+    fi
+    make -j 4
+    mpirun -np 2 ./Main \
+           --findus-task-threads-per-process 1 \
+           --findus-bind-to None
+    cd ..
 }
 
 # Because running the extended tests is quite slow, we only run them
