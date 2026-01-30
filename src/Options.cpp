@@ -98,7 +98,8 @@ BindTo to_bind_to(const std::unordered_map<std::string, std::string>& args,
     return BindTo::HardwareThread;
   } else {
     throw Exception("Failed to parse the value for the flag " + flag +
-                    ". Unknown binding: " + text);
+                    ". Unknown binding: " + text + ". Known bindings are "
+                    "'None', 'Core', and 'HardwareThread'.");
   }
 }
 }  // namespace
