@@ -4,7 +4,7 @@
 
 option(FINDUS_MIMIC_CHARM_PUPER
   "Add enables support for PUP::er as the serialization class."
-  ON)
+  OFF)
 
 if (FINDUS_MIMIC_CHARM_PUPER)
   set_property(
