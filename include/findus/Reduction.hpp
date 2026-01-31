@@ -555,8 +555,8 @@ class Handler {
    */
   template <class BinaryOp, class ComputeExpected, class BroadcastAction,
             class BroadcastParallelComponent, class... Args>
-  std::optional<Message_t> insert_or_combine(
-      const ComputeExpected& compute_expected, MessageType message_type,
+  [[nodiscard]] std::optional<Message_t> insert_or_combine(
+      const ComputeExpected &compute_expected, MessageType message_type,
       std::uint64_t thread_id, std::uint32_t distributed_object_index,
       std::uint64_t reduction_id,
       ReductionCallback<BroadcastAction, BroadcastParallelComponent>
@@ -677,8 +677,9 @@ class Handler {
    * \return The combined reduction message if the reduction is complete, or
    * `std::nullopt` if not yet complete.
    */
-  std::optional<Message_t> combine_inter_process(
-      Message_t message, findus::detail::ParentAndChildren p_and_c);
+  [[nodiscard]] std::optional<Message_t>
+  combine_inter_process(Message_t message,
+                        findus::detail::ParentAndChildren p_and_c);
 
  private:
   alignas(findus::hardware_info::hardware_destructive_interference_size)

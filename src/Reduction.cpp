@@ -470,6 +470,862 @@ void test_reduction_callback() {
   CHECK(cb_invoke != cb_invoke2);
   CHECK(cb_invoke == Callback{index});
 }
+
+// Test data types for Handler tests
+struct Simple : public findus::serialize::as_bytes<void> {
+  int a{0};
+  double b{0.0};
+
+  Simple() = default;
+  Simple(const int a_in, const double b_in) : a(a_in), b(b_in) {}
+
+  // serialize::Serializer& serialize(serialize::Serializer& s) {
+  //   return s | a | b;
+  // }
+
+  bool operator==(const Simple &) const = default;
+};
+
+struct Complex {
+  int a{0};
+  std::vector<double> b{};
+
+  serialize::Serializer &serialize(serialize::Serializer &s) {
+    return s | a | b;
+  }
+
+  bool operator==(const Complex &) const = default;
+};
+
+// Binary operations for Handler tests
+struct SimpleSumOp {
+  void operator()(std::tuple<Simple> &lhs, const Simple &rhs) const {
+    std::get<0>(lhs).a += rhs.a;
+    std::get<0>(lhs).b += rhs.b;
+  }
+};
+
+struct ComplexSumOp {
+  void operator()(std::tuple<Complex> &lhs, const Complex &rhs) const {
+    std::get<0>(lhs).a += rhs.a;
+    auto &lhs_b = std::get<0>(lhs).b;
+    for (size_t i = 0; i < lhs_b.size(); ++i) {
+      lhs_b[i] += rhs.b[i];
+    }
+  }
+};
+
+void test_handler_construction() {
+  INFO("Test Handler construction");
+
+  // Basic construction. No exceptions means success.
+  { Handler handler(4, 16); }
+
+  // Various thread counts
+  for (const size_t num_threads : std::vector<size_t>{1, 2, 4, 8, 16}) {
+    for (const size_t max_reductions : std::vector<size_t>{4, 16, 64}) {
+      Handler handler(num_threads, max_reductions);
+    }
+  }
+}
+
+void test_handler_insert_or_combine_simple() {
+  INFO("Test Handler::insert_or_combine with Simple (non-serialized)");
+
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
+  const std::uint32_t distributed_object_index = 1;
+  const std::uint64_t reduction_id = 17;
+
+  // Test single contribution completes immediately
+  {
+    Handler handler(2, 16);
+    const auto compute_expected = []() { return 1; };
+
+    std::optional<Message_t> result = handler.insert_or_combine<SimpleSumOp>(
+        compute_expected, MessageType::Reduction,
+        1, // thread_id
+        distributed_object_index, reduction_id, CallbackType{},
+        Simple{10, 2.5});
+
+    REQUIRE(result.has_value());
+    const auto *data =
+        data_from_message<std::tuple<Simple>>(*result->get_header());
+    REQUIRE(data != nullptr);
+    CHECK(std::get<0>(*data).a == 10);
+    CHECK(std::get<0>(*data).b == 2.5);
+  }
+
+  // Test multiple contributions combine correctly
+  {
+    Handler handler(4, 16);
+    const auto compute_expected = []() { return 3; };
+
+    // First contribution - should not complete
+    std::optional<Message_t> result1 = handler.insert_or_combine<SimpleSumOp>(
+        compute_expected, MessageType::Reduction,
+        1, // thread_id
+        distributed_object_index, reduction_id, CallbackType{},
+        Simple{10, 1.0});
+    CHECK_FALSE(result1.has_value());
+
+    // Second contribution - should not complete
+    std::optional<Message_t> result2 = handler.insert_or_combine<SimpleSumOp>(
+        compute_expected, MessageType::Reduction,
+        2, // thread_id
+        distributed_object_index, reduction_id, CallbackType{},
+        Simple{20, 2.0});
+    CHECK_FALSE(result2.has_value());
+
+    // Third contribution - should complete
+    std::optional<Message_t> result3 = handler.insert_or_combine<SimpleSumOp>(
+        compute_expected, MessageType::Reduction,
+        3, // thread_id
+        distributed_object_index, reduction_id, CallbackType{},
+        Simple{30, 3.0});
+    REQUIRE(result3.has_value());
+
+    const auto *data =
+        data_from_message<std::tuple<Simple>>(*result3->get_header());
+    REQUIRE(data != nullptr);
+    CHECK(std::get<0>(*data).a == 60);  // 10 + 20 + 30
+    CHECK(std::get<0>(*data).b == 6.0); // 1.0 + 2.0 + 3.0
+  }
+
+  // Test callback is preserved at the level of that the pointer is not
+  // null and that the index is correct.
+  {
+    Handler handler(2, 16);
+    const auto compute_expected = []() { return 1; };
+    const std::int64_t callback_index = 42;
+
+    std::optional<Message_t> result = handler.insert_or_combine<SimpleSumOp>(
+        compute_expected, MessageType::Reduction, 1, distributed_object_index,
+        reduction_id, CallbackType{callback_index}, Simple{1, 1.0});
+
+    REQUIRE(result.has_value());
+    const CallbackType *callback = get_callback<CallbackType>(*result);
+    REQUIRE(callback != nullptr);
+    CHECK(callback->collection_index_ ==
+          findus::detail::to_internal(callback_index));
+  }
+}
+
+void test_handler_insert_or_combine_complex() {
+  INFO("Test Handler::insert_or_combine with Complex (serialized)");
+
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
+  const std::uint32_t distributed_object_index = 2;
+  const std::uint64_t reduction_id = 67890;
+
+  {
+    INFO("Test single contribution");
+    Handler handler(2, 16);
+    const auto compute_expected = []() { return 1; };
+
+    std::optional<Message_t> result = handler.insert_or_combine<ComplexSumOp>(
+        compute_expected, MessageType::Reduction, 1, distributed_object_index,
+        reduction_id, CallbackType{}, Complex{5, {1.0, 2.0, 3.0}});
+
+    REQUIRE(result.has_value());
+    CHECK(result->get_header()->data_was_serialized() == false);
+
+    const auto *data =
+        data_from_message<std::tuple<Complex>>(*result->get_header());
+    REQUIRE(data != nullptr);
+    CHECK(std::get<0>(*data).a == 5);
+    CHECK(std::get<0>(*data).b == std::vector<double>{1.0, 2.0, 3.0});
+  }
+
+  {
+    INFO("Test multiple contributions combine correctly");
+    Handler handler(4, 16);
+    const auto compute_expected = []() { return 3; };
+
+    std::optional<Message_t> result1 = handler.insert_or_combine<ComplexSumOp>(
+        compute_expected, MessageType::Reduction, 1, distributed_object_index,
+        reduction_id, CallbackType{}, Complex{1, {1.0, 1.0}});
+    CHECK_FALSE(result1.has_value());
+
+    std::optional<Message_t> result2 = handler.insert_or_combine<ComplexSumOp>(
+        compute_expected, MessageType::Reduction, 2, distributed_object_index,
+        reduction_id, CallbackType{}, Complex{2, {2.0, 2.0}});
+    CHECK_FALSE(result2.has_value());
+
+    std::optional<Message_t> result3 = handler.insert_or_combine<ComplexSumOp>(
+        compute_expected, MessageType::Reduction, 3, distributed_object_index,
+        reduction_id, CallbackType{}, Complex{3, {3.0, 3.0}});
+    REQUIRE(result3.has_value());
+
+    const auto *data =
+        data_from_message<std::tuple<Complex>>(*result3->get_header());
+    REQUIRE(data != nullptr);
+    CHECK(std::get<0>(*data).a == 6); // 1 + 2 + 3
+    CHECK(std::get<0>(*data).b == std::vector<double>{6.0, 6.0});
+  }
+  // TODO: should  we test that if the vectors are different sizes we could
+  //       get an exception that propagates through?
+}
+
+void test_handler_insert_or_combine() {
+  test_handler_insert_or_combine_simple();
+  test_handler_insert_or_combine_complex();
+}
+
+void test_handler_combine_inter_process_simple() {
+  INFO("Test Handler::combine_inter_process with Simple (non-serialized)");
+
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
+  const std::uint32_t distributed_object_index = 1;
+  const std::uint64_t reduction_id = 11111;
+
+  {
+    INFO("Test single message insertion and completion");
+    Handler handler(2, 16);
+    const findus::detail::ParentAndChildren p_and_c{0, -1, 1, 2};
+
+    Message_t message = create_message<DummyAction, DummyComponent>(
+        distributed_object_index, reduction_id,
+        std::tuple<Simple>{Simple{10, 2.5}}, CallbackType{},
+        MessageType::Reduction, false);
+    set_combine_function_pointer(
+        message, &detail::combine<SimpleSumOp, std::tuple<Simple>>);
+    set_expected_number_of_contributions(message, 1);
+    message.get_header()->change_source_process_id(0);
+
+    std::optional<Message_t> result =
+        handler.combine_inter_process(std::move(message), p_and_c);
+
+    REQUIRE(result.has_value());
+    const auto *data =
+        data_from_message<std::tuple<Simple>>(*result->get_header());
+    REQUIRE(data != nullptr);
+    CHECK(std::get<0>(*data).a == 10);
+    CHECK(std::get<0>(*data).b == 2.5);
+  }
+
+  {
+    INFO("Test combining multiple messages");
+    Handler handler(2, 16);
+    const findus::detail::ParentAndChildren p_and_c{0, -1, 1, 2};
+
+    // First message - expect 2 contributions
+    Message_t message1 = create_message<DummyAction, DummyComponent>(
+        distributed_object_index, reduction_id,
+        std::tuple<Simple>{Simple{10, 1.0}}, CallbackType{},
+        MessageType::Reduction, false);
+    set_combine_function_pointer(
+        message1, &detail::combine<SimpleSumOp, std::tuple<Simple>>);
+    set_expected_number_of_contributions(message1, 2);
+    set_target_process_id(message1, 0);
+    message1.get_header()->change_source_process_id(1);
+
+    std::optional<Message_t> result1 =
+        handler.combine_inter_process(std::move(message1), p_and_c);
+    CHECK_FALSE(result1.has_value());
+
+    // Second message
+    Message_t message2 = create_message<DummyAction, DummyComponent>(
+        distributed_object_index, reduction_id,
+        std::tuple<Simple>{Simple{20, 2.0}}, CallbackType{},
+        MessageType::Reduction, false);
+    set_combine_function_pointer(
+        message2, &detail::combine<SimpleSumOp, std::tuple<Simple>>);
+    set_expected_number_of_contributions(message2, 0);
+    message2.get_header()->change_source_process_id(2);
+
+    std::optional<Message_t> result2 =
+        handler.combine_inter_process(std::move(message2), p_and_c);
+    REQUIRE(result2.has_value());
+
+    const auto *data =
+        data_from_message<std::tuple<Simple>>(*result2->get_header());
+    REQUIRE(data != nullptr);
+    CHECK(std::get<0>(*data).a == 30);  // 10 + 20
+    CHECK(std::get<0>(*data).b == 3.0); // 1.0 + 2.0
+  }
+}
+
+void test_handler_combine_inter_process_complex() {
+  INFO("Test Handler::combine_inter_process with Complex (serialized)");
+
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
+  const std::uint32_t distributed_object_index = 2;
+  const std::uint64_t reduction_id = 22222;
+
+  const auto helper = [](const bool serialize_first_message,
+                         const bool serialize_second_message) {
+    CAPTURE(serialize_first_message);
+    CAPTURE(serialize_second_message);
+    Handler handler(2, 16);
+    const findus::detail::ParentAndChildren p_and_c{0, -1, 1, 2};
+
+    Message_t message1 = create_message<DummyAction, DummyComponent>(
+        distributed_object_index, reduction_id,
+        std::tuple<Complex>{Complex{1, {1.0, 2.0}}}, CallbackType{},
+        MessageType::Reduction, true);
+    set_combine_function_pointer(
+        message1, &detail::combine<ComplexSumOp, std::tuple<Complex>>);
+    set_expected_number_of_contributions(message1, 2);
+    set_target_process_id(message1, 0);
+    message1.get_header()->change_source_process_id(1);
+
+    std::optional<Message_t> result1 =
+        handler.combine_inter_process(std::move(message1), p_and_c);
+    CHECK_FALSE(result1.has_value());
+
+    Message_t message2 = create_message<DummyAction, DummyComponent>(
+        distributed_object_index, reduction_id,
+        std::tuple<Complex>{Complex{2, {3.0, 4.0}}}, CallbackType{},
+        MessageType::Reduction, true);
+    set_combine_function_pointer(
+        message2, &detail::combine<ComplexSumOp, std::tuple<Complex>>);
+    set_expected_number_of_contributions(message2, 0);
+    message2.get_header()->change_source_process_id(2);
+
+    std::optional<Message_t> result2 =
+        handler.combine_inter_process(std::move(message2), p_and_c);
+    REQUIRE(result2.has_value());
+    CHECK(result2->get_header()->data_was_serialized());
+
+    // Deserialize and check
+    std::tuple<Complex> unpacked_data{};
+    serialize::Serializer unpacker{serialize::Serializer::Unpacking,
+                                   get_data_pointer<std::byte>(*result2),
+                                   get_data_size(*result2)};
+    unpacker | unpacked_data;
+
+    CHECK(std::get<0>(unpacked_data).a == 3); // 1 + 2
+    CHECK(std::get<0>(unpacked_data).b == std::vector<double>{4.0, 6.0});
+  };
+  helper(true, true);
+  helper(true, false);
+  helper(false, true);
+  helper(false, false);
+}
+
+void test_handler_combine_inter_process_realistic_tree() {
+  INFO("Test Handler::combine_inter_process with realistic tree topology");
+
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
+  const std::uint32_t distributed_object_index = 1;
+  const std::uint64_t reduction_id = 33333;
+
+  /*
+   * Test with 4 processes: tree structure
+   *       0
+   *      / \
+   *     1   2
+   *    /
+   *   3
+   * Process 1 receives from 3
+   * Process 0 receives from 1 and 2
+   * We need separate handlers for each "process" since each process has
+   * its own Handler instance in the real system
+   */
+  Handler handler_pid1(2, 16);
+  Handler handler_pid0(2, 16);
+
+  Message_t combined_from_1;
+
+  // Step 1: Process 1 receives from process 3 and combines with local
+  {
+    const findus::detail::ParentAndChildren p_and_c =
+        findus::detail::parent_and_children(1, 4);
+
+    Message_t message_from_3 = create_message<DummyAction, DummyComponent>(
+        distributed_object_index, reduction_id,
+        std::tuple<Simple>{Simple{30, 3.0}}, CallbackType{},
+        MessageType::Reduction, false);
+    set_combine_function_pointer(
+        message_from_3, &detail::combine<SimpleSumOp, std::tuple<Simple>>);
+    set_expected_number_of_contributions(message_from_3, 2);
+    set_target_process_id(message_from_3, 1);
+    message_from_3.get_header()->change_source_process_id(3);
+
+    const std::optional<Message_t> result1 =
+        handler_pid1.combine_inter_process(std::move(message_from_3), p_and_c);
+    CHECK_FALSE(result1.has_value());
+
+    // Process 1's local contribution
+    Message_t message_from_1 = create_message<DummyAction, DummyComponent>(
+        distributed_object_index, reduction_id,
+        std::tuple<Simple>{Simple{10, 1.0}}, CallbackType{},
+        MessageType::Reduction, false);
+    set_combine_function_pointer(
+        message_from_1, &detail::combine<SimpleSumOp, std::tuple<Simple>>);
+    set_expected_number_of_contributions(message_from_1, 0);
+    set_target_process_id(message_from_1, 0);
+    message_from_1.get_header()->change_source_process_id(1);
+
+    std::optional<Message_t> result2 =
+        handler_pid1.combine_inter_process(std::move(message_from_1), p_and_c);
+    REQUIRE(result2.has_value());
+
+    const auto *data =
+        data_from_message<std::tuple<Simple>>(*result2->get_header());
+    REQUIRE(data != nullptr);
+    CHECK(std::get<0>(*data).a == 40);  // 30 + 10
+    CHECK(std::get<0>(*data).b == 4.0); // 3.0 + 1.0
+
+    combined_from_1 = std::move(*result2);
+  }
+
+  // Step 2: Process 0 receives combined message from process 1
+  {
+    const findus::detail::ParentAndChildren p_and_c =
+        findus::detail::parent_and_children(0, 4);
+
+    // The combined message from process 1 is sent to process 0
+    // Update expected contributions: process 0 expects from 1, 2, and self
+    set_expected_number_of_contributions(combined_from_1, 3);
+
+    const std::optional<Message_t> result1 =
+        handler_pid0.combine_inter_process(std::move(combined_from_1), p_and_c);
+    CHECK_FALSE(result1.has_value());
+
+    // Step 3: Process 2 sends its contribution to process 0
+    Message_t message_from_2 = create_message<DummyAction, DummyComponent>(
+        distributed_object_index, reduction_id,
+        std::tuple<Simple>{Simple{20, 2.0}}, CallbackType{},
+        MessageType::Reduction, false);
+    set_combine_function_pointer(
+        message_from_2, &detail::combine<SimpleSumOp, std::tuple<Simple>>);
+    set_expected_number_of_contributions(message_from_2, 0);
+    set_target_process_id(message_from_2, 0);
+    message_from_2.get_header()->change_source_process_id(2);
+
+    const std::optional<Message_t> result2 =
+        handler_pid0.combine_inter_process(std::move(message_from_2), p_and_c);
+    CHECK_FALSE(result2.has_value());
+
+    // Step 4: Process 0's local contribution
+    Message_t message_from_0 = create_message<DummyAction, DummyComponent>(
+        distributed_object_index, reduction_id,
+        std::tuple<Simple>{Simple{100, 10.0}}, CallbackType{},
+        MessageType::Reduction, false);
+    set_combine_function_pointer(
+        message_from_0, &detail::combine<SimpleSumOp, std::tuple<Simple>>);
+    set_expected_number_of_contributions(message_from_0, 0);
+    set_target_process_id(message_from_0, 0);
+    message_from_0.get_header()->change_source_process_id(0);
+
+    const std::optional<Message_t> result3 =
+        handler_pid0.combine_inter_process(std::move(message_from_0), p_and_c);
+    REQUIRE(result3.has_value());
+
+    // Final combined result:
+    // 30 + 10 + 20 + 100 = 160
+    // 3.0 + 1.0 + 2.0 + 10.0 = 16.0
+    const auto *data =
+        data_from_message<std::tuple<Simple>>(*result3->get_header());
+    REQUIRE(data != nullptr);
+    CHECK(std::get<0>(*data).a == 160);
+    CHECK(std::get<0>(*data).b == 16.0);
+  }
+}
+
+void test_handler_combine_inter_process() {
+  test_handler_combine_inter_process_simple();
+  test_handler_combine_inter_process_complex();
+  test_handler_combine_inter_process_realistic_tree();
+}
+
+void test_handler_set_interprocess_message_info_collection_basic() {
+  INFO("Test Handler::set_interprocess_message_info (collection) basic cases");
+
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
+  const std::uint32_t distributed_object_index = 1;
+  const std::uint64_t reduction_id = 44444;
+
+  Handler handler(2, 16);
+
+  // Case 1: All 4 processes have elements, all participate
+  {
+    const int total_processes = 4;
+    std::vector<std::vector<std::uint64_t>> elements_on_pid = {
+        {0, 1}, {2, 3}, {4, 5}, {6, 7}};
+    const auto all_participate = [](auto) { return true; };
+
+    for (int pid = 0; pid < total_processes; ++pid) {
+      if (elements_on_pid[static_cast<size_t>(pid)].empty()) {
+        continue;
+      }
+
+      Message_t message = create_message<DummyAction, DummyComponent>(
+          distributed_object_index, reduction_id,
+          std::tuple<Simple>{Simple{1, 1.0}}, CallbackType{},
+          MessageType::Reduction, false);
+
+      handler.set_interprocess_message_info<DummyComponent>(
+          message, pid, total_processes, elements_on_pid, all_participate);
+
+      const int expected_parent =
+          pid == 0 ? -1
+                   : findus::detail::find_first_parent(
+                         pid, total_processes, [&elements_on_pid](const int p) {
+                           return not elements_on_pid[static_cast<size_t>(p)]
+                                          .empty();
+                         });
+      const int expected_contributions =
+          findus::detail::count_first_descendants(
+              pid, total_processes,
+              [&elements_on_pid](const int p) {
+                return not elements_on_pid[static_cast<size_t>(p)].empty();
+              }) +
+          1;
+
+      CHECK(get_target_process_id(message) == std::max(expected_parent, 0));
+      CHECK(get_expected_number_of_contributions(message) ==
+            expected_contributions);
+      CHECK(message.get_header()->source_process_id() == pid);
+    }
+  }
+
+  // Case 2: Root process has no elements
+  {
+    const int total_processes = 4;
+    std::vector<std::vector<std::uint64_t>> elements_on_pid = {
+        {}, {0, 1}, {2, 3}, {4, 5}};
+    const auto all_participate = [](auto) { return true; };
+
+    // Test from process 1's perspective
+    Message_t message = create_message<DummyAction, DummyComponent>(
+        distributed_object_index, reduction_id,
+        std::tuple<Simple>{Simple{1, 1.0}}, CallbackType{},
+        MessageType::Reduction, false);
+
+    handler.set_interprocess_message_info<DummyComponent>(
+        message, 1, total_processes, elements_on_pid, all_participate);
+
+    // Process 1's parent is 0, but 0 has no elements, so target is 0
+    CHECK(get_target_process_id(message) == 0);
+    // Root contributions should be set since root doesn't participate
+    CHECK(get_expected_number_of_root_contributions(message) > 0);
+  }
+
+  // Case 3: Only leaf processes have elements
+  {
+    const int total_processes = 4;
+    std::vector<std::vector<std::uint64_t>> elements_on_pid = {
+        {}, {}, {}, {0, 1}};
+    const auto all_participate = [](auto) { return true; };
+
+    Message_t message = create_message<DummyAction, DummyComponent>(
+        distributed_object_index, reduction_id,
+        std::tuple<Simple>{Simple{1, 1.0}}, CallbackType{},
+        MessageType::Reduction, false);
+
+    handler.set_interprocess_message_info<DummyComponent>(
+        message, 3, total_processes, elements_on_pid, all_participate);
+
+    CHECK(get_target_process_id(message) == 0);
+    CHECK(message.get_header()->source_process_id() == 3);
+  }
+
+  // Case 4: Single process has elements
+  {
+    const int total_processes = 4;
+    std::vector<std::vector<std::uint64_t>> elements_on_pid = {
+        {}, {0, 1, 2}, {}, {}};
+    const auto all_participate = [](auto) { return true; };
+
+    Message_t message = create_message<DummyAction, DummyComponent>(
+        distributed_object_index, reduction_id,
+        std::tuple<Simple>{Simple{1, 1.0}}, CallbackType{},
+        MessageType::Reduction, false);
+
+    handler.set_interprocess_message_info<DummyComponent>(
+        message, 1, total_processes, elements_on_pid, all_participate);
+
+    CHECK(get_expected_number_of_contributions(message) == 1);
+  }
+
+  // Case 5: Predicate filters some elements
+  {
+    const int total_processes = 4;
+    std::vector<std::vector<std::uint64_t>> elements_on_pid = {
+        {0, 1}, {2, 3}, {4, 5}, {6, 7}};
+    // Only even-indexed elements participate
+    const auto even_only = [](auto idx) {
+      return (findus::detail::to_internal(idx) % 2) == 0;
+    };
+
+    Message_t message = create_message<DummyAction, DummyComponent>(
+        distributed_object_index, reduction_id,
+        std::tuple<Simple>{Simple{1, 1.0}}, CallbackType{},
+        MessageType::Reduction, false);
+
+    handler.set_interprocess_message_info<DummyComponent>(
+        message, 0, total_processes, elements_on_pid, even_only);
+
+    CHECK(message.get_header()->source_process_id() == 0);
+  }
+}
+
+void test_handler_set_interprocess_message_info_collection_exhaustive() {
+  INFO("Test Handler::set_interprocess_message_info (collection) exhaustive");
+
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
+  const std::uint32_t distributed_object_index = 1;
+  const std::uint64_t reduction_id = 55555;
+
+  Handler handler(2, 16);
+
+  // Test all process counts from 1 to 8
+  for (int total_processes = 1; total_processes <= 8; ++total_processes) {
+    // Generate all combinations of 0-3 IDs per process
+    // Total combinations: 4^total_processes
+    const size_t num_combinations =
+        static_cast<size_t>(1) << (2 * static_cast<size_t>(total_processes));
+
+    for (size_t combo = 0; combo < num_combinations; ++combo) {
+      std::vector<std::vector<std::uint64_t>> elements_on_pid(
+          static_cast<size_t>(total_processes));
+
+      std::uint64_t next_id = 0;
+      size_t total_elements = 0;
+
+      // Decode combination: 2 bits per process (0-3 elements)
+      for (int pid = 0; pid < total_processes; ++pid) {
+        const size_t num_elements =
+            (combo >> (2 * static_cast<size_t>(pid))) & 0b11;
+        for (size_t i = 0; i < num_elements; ++i) {
+          elements_on_pid[static_cast<size_t>(pid)].push_back(next_id++);
+        }
+        total_elements += num_elements;
+      }
+
+      // Skip if no elements at all
+      if (total_elements == 0) {
+        continue;
+      }
+
+      // All elements participate predicate
+      const auto all_participate = [](auto) { return true; };
+
+      // Predicate to check if a process has elements that participate
+      const auto pid_has_elements = [&elements_on_pid,
+                                     &all_participate](const int p) {
+        const auto &ids = elements_on_pid[static_cast<size_t>(p)];
+        return std::any_of(
+            ids.begin(), ids.end(), [&all_participate](std::uint64_t id) {
+              return all_participate(
+                  findus::detail::from_internal<DummyComponent>(id));
+            });
+      };
+
+      // Test from each process's perspective (that has elements)
+      for (int pid = 0; pid < total_processes; ++pid) {
+        if (elements_on_pid[static_cast<size_t>(pid)].empty()) {
+          continue;
+        }
+
+        Message_t message = create_message<DummyAction, DummyComponent>(
+            distributed_object_index, reduction_id,
+            std::tuple<Simple>{Simple{1, 1.0}}, CallbackType{},
+            MessageType::Reduction, false);
+
+        handler.set_interprocess_message_info<DummyComponent>(
+            message, pid, total_processes, elements_on_pid, all_participate);
+
+        // Compute expected values
+        const int expected_parent =
+            pid == 0 ? -1
+                     : findus::detail::find_first_parent(pid, total_processes,
+                                                         pid_has_elements);
+        const int expected_contributions =
+            findus::detail::count_first_descendants(pid, total_processes,
+                                                    pid_has_elements) +
+            1;
+
+        CAPTURE(total_processes);
+        CAPTURE(combo);
+        CAPTURE(pid);
+
+        CHECK(get_target_process_id(message) == std::max(expected_parent, 0));
+        CHECK(get_expected_number_of_contributions(message) ==
+              expected_contributions);
+        CHECK(message.get_header()->source_process_id() == pid);
+
+        // Check root contributions if applicable
+        if (pid != 0 and ((expected_parent == 0 or expected_parent == -1) and
+                          not pid_has_elements(0))) {
+          const int expected_root_contributions =
+              findus::detail::count_first_descendants(0, total_processes,
+                                                      pid_has_elements);
+          CHECK(get_expected_number_of_root_contributions(message) ==
+                expected_root_contributions);
+        }
+      }
+    }
+  }
+}
+
+void test_handler_set_interprocess_message_info_per_process_basic() {
+  INFO("Test Handler::set_interprocess_message_info (per-process) basic cases");
+
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
+  const std::uint32_t distributed_object_index = 1;
+  const std::uint64_t reduction_id = 66666;
+
+  Handler handler(2, 16);
+
+  // Case 1: All processes participate
+  {
+    const int total_processes = 4;
+    const auto all_participate = [](int) { return true; };
+
+    for (int pid = 0; pid < total_processes; ++pid) {
+      Message_t message = create_message<DummyAction, DummyComponent>(
+          distributed_object_index, reduction_id,
+          std::tuple<Simple>{Simple{1, 1.0}}, CallbackType{},
+          MessageType::Reduction, false);
+
+      handler.set_interprocess_message_info<DummyComponent>(
+          message, pid, total_processes, all_participate);
+
+      const int expected_parent =
+          pid == 0 ? -1
+                   : findus::detail::find_first_parent(pid, total_processes,
+                                                       all_participate);
+      const int expected_contributions =
+          findus::detail::count_first_descendants(pid, total_processes,
+                                                  all_participate) +
+          1;
+
+      CHECK(get_target_process_id(message) == std::max(expected_parent, 0));
+      CHECK(get_expected_number_of_contributions(message) ==
+            expected_contributions);
+      CHECK(message.get_header()->source_process_id() == pid);
+    }
+  }
+
+  // Case 2: Only odd processes participate
+  {
+    const int total_processes = 8;
+    const auto odd_only = [](int p) { return p % 2 == 1; };
+
+    for (int pid = 0; pid < total_processes; ++pid) {
+      if (not odd_only(pid)) {
+        continue;
+      }
+
+      Message_t message = create_message<DummyAction, DummyComponent>(
+          distributed_object_index, reduction_id,
+          std::tuple<Simple>{Simple{1, 1.0}}, CallbackType{},
+          MessageType::Reduction, false);
+
+      handler.set_interprocess_message_info<DummyComponent>(
+          message, pid, total_processes, odd_only);
+
+      const int expected_parent =
+          findus::detail::find_first_parent(pid, total_processes, odd_only);
+      const int expected_contributions =
+          findus::detail::count_first_descendants(pid, total_processes,
+                                                  odd_only) +
+          1;
+
+      CHECK(get_target_process_id(message) == std::max(expected_parent, 0));
+      CHECK(get_expected_number_of_contributions(message) ==
+            expected_contributions);
+    }
+  }
+
+  // Case 3: Single process participates
+  {
+    const int total_processes = 4;
+    const auto only_one = [](const int p) { return p == 2; };
+
+    Message_t message = create_message<DummyAction, DummyComponent>(
+        distributed_object_index, reduction_id,
+        std::tuple<Simple>{Simple{1, 1.0}}, CallbackType{},
+        MessageType::Reduction, false);
+
+    handler.set_interprocess_message_info<DummyComponent>(
+        message, 2, total_processes, only_one);
+
+    CHECK(get_expected_number_of_contributions(message) == 1);
+  }
+}
+
+void test_handler_set_interprocess_message_info_per_process_exhaustive() {
+  INFO("Test Handler::set_interprocess_message_info (per-process) exhaustive");
+
+  using CallbackType = ReductionCallback<DummyAction, DummyComponent>;
+  const std::uint32_t distributed_object_index = 1;
+  const std::uint64_t reduction_id = 77777;
+
+  Handler handler(2, 16);
+
+  // Test all process counts from 1 to 8
+  for (int total_processes = 1; total_processes <= 8; ++total_processes) {
+    // Generate all combinations of process participation
+    // Total combinations: 2^total_processes
+    const size_t num_combinations = static_cast<size_t>(1)
+                                    << static_cast<size_t>(total_processes);
+
+    for (size_t combo = 1; combo < num_combinations; ++combo) {
+      // combo == 0 means no processes participate, skip
+      const auto participates = [combo](const int p) {
+        return (combo >> static_cast<size_t>(p)) & 1;
+      };
+
+      // Test from each participating process's perspective
+      for (int pid = 0; pid < total_processes; ++pid) {
+        if (not participates(pid)) {
+          continue;
+        }
+
+        Message_t message = create_message<DummyAction, DummyComponent>(
+            distributed_object_index, reduction_id,
+            std::tuple<Simple>{Simple{1, 1.0}}, CallbackType{},
+            MessageType::Reduction, false);
+
+        handler.set_interprocess_message_info<DummyComponent>(
+            message, pid, total_processes, participates);
+
+        // Compute expected values
+        const int expected_parent =
+            pid == 0 ? -1
+                     : findus::detail::find_first_parent(pid, total_processes,
+                                                         participates);
+        const int expected_contributions =
+            findus::detail::count_first_descendants(pid, total_processes,
+                                                    participates) +
+            1;
+
+        CAPTURE(total_processes);
+        CAPTURE(combo);
+        CAPTURE(pid);
+
+        CHECK(get_target_process_id(message) == std::max(expected_parent, 0));
+        CHECK(get_expected_number_of_contributions(message) ==
+              expected_contributions);
+        CHECK(message.get_header()->source_process_id() == pid);
+
+        // Check root contributions if applicable
+        if (pid != 0 and ((expected_parent == 0 or expected_parent == -1) and
+                          not participates(0))) {
+          const int expected_root_contributions =
+              findus::detail::count_first_descendants(0, total_processes,
+                                                      participates);
+          CHECK(get_expected_number_of_root_contributions(message) ==
+                expected_root_contributions);
+        }
+      }
+    }
+  }
+}
+
+void test_handler() {
+  test_handler_construction();
+  test_handler_insert_or_combine();
+  test_handler_combine_inter_process();
+  test_handler_set_interprocess_message_info_collection_basic();
+  test_handler_set_interprocess_message_info_collection_exhaustive();
+  test_handler_set_interprocess_message_info_per_process_basic();
+  test_handler_set_interprocess_message_info_per_process_exhaustive();
+}
 }  // namespace
 }  // namespace findus::reduction
 
@@ -482,6 +1338,7 @@ TEST_CASE("Reduction") {
   }
   findus::reduction::test_data_handler_exceptions();
   findus::reduction::test_reduction_callback();
+  findus::reduction::test_handler();
 }
 
 #endif
