@@ -65,6 +65,13 @@ target_include_directories(
   $<INSTALL_INTERFACE:include>
 )
 
+if (FINDUS_CREATE_CHARM_HEADERS)
+  target_include_directories(findus
+    PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/charm_compatibility>
+  )
+endif()
+
 target_link_libraries(
   ${LIBRARY}
   PUBLIC
@@ -102,6 +109,10 @@ compiler. This is a known issue for clang-14 and older with ARM64.")
 endif()
 
 if (PROJECT_IS_TOP_LEVEL AND BUILD_TESTING AND TARGET doctest::doctest)
+  if (FINDUS_CREATE_CHARM_HEADERS)
+    target_sources(findus PRIVATE Serialize/CharmCompatibility.cpp)
+  endif()
+
   target_sources(findus
     PRIVATE
     Detail/DoctestImpl.cpp
