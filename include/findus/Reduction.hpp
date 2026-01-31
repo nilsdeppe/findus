@@ -284,7 +284,7 @@ class alignas(findus::hardware_info::hardware_destructive_interference_size)
    */
   template <class BinaryOp, class BroadcastAction,
             class BroadcastParallelComponent, class... Args>
-  InsertAction insert_or_combine(
+  [[nodiscard]] InsertAction insert_or_combine(
       MessageType message_type, std::uint32_t distributed_object_index,
       std::uint64_t reduction_id,
       ReductionCallback<BroadcastAction, BroadcastParallelComponent>
@@ -302,7 +302,7 @@ class alignas(findus::hardware_info::hardware_destructive_interference_size)
    *
    * \throws `findus::Exception` if the reduction ID is not found.
    */
-  Message_t pop(std::uint64_t reduction_id);
+  [[nodiscard]] Message_t pop(std::uint64_t reduction_id);
 
   /*!
    * \brief Finds the index of a reduction entry by its reduction ID.
@@ -310,13 +310,14 @@ class alignas(findus::hardware_info::hardware_destructive_interference_size)
    * \param reduction_id The unique reduction ID to search for.
    * \return The index of the entry if found, or std::nullopt if not found.
    */
-  std::optional<std::uint64_t> index_of(std::uint64_t reduction_id) const;
+  [[nodiscard]] std::optional<std::uint64_t>
+  index_of(std::uint64_t reduction_id) const;
 
   /*!
    * \brief Returns the maximum number of simultaneous reductions that can be
    * done over a single parallel component.
    */
-  size_t capacity() const;
+  [[nodiscard]] size_t capacity() const;
 
  private:
   /*!

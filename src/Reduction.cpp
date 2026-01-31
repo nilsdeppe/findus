@@ -37,7 +37,7 @@ DataHandler::DataHandler(const size_t max_simultaneous_reductions)
 Message_t DataHandler::pop(const std::uint64_t reduction_id) {
   const std::optional<std::uint64_t> index = index_of(reduction_id);
   if (index.has_value()) {
-    Message_t t = std::move(entries_[reduction_id].callback_and_data);
+    Message_t t = std::move(entries_[index.value()].callback_and_data);
     // Synchronizes with the insert_or_combine() operation. We need to make
     // sure the move out of the entry happens-before the clearing of the slot.
     entries_[index.value()].reduction_id.store(0, std::memory_order_release);
@@ -405,7 +405,8 @@ void test_data_handler_parallel(const size_t num_reductions,
   for (size_t r = 0; r < num_reductions; ++r) {
     const std::string msg =
         "Could not find reduction ID " + std::to_string(r + 1);
-    CHECK_THROWS_WITH_AS(handler.pop(r + 1), msg.c_str(), findus::Exception);
+    CHECK_THROWS_WITH_AS((void)handler.pop(r + 1), msg.c_str(),
+                         findus::Exception);
   }
 }
 
@@ -417,23 +418,25 @@ void test_data_handler_exceptions() {
 
   // reduction_id == 0 should throw
   CHECK_THROWS_WITH_AS(
-      handler.insert_or_combine<SumOp>(MessageType::Reduction, 42, 0,
-                                       CallbackType{}, 1, 2.0),
+      (void)handler.insert_or_combine<SumOp>(MessageType::Reduction, 42, 0,
+                                             CallbackType{}, 1, 2.0),
       "The key value of 0 is not supported in reductions because it is used as "
       "a sentinel.",
       findus::Exception);
   CHECK_THROWS_WITH_AS(
-      handler.insert_or_combine<SumOp>(MessageType::Invoke, 42, 1,
-                                       CallbackType(1), 1, 2.0),
+      (void)handler.insert_or_combine<SumOp>(MessageType::Invoke, 42, 1,
+                                             CallbackType(1), 1, 2.0),
       "MessageType passed to DataHandler::insert_or_combine must be "
       "Reduction or ReductionOver but got Invoke",
       findus::Exception);
 
   // Fill all slots
-  handler.insert_or_combine<SumOp>(MessageType::Reduction, 42, 1,
-                                   CallbackType(1), 1, 2.0);
-  handler.insert_or_combine<SumOp>(MessageType::Reduction, 42, 2,
-                                   CallbackType(2), 2, 3.0);
+  CHECK(handler.insert_or_combine<SumOp>(MessageType::Reduction, 42, 1,
+                                         CallbackType(1), 1,
+                                         2.0) == InsertAction::Insert);
+  CHECK(handler.insert_or_combine<SumOp>(MessageType::Reduction, 42, 2,
+                                         CallbackType(2), 2,
+                                         3.0) == InsertAction::Insert);
 
   // Now try to insert another key, should throw
   CHECK(handler.insert_or_combine<SumOp>(MessageType::Reduction, 42, 3,
