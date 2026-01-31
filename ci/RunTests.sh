@@ -26,7 +26,7 @@ build_and_test() {
     echo "BUILD_SHARED_LIBS=$BUILD_SHARED_LIBS"
     echo "BUILD_TESTING=$BUILD_TESTING"
     echo "FINDUS_MIMIC_CHARM_PUPER=$FINDUS_MIMIC_CHARM_PUPER"
-    echo "ENABLE_PROFILING=$ENABLE_PROFILING"
+    echo "FINDUS_ENABLE_PROFILING=$FINDUS_ENABLE_PROFILING"
     echo "USE_LIBCXX=${USE_LIBCXX}"
     echo "CC=$CC"
     rm -rf ./*
@@ -38,7 +38,7 @@ build_and_test() {
           -D FINDUS_FETCH_DOCTEST=ON \
           -D FINDUS_MIMIC_CHARM_PUPER=$FINDUS_MIMIC_CHARM_PUPER \
           -D FINDUS_USE_LIBCXX=${USE_LIBCXX} \
-          -D ENABLE_PROFILING=$ENABLE_PROFILING \
+          -D FINDUS_ENABLE_PROFILING=$FINDUS_ENABLE_PROFILING \
           -D CMAKE_BUILD_TYPE=${BUILD_TYPE} \
           -D CMAKE_CXX_COMPILER=$CXX \
           -D CMAKE_INSTALL_PREFIX=${BUILD_DIR}/Install \
@@ -102,9 +102,9 @@ if [ "$1" = "SHORT" ]; then
         TEST_ATOMIC_128=ON
         BUILD_SHARED_LIBS=ON
         BUILD_TESTING=ON
-        ENABLE_PROFILING=OFF
+        FINDUS_ENABLE_PROFILING=OFF
         build_and_test
-        unset ENABLE_PROFILING
+        unset FINDUS_ENABLE_PROFILING
         unset BUILD_TESTING
         unset BUILD_SHARED_LIBS
         TEST_ATOMIC_128=OFF
@@ -113,7 +113,7 @@ if [ "$1" = "SHORT" ]; then
         for BUILD_SHARED_LIBS in ON OFF; do
             for BUILD_TESTING in ON OFF; do
                 for FINDUS_MIMIC_CHARM_PUPER in ON OFF; do
-                    for ENABLE_PROFILING in ON OFF; do
+                    for FINDUS_ENABLE_PROFILING in ON OFF; do
                         build_and_test
                     done
                 done
@@ -126,11 +126,11 @@ elif [ "$1" = "EXTENDED" ]; then
         TEST_ATOMIC_128=ON
         BUILD_SHARED=ON
         BUILD_TESTING=ON
-        ENABLE_PROFILING=OFF
+        FINDUS_ENABLE_PROFILING=OFF
         MPI_DIR="/opt/mpich/${MPICH_VERSIONS##* }"
         build_and_test
         unset MPI_DIR
-        unset ENABLE_PROFILING
+        unset FINDUS_ENABLE_PROFILING
         unset BUILD_TESTING
         unset BUILD_SHARED
         TEST_ATOMIC_128=OFF
@@ -139,7 +139,7 @@ elif [ "$1" = "EXTENDED" ]; then
         for BUILD_SHARED_LIBS in ON OFF; do
             for BUILD_TESTING in ON OFF; do
                 for FINDUS_MIMIC_CHARM_PUPER in ON OFF; do
-                    for ENABLE_PROFILING in ON OFF; do
+                    for FINDUS_ENABLE_PROFILING in ON OFF; do
                         for MPICH_VERSION in $MPICH_VERSIONS; do
                             if [ "$BUILD_TYPE" = "Debug" ]; then
                                 export MPI_DIR=/opt/mpich/$MPICH_VERSION-debug
@@ -178,7 +178,7 @@ elif [ "$1" = "EXTENDED" ]; then
             for BUILD_SHARED_LIBS in ON OFF; do
                 for BUILD_TESTING in ON OFF; do
                     for FINDUS_MIMIC_CHARM_PUPER in ON OFF; do
-                        for ENABLE_PROFILING in ON OFF; do
+                        for FINDUS_ENABLE_PROFILING in ON OFF; do
                             build_and_test
                         done
                     done

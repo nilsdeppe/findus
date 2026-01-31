@@ -82,9 +82,10 @@ else()
     APPEND PROPERTY INTERFACE_COMPILE_OPTIONS -g0)
 endif(${FINDUS_DEBUG_SYMBOLS})
 
-option(ENABLE_PROFILING "Enables various options to make profiling easier" OFF)
+option(FINDUS_ENABLE_PROFILING
+  "Enables various options to make profiling easier" OFF)
 
-option(KEEP_FRAME_POINTER "Add keep frame pointer for profiling" OFF)
+option(FINDUS_KEEP_FRAME_POINTER "Add keep frame pointer for profiling" OFF)
 
 add_library(findusKeepFramePointer INTERFACE)
 add_library(findus::KeepFramePointer
@@ -100,7 +101,7 @@ set_property(TARGET findusEnableProfiling
   PROPERTY EXPORT_NAME EnableProfiling
 )
 
-if (KEEP_FRAME_POINTER OR ENABLE_PROFILING)
+if (FINDUS_KEEP_FRAME_POINTER OR FINDUS_ENABLE_PROFILING)
   set_property(
     TARGET findusKeepFramePointer
     APPEND PROPERTY
