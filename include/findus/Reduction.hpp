@@ -834,4 +834,31 @@ void Handler::set_interprocess_message_info(
   reduction::set_contributed_metadata(
       message, reduction::Contribution::self_contributed);
 }
+
+template <class BroadcastToParallelComponent, class ReductionUnaryPredicate,
+          class BroadcastToUnaryPredicate>
+size_t size_for_broadcast_to(
+    const int process_id, const ReductionUnaryPredicate& reduction_predicate,
+    const std::vector<std::vector<std::uint64_t>>& ids_per_process,
+    const BroadcastToUnaryPredicate& broadcast_to_predicate) {
+  for (int i = 0; i < process_id; ++i) {
+    if (reduction_predicate(i)) {
+      return 0;
+    }
+  }
+  // None of the processes "before" me (with PID smaller than mine) are
+  // contributing to the reduction, which means I am responsible for computing
+  // the elements that the broadcast_to is going to.
+  size_t number_of_broadcast_to_elements = 0;
+  for (const std::vector<std::uint64_t>& ids_on_process : ids_per_process) {
+    for (const std::uint64_t id : ids_on_process) {
+      if (broadcast_to_predicate(
+              findus::detail::from_internal<BroadcastToParallelComponent>(
+                  id))) {
+        ++number_of_broadcast_to_elements;
+      }
+    }
+  }
+  return number_of_broadcast_to_elements;
+}
 }  // namespace findus::reduction
