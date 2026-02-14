@@ -182,7 +182,11 @@ class SerializableDerived;
  * split the hierarchy in the direction of the two base classes.
  */
 template <class Base>
-class SerializableBase {
+class SerializableBase
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+    : public PUP::able
+#endif
+{
  public:
   virtual ~SerializableBase() = default;
 
