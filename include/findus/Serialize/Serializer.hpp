@@ -716,12 +716,16 @@ operator|(Serializer& serializer, T& t) {
  */
 namespace PUP {
 /*!
- * \brief Overload for enum and fundamental types.
+ * \brief Overload for enum, fundamental types, and types that can be serialized
+ * as a byte stream.
  */
 template <class T>
-std::enable_if_t<std::is_fundamental_v<T> or std::is_enum_v<T>> operator|(
-    er& p, T& t) {
-  static_cast<findus::serialize::Serializer&>(p) | t;
+std::enable_if_t<std::is_fundamental_v<T> or std::is_enum_v<T> or
+                 findus::serialize::as_bytes<T>::value or
+                 std::is_base_of_v<findus::serialize::as_bytes<void>, T>>
+operator|(er& p, T& t) {
+  findus::serialize::operator|(static_cast<findus::serialize::Serializer&>(p),
+                               t);
 }
 
 /*!
