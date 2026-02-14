@@ -736,5 +736,11 @@ std::enable_if_t<findus::serialize::has_pup_member_v<T>> operator|(er& p,
                                                                    T& t) {
   t.pup(p);
 }
+
+template <class T>
+void PUParray(er& p, T* data, const std::size_t size) {
+  static_cast<findus::serialize::Serializer&>(p)(
+      findus::serialize::View<T>{data, size});
+}
 }  // namespace PUP
 #endif
