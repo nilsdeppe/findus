@@ -150,7 +150,7 @@ class Derived0 : public findus::serialize::SerializableDerived<Derived0, Base0>,
 //! [SerializableDerivedDataInBase]
 
 class Derived1 : public findus::serialize::SerializableDerived<Derived1, Base0>,
-                 public Base0 {
+                 public virtual Base0 {
  public:
   Derived1() = default;
   Derived1(const int in_data, const int in_data2)
@@ -177,18 +177,55 @@ class Derived1 : public findus::serialize::SerializableDerived<Derived1, Base0>,
   int data2_ = -2;
 };
 
+class Derived3 : private Derived1,
+                 public findus::serialize::SerializableDerived<Derived3, Base0>,
+                 public virtual Base0 {
+ public:
+  Derived3() = default;
+  Derived3(const int in_data, const int in_data2)
+      : Base0(10 * in_data),
+        Derived1{in_data, in_data2},
+        data_(5 * in_data),
+        data2_(6 * in_data2) {}
+
+  Serializer& serialize(Serializer& s) override {
+    Base0::serialize(s);
+    return s | data_ | data2_;
+  }
+
+#if defined(FINDUS_MIMIC_CHARM_PUPER)
+  void pup(PUP::er& p) override {
+    Base0::pup(p);
+    p | data_;
+    p | data2_;
+  }
+#endif
+
+  int data() const { return data_; }
+  int data2() const { return data2_; }
+
+ private:
+  FINDUS_OVERRIDE_SERIALIZATION_ID(Derived3, Base0)
+
+  int data_ = -1;
+  int data2_ = -2;
+};
+
 void test() {
   std::unique_ptr<Base0> my_derived0{new Derived0(17)};
   std::unique_ptr<Base0> my_derived1{new Derived1(13, 15)};
+  std::unique_ptr<Base0> my_derived3{new Derived3(19, 11)};
   Serializer sizer{Serializer::Sizing};
   serialize_abstract_base(sizer, my_derived0.get());
   serialize_abstract_base(sizer, my_derived1.get());
-  CHECK(sizer.number_of_bytes() >= 36);
+  serialize_abstract_base(sizer, my_derived3.get());
+  CHECK(sizer.number_of_bytes() >= 44);
 
   std::unique_ptr<std::byte[]> buffer{new std::byte[sizer.number_of_bytes()]};
   Serializer packer{Serializer::Packing, buffer.get(), sizer.number_of_bytes()};
   serialize_abstract_base(packer, my_derived0.get());
   serialize_abstract_base(packer, my_derived1.get());
+  serialize_abstract_base(packer, my_derived3.get());
 
   // Unpacking
   Serializer unpacker{Serializer::Unpacking, buffer.get(),
@@ -196,6 +233,8 @@ void test() {
   std::unique_ptr<Base0> my_derived0_unpacked{
       deserialize_abstract_base<Base0>(unpacker)};
   std::unique_ptr<Base0> my_derived1_unpacked{
+      deserialize_abstract_base<Base0>(unpacker)};
+  std::unique_ptr<Base0> my_derived3_unpacked{
       deserialize_abstract_base<Base0>(unpacker)};
 
   Derived0* my_derived0_unpacked_ptr =
@@ -209,6 +248,12 @@ void test() {
   CHECK(my_derived1_unpacked_ptr->data() == 13);
   CHECK(my_derived1_unpacked_ptr->data2() == 15);
   CHECK(my_derived1_unpacked->data_base_ == 2 * 13);
+  Derived3* my_derived3_unpacked_ptr =
+      dynamic_cast<Derived3*>(my_derived3_unpacked.get());
+  REQUIRE(my_derived3_unpacked_ptr != nullptr);
+  CHECK(my_derived3_unpacked_ptr->data() == 5 * 19);
+  CHECK(my_derived3_unpacked_ptr->data2() == 6 * 11);
+  CHECK(my_derived3_unpacked->data_base_ == 10 * 19);
 }
 }  // namespace data_in_base
 

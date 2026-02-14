@@ -236,13 +236,34 @@ class SerializableDerived : public virtual SerializableBase<Base> {
  public:
   virtual ~SerializableDerived() = default;
 
- private:
+ protected:
   size_t findus_derived_class_serialization_id() const override {
     return derived_class_serialization_id_;
   }
 
+ private:
   static size_t derived_class_serialization_id_;
 };
+
+/*!
+ * \brief Override serialization ID function in a multi-inheritance hieararchy.
+ *
+ * When you have two derived classes, `Derived0` and `Derived1` that both
+ * inherit from `Base` and `Derived1` also inherits from `Derived0` you get a
+ * compilation error that
+ *
+ * ```
+ * findus_derived_class_serialization_id has more than one final overrider in
+ * ```
+ *
+ * To work around this, add this macro to the `private:` ( or `protected:` if
+ * you'll have even more derived classes) part of `Derived1`.
+ */
+#define FINDUS_OVERRIDE_SERIALIZATION_ID(Derived, Base)           \
+  size_t findus_derived_class_serialization_id() const override { \
+    return findus::serialize::SerializableDerived<                \
+        Derived, Base>::findus_derived_class_serialization_id();  \
+  }
 
 namespace detail {
 #if defined(FINDUS_USE_CONSTEXPR_HASH)
