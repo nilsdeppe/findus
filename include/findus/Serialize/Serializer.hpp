@@ -23,7 +23,24 @@ enum class SerializerReason : uint16_t {
 
 #ifdef FINDUS_MIMIC_CHARM_PUPER
 namespace PUP {
-class er {};
+class er {
+ public:
+  /// Returns true if the Serializer is in Packing mode.
+  bool isPacking() const;
+
+  /// Returns true if the Serializer is in Sizing mode.
+  bool isSizing() const;
+
+  /// Returns true if the Serializer is in Unpacking mode.
+  bool isUnpacking() const;
+};
+
+class able {
+ public:
+  // This intentionally has a different signature than the Charm++ function
+  // since it should never actually be called.
+  static void register_constructor();
+};
 }  // namespace PUP
 #endif
 

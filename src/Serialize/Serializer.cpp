@@ -74,6 +74,22 @@ void Serializer::bytes(Bytes data) {
 }
 }  // namespace findus::serialize
 
+#ifdef FINDUS_MIMIC_CHARM_PUPER
+namespace PUP {
+bool er::isPacking() const {
+  return static_cast<const findus::serialize::Serializer*>(this)->isPacking();
+}
+
+bool er::isSizing() const {
+  return static_cast<const findus::serialize::Serializer*>(this)->isSizing();
+}
+
+bool er::isUnpacking() const {
+  return static_cast<const findus::serialize::Serializer*>(this)->isUnpacking();
+}
+}  // namespace PUP
+#endif
+
 #if defined(FINDUS_ENABLE_TESTING)
 
 #include <array>
