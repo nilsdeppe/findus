@@ -24,6 +24,9 @@ Did you forget to set -DFINDUS_MIMIC_CHARM_PUPER=ON?")
 
   if (FINDUS_ENABLE_INSTALL)
     install(FILES
+      ${PROJECT_SOURCE_DIR}/charm_compatibility/charm++.h
+      ${PROJECT_SOURCE_DIR}/charm_compatibility/charm.h
+      ${PROJECT_SOURCE_DIR}/charm_compatibility/ckarrayindex.h
       ${PROJECT_SOURCE_DIR}/charm_compatibility/pup.h
       ${PROJECT_SOURCE_DIR}/charm_compatibility/pup_stl.h
       DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
